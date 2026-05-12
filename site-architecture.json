@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "app_name": "Vistamar Management",
+  "spun_out_from": "VMConsoleFrontEnd",
+  "spun_out_on": "2026-05-12",
+  "modules": [
+    {
+      "name": "Auth",
+      "status": "planned",
+      "phase": "V1",
+      "pages": [
+        {
+          "name": "Sign In",
+          "status": "planned",
+          "phase": "V1",
+          "route": "/signin"
+        }
+      ]
+    },
+    {
+      "name": "Project Management",
+      "status": "planned",
+      "phase": "V1",
+      "pages": [
+        {
+          "name": "Dashboard",
+          "status": "planned",
+          "phase": "V1",
+          "route": "/dashboard"
+        },
+        {
+          "name": "Project Board",
+          "status": "planned",
+          "phase": "V1",
+          "route": "/project-board"
+        },
+        {
+          "name": "Members",
+          "status": "planned",
+          "phase": "V1",
+          "route": "/members"
+        },
+        {
+          "name": "Organizations",
+          "status": "planned",
+          "phase": "V1",
+          "route": "/organizations"
+        }
+      ]
+    },
+    {
+      "name": "Meetings",
+      "status": "planned",
+      "phase": "V2",
+      "pages": [
+        {
+          "name": "Calendar",
+          "status": "planned",
+          "phase": "V2",
+          "route": "/calendar"
+        },
+        {
+          "name": "Meeting Agendas",
+          "status": "planned",
+          "phase": "V2",
+          "route": "/agenda"
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "status": "planned",
+      "phase": "V1",
+      "pages": [
+        {
+          "name": "Settings",
+          "status": "planned",
+          "phase": "V1",
+          "route": "/settings"
+        },
+        {
+          "name": "Profile",
+          "status": "planned",
+          "phase": "V1",
+          "route": "/profile"
+        }
+      ]
+    }
+  ]
+}
