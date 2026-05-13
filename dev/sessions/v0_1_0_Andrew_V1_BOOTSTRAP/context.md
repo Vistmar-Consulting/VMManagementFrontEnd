@@ -67,6 +67,14 @@ Project Board end-to-end:
 - `CLAUDE.md` Firebase Project section updated with real values.
 - Dev server boots cleanly on `localhost:5173`. Scaffold renders; Firebase init throws no errors.
 
+**Slice 2a complete** — AuthContext + SignIn page wired and verified end-to-end.
+
+- `src/contexts/AuthContext.jsx` — `onAuthStateChanged` subscription; exposes `{ user, loading, signIn, signOut }`.
+- `src/pages/SignIn.jsx` — single Google button via `signInWithPopup`, surfaces auth errors (skips `auth/popup-closed-by-user`).
+- `src/App.jsx` — loading spinner → SignIn (signed out) → placeholder Shell with name/email/UID/Sign-out (signed in).
+- Andy verified Google OAuth round-trip in his own Chrome on 2026-05-13. UID captured: `P63r1qyS0vOQ4BovyRit6EwI5sk2` (saved to memory).
+- Signed-in state is a placeholder — no Firestore subscription yet because rules are still deny-all by default.
+
 ## Decisions
 
 - Session folder name `v0_1_0_Andrew_V1_BOOTSTRAP` chosen per Andy's suggestion; v0.1.0 because no `version_logs/` exists yet in this repo (Console's versioning hasn't been ported).
