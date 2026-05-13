@@ -1,3 +1,15 @@
 {
-  "sessions": []
+  "sessions": [
+    {
+      "session_id": "SES-20260512-Andrew-v0.1.0-bootstrap",
+      "developer": "Andrew",
+      "date": "2026-05-12",
+      "version_start": "v0.1.0",
+      "version_end": null,
+      "commit_start": "671b469248f6fe33889f0b701e1b45f96d460a37",
+      "summary": "V1 bootstrap — npm install, verify scaffold, lay foundation for Project Board",
+      "folder": "dev/sessions/v0_1_0_Andrew_V1_BOOTSTRAP/",
+      "status": "active"
+    }
+  ]
 }

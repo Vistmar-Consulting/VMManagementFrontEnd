@@ -10,7 +10,7 @@ Source of truth: `docs/superpowers/specs/2026-05-12-vmmanagement-spinout-design.
 
 - **Dev server:** `npm run dev` → `http://localhost:5173`
 - **Build:** `npm run build` → `/dist`
-- **Hosting:** Vercel (FE) + Firebase project `vm-management` (Auth, Firestore, Functions, Storage)
+- **Hosting:** Vercel (FE) + Firebase project `management-db9eb` (Auth, Firestore, Functions, Storage)
 - **Auth:** Google SSO restricted to `@vistamarconsulting.com`
 
 **Do not kill running dev servers.** Never `kill`, `lsof -t | xargs kill`, or force-stop. Inform the developer.
@@ -105,7 +105,13 @@ FE field name = Firestore field name = Cloud Function payload field name. Lower-
 
 ## Firebase Project
 
-- Project ID: `vm-management` (TBD — Andrew to create in console)
-- Region: `us-central1` (default)
+- Project ID: `management-db9eb` (created 2026-05-13; Firebase auto-suffixed because `management` was taken)
+- Display name: `Management`; user-facing sign-in name: `Vistamar Management`
+- Web app: `vm-management-web` (app ID `1:206947368406:web:7e7fd576ad64ea2b8a7877`)
+- Region: `us-west1` (Oregon) — Firestore Native mode, permanent. Cloud Functions for V2 deploy to same region.
+- Plan: Spark (no-cost). V2 will require Blaze upgrade for Cloud Functions.
+- Auth: Google provider enabled, public-facing name "Vistamar Management"
+- Storage bucket: `management-db9eb.firebasestorage.app` (new Firebase bucket scheme; not `.appspot.com`)
 - Service account for Google Calendar (V2): reuses existing `console-meetings-service@console-meetings.iam.gserviceaccount.com` (in GCP project `Console-Meetings`)
 - Secrets: GCP Secret Manager (`meetings-service-account-key`, etc.)
+- Client SDK config: `VITE_FIREBASE_*` env vars in `.env.local` (gitignored). Web `apiKey` is public-by-design — protected via Firestore security rules + Auth domain restriction, not key secrecy.
