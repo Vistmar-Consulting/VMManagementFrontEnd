@@ -130,6 +130,28 @@ Project Board end-to-end:
 - **Verified (signed-in, via Andy's Chrome at 2:08pm):** loaded `localhost:5173`, redirected from `/` to `/dashboard`, sidebar rendered with all 6 destinations + Members and Organizations visible (admin role gate passed), active-route highlight on Dashboard, top bar showed "Dashboard" title + admin chip + coral "A" avatar at far right, Dashboard card rendered "Welcome, Andy."
 - **Layout fix mid-slice (2026-05-14):** initial top-bar render had the right-side cluster (admin chip + avatar) hugging the title at x=387 instead of pushed right. Root cause: `<Typography sx={{ flex: 1 }}>` doesn't reliably expand inside MUI's `<Stack>` because Typography's styled-component overrides interact with the flex shorthand. Fix: removed `flex: 1` from Typography and used `justifyContent="space-between"` on the parent Stack instead. Verified visually after Andy refreshed.
 
+**Slice 4 complete (2026-05-14)** — items collection + first live TaskBoard render.
+
+- **SQL pm.Items inspected** via mcp__sql-server to validate status IDs and item shape. Real-world findings:
+  - V1 spec keeps status IDs `1=Assigned, 2=In Progress, 4=Review, 5=Done, 7=Archive`. SQL also has `3=On Hold, 6=Pending, 8=AI Gen` — V1 drops Pending and AI Gen entirely, and On Hold becomes a `onHold: boolean` flag rather than its own status (per spec §4).
+  - Real items are organized around onboarding, account access transfer, migrations, SEO/analytics prep, etc. — informed the seed sample titles.
+  - My placeholder TaskBoard had hardcoded the wrong column IDs (1, 2, 3, 6); fixed to (1, 2, 4, 5).
+- **New files:**
+  - `src/constants/itemStatuses.js` — `STATUS` enum, `BOARD_COLUMNS` table (id, label, color matching SQL Status_Color), `STATUS_LABEL`.
+  - `src/hooks/useItems.js` — V1 wrapper around `useCollection('items', [orderBy('order','asc')])`. Server returns everything ordered by rank; caller filters in JS. Sidesteps composite-index requirements until item volume exceeds ~500.
+  - `src/seed/sampleItems.js` — admin-callable seeder. Writes 11 realistic-flavored items (3 Assigned, 3 In Progress, 2 Review, 3 Done) all tagged `organizationId: 'vistamar'`, assigned to the current user, ranked via `fractional-indexing`. Idempotent via `_seedMarker` field check.
+  - `src/components/ItemCard.jsx` — card UI: title, org pill (uses org's `accentColor`), optional `On hold` badge, optional due date with overdue red styling, assignee avatar circle. `opacity: 0.7` when `onHold` is true.
+  - `src/pages/TaskBoard.jsx` rewritten — pulls all items + orgs + users via three `useCollection`/`useItems` subscriptions, builds in-memory lookup maps, filters client-side to `parentId==null && statusId != 7`, groups into 4 columns, renders.
+- **Spec-deviation check (lean directive):**
+  - `useItems` is deliberately a thin pass-through — does NOT yet expose filter args. Domain wrappers like `useOrgItems(orgId)` can layer on later when the Org filter chip slice lands. Avoided premature abstraction.
+  - Seed action is gated to `isAdmin && totalItems === 0` so the button hides itself once items exist. Self-cleaning UX, no toggle needed.
+- **Verified end-to-end via `/agent-browser` (the right tool — see [[drive-browser-yourself]]):**
+  - Closed initial Playwright session, opened agent-browser with `--profile "Profile 10"` (Andy's Vistamar Chrome profile) → inherited his @vistamarconsulting.com auth without an interactive OAuth.
+  - Navigated to `localhost:5173/board` → confirmed signed-in `Task Board` page with empty state and `Seed sample items` button.
+  - Clicked seed → waited for snackbar text "Seeded" → re-snapshotted.
+  - Final state: 11 items distributed (Assigned 3 / In Progress 3 / Review 2 / Done 3), titles match seed source, every card shows Vistamar Consulting org pill (`#2c5f7c`), every card has coral "A" assignee avatar, three cards show due dates (May 17/21/28), "Organization admin CRUD…" card shows the `On hold` badge and is correctly dimmed.
+  - Screenshot: `dev/sessions/v0_1_0_Andrew_V1_BOOTSTRAP/slice-4-taskboard-seeded.png`.
+
 **Rules deviations from spec §5 (documented for future maintainers, all noted in `firestore.rules` header):**
 
 1. `users/{uid}` read allowed for SELF even when doc missing — required by Spark client-side bootstrap (probe-before-create).
