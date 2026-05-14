@@ -100,6 +100,36 @@ Project Board end-to-end:
   - `organizations/vistamar` doc created: `name: 'Vistamar Consulting'`, `type: 'internal'`, `accentColor: '#2c5f7c'`, `active: true`, `archived: false`, `createdAt: 2026-05-14T20:36:40Z`.
 - **Storage deferred (2026-05-14):** Firebase Storage now requires Blaze (Firebase reclassified it from Spark to Blaze-only in late 2025). Decision: don't upgrade yet — Storage is unused until the task-file-attachments slice or V2 (whichever lands first). `storage.rules` stays committed; one `npx firebase deploy --only storage` ships it when Blaze flips on. `firebase.json` still references storage but deploys are scoped via `--only firestore:rules` so it doesn't trip.
 
+**Slice 3 complete (2026-05-14)** — App shell: theme port, React Router, ProtectedRoute, sidebar nav, top bar, page stubs.
+
+- **Theme port from VMConsoleFrontEnd `src/theme/`:**
+  - `src/theme/index.js` — single `createTheme()` (no variant switching).
+  - `src/theme/palette.js` — default variant only; ported `customBlue` ramp + light-mode primary/secondary/background. Guide cream/copper explicitly excluded.
+  - `src/theme/typography.js` — Inter font stack, 13px base, h1–h6 sizes verbatim.
+  - `src/theme/breakpoints.js`, `shadows.js` — ported verbatim.
+  - `src/theme/components.js` — MUI component overrides; dropped `MuiPickers*` (Console uses v5; we'll wire v6 fresh later) and fixed the broken `border: 1px solid red` MuiMenu hack.
+  - Theme extended at module level with `theme.sidebar` (`width: 240`, navy `#233044`, brand color from customBlue ramp) and `theme.appBar` (`height: 56`, white bg, slate text). Used by `Sidebar` and `AppTopBar` via `sx={(theme) => ...}`.
+- **Routing (`src/routes.jsx`):**
+  - `/signin` — SignIn page, no auth required.
+  - All other routes wrapped in `ProtectedRoute` → `SignedInLayout` → page outlet.
+  - `/members` and `/organizations` double-wrapped in `<ProtectedRoute requireAdmin>` — non-admins get an admin-only Alert.
+  - `/` → redirect to `/dashboard`. Unknown paths → redirect to `/dashboard`.
+- **Components:**
+  - `src/components/ProtectedRoute.jsx` — gates on AuthContext (`loading` → spinner, no `user` → redirect, no `profile` → spinner, `!profile.active` → disabled-account screen, `requireAdmin && !isAdmin` → admin-only alert). Replaces the inline gating that previously lived in `App.jsx`.
+  - `src/components/Sidebar.jsx` — navy left rail with Lucide-react icons, NavLink-driven `.active` styling, per-item `requireAdmin` filter.
+  - `src/components/AppTopBar.jsx` — white app bar with route-derived title, avatar dropdown menu (display name, email, sign-out).
+  - `src/layouts/SignedInLayout.jsx` — flex container: Sidebar + (AppTopBar over `<Outlet />`).
+- **Page stubs:**
+  - `Dashboard.jsx` — welcomes user by firstName, "Mini Project Board lands here" placeholder.
+  - `TaskBoard.jsx` — placeholder grid of 4 column cards (Assigned / In Progress / Review / Done).
+  - `Members.jsx` — admin-only stub.
+  - `Organizations.jsx` — admin-only, ALREADY WIRED to live `useCollection('organizations')` so the seeded `vistamar` doc renders.
+  - `Settings.jsx`, `Profile.jsx` — Profile renders real fields from `AuthContext.profile`.
+- **App.jsx** rewritten to wrap `<ThemeProvider><CssBaseline><BrowserRouter><AuthProvider><AppRoutes></...>`. Old inline shell removed entirely.
+- **Verified (signed-out, via Playwright):** `/dashboard` → ProtectedRoute redirect to `/signin` → SignIn page rendered with theme applied. No JS errors from this slice (only the pre-existing Firebase Auth COOP popup-close noise). Screenshot: `slice-3-signin-page.png`.
+- **Verified (signed-in, via Andy's Chrome at 2:08pm):** loaded `localhost:5173`, redirected from `/` to `/dashboard`, sidebar rendered with all 6 destinations + Members and Organizations visible (admin role gate passed), active-route highlight on Dashboard, top bar showed "Dashboard" title + admin chip + coral "A" avatar at far right, Dashboard card rendered "Welcome, Andy."
+- **Layout fix mid-slice (2026-05-14):** initial top-bar render had the right-side cluster (admin chip + avatar) hugging the title at x=387 instead of pushed right. Root cause: `<Typography sx={{ flex: 1 }}>` doesn't reliably expand inside MUI's `<Stack>` because Typography's styled-component overrides interact with the flex shorthand. Fix: removed `flex: 1` from Typography and used `justifyContent="space-between"` on the parent Stack instead. Verified visually after Andy refreshed.
+
 **Rules deviations from spec §5 (documented for future maintainers, all noted in `firestore.rules` header):**
 
 1. `users/{uid}` read allowed for SELF even when doc missing — required by Spark client-side bootstrap (probe-before-create).
