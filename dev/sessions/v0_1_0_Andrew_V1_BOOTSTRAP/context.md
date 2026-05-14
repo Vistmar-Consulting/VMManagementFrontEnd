@@ -75,6 +75,37 @@ Project Board end-to-end:
 - Andy verified Google OAuth round-trip in his own Chrome on 2026-05-13. UID captured: `P63r1qyS0vOQ4BovyRit6EwI5sk2` (saved to memory).
 - Signed-in state is a placeholder — no Firestore subscription yet because rules are still deny-all by default.
 
+**Slice 2b in progress (2026-05-14)** — Firestore foundation: rules + client-side user-doc bootstrap + first hooks.
+
+- Branch: `dev` (created from `main` this session; first feature branch on the repo). Push deferred — confirm with Andy before pushing.
+- Firebase config files written directly (skipped interactive `firebase init`):
+  - `firebase.json` — firestore + storage sections.
+  - `.firebaserc` — project alias `management-db9eb` → default.
+  - `firestore.rules` — V1 ruleset per spec §5 with three documented deviations (see file header). Spec assumed an auth-onCreate Cloud Function bootstraps the user doc; we're on Spark so no Functions, hence client-side bootstrap.
+  - `firestore.indexes.json` — empty; first composite indexes land with TaskBoard query needs.
+  - `storage.rules` — V1 ruleset; agenda path included as V2 placeholder.
+- `src/hooks/useDoc.js` — single-doc `onSnapshot` wrapper, returns `{data, loading, error}`. Falsy path disables.
+- `src/hooks/useCollection.js` — collection-query `onSnapshot` wrapper with `constraints` array. Caller-owned memoization (domain wrappers will handle).
+- `AuthContext` extended — after `onAuthStateChanged`, probes `users/{uid}` via `getDoc`; if missing, `setDoc` with defaults (`role: 'member'`, `active: true`, deterministic pastel `avatarColor`, `joinedAt: serverTimestamp()`). Then subscribes to the doc via `onSnapshot` for live role/active updates. Exposes new fields: `profile`, `error`, `isAdmin`.
+- `App.jsx` — extended shell renders profile-aware UI (avatar swatch, role chip, inactive-account guard). Spinner caption when waiting on profile load.
+- **Rules deployed** 2026-05-14 via `npx firebase deploy --only firestore:rules`. Storage rules pending Andy clicking "Get Started" on Storage in the Firebase console (the bucket isn't initialized yet).
+- **End-to-end verified** via Playwright on Andy's existing browser session at `localhost:5173`:
+  - Bootstrap fired on signed-in page load → `users/P63r1qyS0vOQ4BovyRit6EwI5sk2` created.
+  - Doc fields verified: `email`, `displayName`, `firstName`/`lastName`, `avatarColor: '#ffaaa5'`, `role: 'member'`, `active: true`, `joinedAt: 2026-05-14T20:19:24.796Z`.
+  - Shell renders: name, email, avatar swatch ("A"), role chip ("member"), UID, sign-out button.
+  - Screenshot: `dev/sessions/v0_1_0_Andrew_V1_BOOTSTRAP/slice-2b-signed-in-shell.png`.
+  - Console errors observed: 6 × `Cross-Origin-Opener-Policy policy would block window.closed/close` from `firebase_auth.js`. Pre-existing (originate from Slice 2a's `signInWithPopup` flow), not from this slice. Harmless during the post-auth bootstrap path. Worth a follow-up later to set proper COOP headers on Vite dev server.
+- **Still pending in this slice (require Firebase console clicks Andy does manually):**
+  - Flip `users/P63r1qyS0vOQ4BovyRit6EwI5sk2.role` to `'admin'` via Firebase console.
+  - Create `organizations/vistamar` doc with `{ name: 'Vistamar Consulting', type: 'internal', accentColor, active: true, createdAt: <serverTimestamp> }`.
+  - Initialize Firebase Storage ("Get Started" → keep `management-db9eb.firebasestorage.app` bucket), then redeploy `storage.rules` via `npx firebase deploy --only storage`.
+
+**Rules deviations from spec §5 (documented for future maintainers, all noted in `firestore.rules` header):**
+
+1. `users/{uid}` read allowed for SELF even when doc missing — required by Spark client-side bootstrap (probe-before-create).
+2. `users/{uid}` create constrains `role == 'member'` and `active == true` so clients cannot self-promote.
+3. `users/{uid}` self-update also blocks changes to `active` (spec only blocked `role`). Defense in depth — only an admin can deactivate.
+
 ## Decisions
 
 - Session folder name `v0_1_0_Andrew_V1_BOOTSTRAP` chosen per Andy's suggestion; v0.1.0 because no `version_logs/` exists yet in this repo (Console's versioning hasn't been ported).

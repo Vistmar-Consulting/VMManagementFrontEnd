@@ -1,0 +1,83 @@
+rules_version = '2';
+
+// VMManagement V1 ruleset.
+// See docs/superpowers/specs/2026-05-12-vmmanagement-spinout-design.md §5.
+//
+// V1 deviation from spec (documented in dev/sessions/.../context.md):
+//   - users/{uid} read is allowed for SELF even when the profile doc does
+//     not yet exist. Spark plan = no Cloud Functions, so the onCreate
+//     trigger that the spec assumes can't run yet; first-sign-in
+//     bootstrap happens client-side in AuthContext. The client needs to
+//     probe its own doc with getDoc() before deciding to create it.
+//   - users/{uid} create constrains role to 'member' and active to true,
+//     so clients cannot self-promote. Admin elevation is admin-SDK only
+//     (Firebase console for V1) until Members admin page lands.
+//   - users/{uid} self-update also blocks changes to `active` (only an
+//     admin can deactivate). Spec only blocked `role`; tightening here.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null
+          && request.auth.token.email is string
+          && request.auth.token.email.matches('.*@vistamarconsulting[.]com$')
+          && request.auth.token.email_verified == true;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActiveUser() {
+      return signedIn()
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          && userDoc().active == true;
+    }
+
+    function isAdmin() {
+      return isActiveUser() && userDoc().role == 'admin';
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isActiveUser());
+
+      allow create: if signedIn()
+                    && request.auth.uid == uid
+                    && request.resource.data.role == 'member'
+                    && request.resource.data.active == true;
+
+      allow update: if (
+                       isActiveUser()
+                       && request.auth.uid == uid
+                       && !('role' in request.resource.data.diff(resource.data).affectedKeys())
+                       && !('active' in request.resource.data.diff(resource.data).affectedKeys())
+                     )
+                     || isAdmin();
+
+      allow delete: if isAdmin();
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+
+    match /items/{itemId} {
+      allow read, write: if isActiveUser();
+
+      match /comments/{commentId} {
+        allow read: if isActiveUser();
+        allow create: if isActiveUser()
+                      && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if isActiveUser()
+                              && resource.data.authorId == request.auth.uid;
+      }
+    }
+
+    match /_meta/{docId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+  }
+}

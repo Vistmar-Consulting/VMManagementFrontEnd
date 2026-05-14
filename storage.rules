@@ -1,0 +1,27 @@
+rules_version = '2';
+
+// Storage rules — V1.
+// See docs/superpowers/specs/2026-05-12-vmmanagement-spinout-design.md §5.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null
+          && request.auth.token.email is string
+          && request.auth.token.email.matches('.*@vistamarconsulting[.]com$')
+          && request.auth.token.email_verified == true;
+    }
+
+    match /items/{itemId}/{filename} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.resource.size < 25 * 1024 * 1024;
+    }
+
+    match /agendas/{agendaId}/{filename} {
+      // V2 placeholder — meeting attachments.
+      allow read: if signedIn();
+      allow write: if signedIn() && request.resource.size < 25 * 1024 * 1024;
+    }
+  }
+}
