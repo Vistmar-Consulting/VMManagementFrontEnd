@@ -95,10 +95,10 @@ Project Board end-to-end:
   - Shell renders: name, email, avatar swatch ("A"), role chip ("member"), UID, sign-out button.
   - Screenshot: `dev/sessions/v0_1_0_Andrew_V1_BOOTSTRAP/slice-2b-signed-in-shell.png`.
   - Console errors observed: 6 × `Cross-Origin-Opener-Policy policy would block window.closed/close` from `firebase_auth.js`. Pre-existing (originate from Slice 2a's `signInWithPopup` flow), not from this slice. Harmless during the post-auth bootstrap path. Worth a follow-up later to set proper COOP headers on Vite dev server.
-- **Still pending in this slice (require Firebase console clicks Andy does manually):**
-  - Flip `users/P63r1qyS0vOQ4BovyRit6EwI5sk2.role` to `'admin'` via Firebase console.
-  - Create `organizations/vistamar` doc with `{ name: 'Vistamar Consulting', type: 'internal', accentColor, active: true, createdAt: <serverTimestamp> }`.
-  - Initialize Firebase Storage ("Get Started" → keep `management-db9eb.firebasestorage.app` bucket), then redeploy `storage.rules` via `npx firebase deploy --only storage`.
+- **Manual seeds done (2026-05-14):**
+  - Andy's `users/{uid}.role` flipped to `'admin'` via Firebase console. Live `onSnapshot` in his open tab caught the change without refresh.
+  - `organizations/vistamar` doc created: `name: 'Vistamar Consulting'`, `type: 'internal'`, `accentColor: '#2c5f7c'`, `active: true`, `archived: false`, `createdAt: 2026-05-14T20:36:40Z`.
+- **Storage deferred (2026-05-14):** Firebase Storage now requires Blaze (Firebase reclassified it from Spark to Blaze-only in late 2025). Decision: don't upgrade yet — Storage is unused until the task-file-attachments slice or V2 (whichever lands first). `storage.rules` stays committed; one `npx firebase deploy --only storage` ships it when Blaze flips on. `firebase.json` still references storage but deploys are scoped via `--only firestore:rules` so it doesn't trip.
 
 **Rules deviations from spec §5 (documented for future maintainers, all noted in `firestore.rules` header):**
 

@@ -13,8 +13,9 @@ Items deferred during scaffolding (2026-05-12) and during early V1 development. 
 - ~~AuthContext implementation~~ ✓ done 2026-05-13 (Slice 2a) + extended 2026-05-14 (Slice 2b — user-doc bootstrap)
 - ~~`useDoc` / `useCollection` hooks implementation~~ ✓ done 2026-05-14 (Slice 2b)
 - Migration script (`functions/scripts/migrate-from-sql.js`) — V1 scope only (Members + Organizations + active Items)
-- Manual seed: flip `users/P63r1qyS0vOQ4BovyRit6EwI5sk2.role` to `'admin'` in Firebase console (admin SDK bypass — client rules block self-promotion)
-- Manual seed: create `organizations/vistamar` doc with `{ name: 'Vistamar Consulting', type: 'internal', accentColor: <TBD>, active: true, createdAt: <serverTimestamp> }` in Firebase console
+- ~~Manual seed: flip Andy's role to `'admin'`~~ ✓ done 2026-05-14
+- ~~Manual seed: `organizations/vistamar`~~ ✓ done 2026-05-14 (`accentColor: '#2c5f7c'`)
+- Firebase Storage initialization — **deferred to V2 or task-file-attachments slice (whichever lands first)**. Storage was reclassified as Blaze-only by Firebase in late 2025; upgrading early costs billing exposure for zero V1 benefit. `storage.rules` is authored and committed — when Blaze is enabled, `npx firebase deploy --only storage` ships it. Decision logged in `dev/sessions/v0_1_0_Andrew_V1_BOOTSTRAP/context.md` (2026-05-14).
 - Cloud-Function auth-onCreate trigger (spec §5) — deferred until Blaze upgrade for V2; V1 uses client-side bootstrap in AuthContext as documented exception
 
 ## V2 Backlog
