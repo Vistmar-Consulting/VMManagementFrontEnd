@@ -12,3 +12,4 @@ coverage
 .firebase
 firebase-debug.log
 .firebaserc.local
+.superpowers/
