@@ -84,8 +84,8 @@ If no active session, infer task from developer's first message and start one vi
 ## Push Workflow
 
 - Push target: **`origin/dev`** always (matches console convention)
-- Branch from `dev`, merge back to `dev`
-- Never push `main`/`stage` directly
+- **Local stays local — no local feature branches.** Work on local `main`, push that to `origin/dev` (`git push origin main:dev`).
+- Never push `main`/`stage` directly to remote
 - Pre-push: `superpowers:requesting-code-review`, address findings before push
 
 ## Cross-Stack Naming Parity
