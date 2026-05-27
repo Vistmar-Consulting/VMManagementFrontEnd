@@ -84,6 +84,7 @@ export default function TaskBoardRow({
   const [actionAnchor, setActionAnchor] = useState(null);
   const [assigneeAnchor, setAssigneeAnchor] = useState(false);
   const [assigneePosition, setAssigneePosition] = useState(null);
+  const [duePickerOpen, setDuePickerOpen] = useState(false);
   const titleRef = useRef(null);
   const titleSavedRef = useRef(false);
 
@@ -418,10 +419,13 @@ export default function TaskBoardRow({
           })()}
         </TableCell>
 
-        {/* Due Date */}
+        {/* Due Date — calendar icon hidden; the date text itself opens the picker */}
         <TableCell>
           {canUpdate ? (
             <DatePicker
+              open={duePickerOpen}
+              onOpen={() => setDuePickerOpen(true)}
+              onClose={() => setDuePickerOpen(false)}
               value={dueDate}
               onChange={(date) => handleField({ dueDate: date ?? null })}
               format="MMM dd"
@@ -430,6 +434,8 @@ export default function TaskBoardRow({
                   variant: "standard",
                   size: "small",
                   placeholder: "—",
+                  onClick: () => setDuePickerOpen(true),
+                  InputProps: { disableUnderline: true, readOnly: true },
                   sx: {
                     width: 80,
                     cursor: "pointer",
@@ -439,8 +445,8 @@ export default function TaskBoardRow({
                       "&:hover": { textDecoration: "underline" },
                     },
                   },
-                  InputProps: { disableUnderline: true, readOnly: true },
                 },
+                openPickerButton: { sx: { display: "none" } },
               }}
             />
           ) : (
