@@ -28,7 +28,6 @@ import {
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
-  Send as SendIcon,
 } from "@mui/icons-material";
 import {
   addDoc,
@@ -245,7 +244,7 @@ export default function TaskBoardModal({ open, onClose, item, users = [] }) {
               fullWidth
               multiline
               maxRows={4}
-              placeholder="Add a note… (Enter to send · Shift+Enter for newline)"
+              placeholder="Add a note… (Enter to save · Shift+Enter for newline)"
               value={newText}
               onChange={(e) => setNewText(e.target.value)}
               onKeyDown={(e) => {
@@ -260,10 +259,9 @@ export default function TaskBoardModal({ open, onClose, item, users = [] }) {
               variant="contained"
               onClick={handleSend}
               disabled={!newText.trim()}
-              startIcon={<SendIcon />}
               sx={{ flexShrink: 0 }}
             >
-              Send
+              Save
             </Button>
           </Stack>
         </DialogActions>
