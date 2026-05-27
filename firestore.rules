@@ -89,6 +89,13 @@ service cloud.firestore {
       }
     }
 
+    // Collection group rule for /{any}/comments/{commentId} — required
+    // for collectionGroup("comments") queries (used to render the per-row
+    // comment count badge without N subscriptions).
+    match /{path=**}/comments/{commentId} {
+      allow read: if isActiveUser();
+    }
+
     match /_meta/{docId} {
       allow read: if isActiveUser();
       allow write: if isAdmin();

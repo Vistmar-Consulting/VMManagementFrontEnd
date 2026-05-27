@@ -51,11 +51,13 @@ import {
 
 import ColorPicker from "../components/ColorPicker.jsx";
 import TaskBoardColumnHeader from "../components/TaskBoardColumnHeader.jsx";
+import TaskBoardModal from "../components/TaskBoardModal.jsx";
 import TaskBoardRow from "../components/TaskBoardRow.jsx";
 import { PRIORITY_LIST } from "../constants/itemPriorities.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { db } from "../firebase.js";
 import { useCollection } from "../hooks/useCollection.js";
+import { useCollectionGroup } from "../hooks/useCollectionGroup.js";
 import { useItems } from "../hooks/useItems.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 
@@ -108,6 +110,22 @@ export default function TaskBoard() {
   // (built below from `topLevel`).
   const { data: categories } = useCollection("categories");
   const { data: tags } = useCollection("tags");
+
+  // All comments across all items — used to drive the notes badge count
+  // on every row without N per-item subscriptions. Each comment doc has
+  // a denormalized `itemId` field so we can group locally.
+  const { data: allComments } = useCollectionGroup("comments");
+  const commentCountByItemId = useMemo(() => {
+    const m = {};
+    for (const c of allComments) {
+      if (c.itemId) m[c.itemId] = (m[c.itemId] || 0) + 1;
+    }
+    return m;
+  }, [allComments]);
+  const getCommentCount = (itemId) => commentCountByItemId[itemId] || 0;
+
+  // Notes modal state — which item's notes are currently open.
+  const [notesModalItem, setNotesModalItem] = useState(null);
 
   // Org filter chip group — persisted in localStorage.
   const [orgFilter, setOrgFilter] = useLocalStorage("vm-board-org-filter", "all");
@@ -499,10 +517,11 @@ export default function TaskBoard() {
                       categories={categories}
                       tags={tags}
                       canUpdate={isAdmin}
-                      getCommentCount={() => 0}
+                      getCommentCount={getCommentCount}
                       onUpdate={handleUpdate}
                       onRequestDelete={handleRequestDelete}
                       onAddSubitem={handleAddSubitem}
+                      onOpenComments={(it) => setNotesModalItem(it)}
                     />
                   ))
                 )}
@@ -815,6 +834,14 @@ export default function TaskBoard() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ───────── Notes Modal ───────── */}
+      <TaskBoardModal
+        open={Boolean(notesModalItem)}
+        onClose={() => setNotesModalItem(null)}
+        item={notesModalItem}
+        users={users}
+      />
 
       {/* ───────── Tag Delete Confirm ───────── */}
       <Dialog open={Boolean(deleteTagConfirm)} onClose={() => setDeleteTagConfirm(null)} maxWidth="xs" fullWidth>
