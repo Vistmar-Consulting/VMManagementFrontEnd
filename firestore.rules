@@ -87,12 +87,29 @@ service cloud.firestore {
         allow update, delete: if isActiveUser()
                               && resource.data.authorId == request.auth.uid;
       }
+
+      // File links (URLs only in V1 — actual file uploads land when
+      // Blaze enables Firebase Storage). Same author-only edit/delete
+      // policy as comments.
+      match /files/{fileId} {
+        allow read: if isActiveUser();
+        allow create: if isActiveUser()
+                      && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if isActiveUser()
+                              && resource.data.authorId == request.auth.uid;
+      }
     }
 
     // Collection group rule for /{any}/comments/{commentId} — required
     // for collectionGroup("comments") queries (used to render the per-row
     // comment count badge without N subscriptions).
     match /{path=**}/comments/{commentId} {
+      allow read: if isActiveUser();
+    }
+
+    // Same for files — collection group lets the row file-count badge
+    // render without subscribing per-item.
+    match /{path=**}/files/{fileId} {
       allow read: if isActiveUser();
     }
 

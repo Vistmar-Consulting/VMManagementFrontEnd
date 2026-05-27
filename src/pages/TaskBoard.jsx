@@ -51,6 +51,7 @@ import {
 
 import ColorPicker from "../components/ColorPicker.jsx";
 import TaskBoardColumnHeader from "../components/TaskBoardColumnHeader.jsx";
+import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
 import TaskBoardModal from "../components/TaskBoardModal.jsx";
 import TaskBoardRow from "../components/TaskBoardRow.jsx";
 import { PRIORITY_LIST } from "../constants/itemPriorities.js";
@@ -124,8 +125,21 @@ export default function TaskBoard() {
   }, [allComments]);
   const getCommentCount = (itemId) => commentCountByItemId[itemId] || 0;
 
-  // Notes modal state — which item's notes are currently open.
+  // Same shape for file links (URL links only in V1; file uploads land
+  // when Blaze enables Firebase Storage).
+  const { data: allFiles } = useCollectionGroup("files");
+  const fileCountByItemId = useMemo(() => {
+    const m = {};
+    for (const f of allFiles) {
+      if (f.itemId) m[f.itemId] = (m[f.itemId] || 0) + 1;
+    }
+    return m;
+  }, [allFiles]);
+  const getFileCount = (itemId) => fileCountByItemId[itemId] || 0;
+
+  // Notes + Files modal state — which item's modal is currently open.
   const [notesModalItem, setNotesModalItem] = useState(null);
+  const [filesModalItem, setFilesModalItem] = useState(null);
 
   // Org filter chip group — persisted in localStorage.
   const [orgFilter, setOrgFilter] = useLocalStorage("vm-board-org-filter", "all");
@@ -518,10 +532,12 @@ export default function TaskBoard() {
                       tags={tags}
                       canUpdate={isAdmin}
                       getCommentCount={getCommentCount}
+                      getFileCount={getFileCount}
                       onUpdate={handleUpdate}
                       onRequestDelete={handleRequestDelete}
                       onAddSubitem={handleAddSubitem}
                       onOpenComments={(it) => setNotesModalItem(it)}
+                      onOpenFiles={(it) => setFilesModalItem(it)}
                     />
                   ))
                 )}
@@ -840,6 +856,14 @@ export default function TaskBoard() {
         open={Boolean(notesModalItem)}
         onClose={() => setNotesModalItem(null)}
         item={notesModalItem}
+        users={users}
+      />
+
+      {/* ───────── Files Modal ───────── */}
+      <TaskBoardFilesModal
+        open={Boolean(filesModalItem)}
+        onClose={() => setFilesModalItem(null)}
+        item={filesModalItem}
         users={users}
       />
 

@@ -69,10 +69,12 @@ export default function TaskBoardRow({
   tags = [],
   canUpdate = true,
   getCommentCount = () => 0,
+  getFileCount = () => 0,
   onUpdate,
   onRequestDelete,
   onAddSubitem,
   onOpenComments,
+  onOpenFiles,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editingTitle, setEditingTitle] = useState(!item.title && canUpdate);
@@ -144,6 +146,7 @@ export default function TaskBoardRow({
   };
 
   const commentCount = getCommentCount(item.id);
+  const fileCount = getFileCount(item.id);
 
   return (
     <>
@@ -577,15 +580,40 @@ export default function TaskBoardRow({
           )}
         </TableCell>
 
-        {/* Files — deferred (Storage on Blaze) */}
+        {/* Files — URL links only in V1 (actual uploads land with Blaze). */}
         <TableCell sx={{ overflow: "hidden", textAlign: "center", p: 0.5 }}>
-          <Tooltip title="File attachments land with Blaze upgrade" enterDelay={500} placement="top">
-            <span>
-              <IconButton size="small" disabled>
-                <FileIcon sx={{ fontSize: 18, color: "#e0e0e0" }} />
+          {fileCount > 0 ? (
+            <Tooltip title={`${fileCount} file link${fileCount > 1 ? "s" : ""}`} enterDelay={500} placement="top">
+              <IconButton size="small" onClick={() => onOpenFiles?.(item)} sx={{ position: "relative" }}>
+                <FileIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    fontSize: 8,
+                    fontWeight: 700,
+                    color: "#fff",
+                    backgroundColor: "#b87333",
+                    borderRadius: "50%",
+                    width: 14,
+                    height: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {fileCount}
+                </Box>
               </IconButton>
-            </span>
-          </Tooltip>
+            </Tooltip>
+          ) : (
+            <Tooltip title="Add file link" enterDelay={500} placement="top">
+              <IconButton size="small" onClick={() => onOpenFiles?.(item)}>
+                <FileIcon sx={{ fontSize: 18, color: "#e0e0e0", "&:hover": { color: "text.secondary" }, transition: "color 0.15s" }} />
+              </IconButton>
+            </Tooltip>
+          )}
         </TableCell>
 
         {/* Action menu */}
