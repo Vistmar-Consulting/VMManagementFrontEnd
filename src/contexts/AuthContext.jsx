@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import {
+  getRedirectResult,
   onAuthStateChanged,
-  signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
 } from "firebase/auth";
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
@@ -45,6 +46,13 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let profileUnsubscribe = null;
+
+    // Pick up the result of a signInWithRedirect round-trip if one just
+    // completed. onAuthStateChanged still fires on its own; this just
+    // surfaces redirect-specific errors (e.g., auth/unauthorized-domain).
+    getRedirectResult(auth).catch((err) => {
+      if (err?.code !== "auth/no-redirect-result") setError(err);
+    });
 
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (profileUnsubscribe) {
@@ -111,7 +119,10 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const signIn = () => signInWithPopup(auth, googleProvider);
+  // signInWithRedirect (not Popup) — popups fail on Vercel due to COOP headers
+  // blocking the popup's postMessage back to the parent. Redirect flow works
+  // identically in dev (localhost) and prod.
+  const signIn = () => signInWithRedirect(auth, googleProvider);
   const signOut = () => firebaseSignOut(auth);
 
   const isAdmin = profile?.role === "admin" && profile?.active === true;
