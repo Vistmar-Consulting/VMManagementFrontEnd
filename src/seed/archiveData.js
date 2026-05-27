@@ -48,21 +48,30 @@ export const PM_TAGS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Color palettes for the "+ Add New" / Edit dialogs in the Category and Tag
-// column headers. Distinct sets so the two namespaces stay visually
-// separable. Earth tones for Category (exclusive of Priority/Status palettes
-// per archive convention); jewel tones for Tag.
+// Preset color palette for the Color picker in Category + Tag dialogs.
+// Tailwind-inspired 500-weight colors — modern, evenly-distributed across
+// the spectrum, and play nicely with the pastel pill system (getPillBg
+// lightens by 72% so even saturated colors end up airy on the row chip).
+// Category and Tag share the same preset palette — users can still pick
+// any color via the free-form picker; presets are just quick-picks.
 // ---------------------------------------------------------------------------
-export const CATEGORY_COLORS = [
-  "#5c6bc0", "#8d6e63", "#00897b", "#546e7a", "#ad1457",
-  "#6d4c41", "#00695c", "#37474f", "#880e4f", "#4e342e",
-  "#004d40", "#263238",
+const MODERN_PRESET_COLORS = [
+  "#64748b", // slate
+  "#ef4444", // red
+  "#f97316", // orange
+  "#eab308", // yellow
+  "#22c55e", // green
+  "#14b8a6", // teal
+  "#06b6d4", // cyan
+  "#3b82f6", // blue
+  "#6366f1", // indigo
+  "#8b5cf6", // violet
+  "#ec4899", // pink
+  "#f43f5e", // rose
 ];
 
-export const TAG_COLORS = [
-  "#1565c0", "#c62828", "#00838f", "#e65100", "#2e7d32",
-  "#6a1b9a", "#4527a0", "#283593", "#00695c", "#bf360c",
-];
+export const CATEGORY_COLORS = MODERN_PRESET_COLORS;
+export const TAG_COLORS = MODERN_PRESET_COLORS;
 
 // ---------------------------------------------------------------------------
 // ITEMS — full archive PM_ITEMS verbatim. All Org_Id 2 (Unio).

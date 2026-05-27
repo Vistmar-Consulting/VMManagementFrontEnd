@@ -48,6 +48,7 @@ import {
   ExpandMore as ExpandMoreIcon,
 } from "@mui/icons-material";
 
+import ColorPicker from "../components/ColorPicker.jsx";
 import TaskBoardColumnHeader from "../components/TaskBoardColumnHeader.jsx";
 import TaskBoardRow from "../components/TaskBoardRow.jsx";
 import { PRIORITY_LIST } from "../constants/itemPriorities.js";
@@ -723,25 +724,12 @@ export default function TaskBoard() {
             variant="outlined"
             margin="normal"
           />
-          <Typography variant="caption" sx={{ mt: 1, mb: 1, display: "block", color: "text.secondary" }}>
-            Color
-          </Typography>
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-            {CATEGORY_COLORS.map((color) => (
-              <Box
-                key={color}
-                onClick={() => setCategoryDialog((s) => ({ ...s, color }))}
-                sx={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  backgroundColor: color,
-                  cursor: "pointer",
-                  border: categoryDialog?.color === color ? "3px solid #fff" : "3px solid transparent",
-                  boxShadow: categoryDialog?.color === color ? `0 0 0 2px ${color}` : "none",
-                }}
-              />
-            ))}
+          <Box sx={{ mt: 2 }}>
+            <ColorPicker
+              color={categoryDialog?.color || CATEGORY_COLORS[0]}
+              onChange={(color) => setCategoryDialog((s) => ({ ...s, color }))}
+              presets={CATEGORY_COLORS}
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -793,25 +781,12 @@ export default function TaskBoard() {
             variant="outlined"
             margin="normal"
           />
-          <Typography variant="caption" sx={{ mt: 1, mb: 1, display: "block", color: "text.secondary" }}>
-            Color
-          </Typography>
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-            {TAG_COLORS.map((color) => (
-              <Box
-                key={color}
-                onClick={() => setTagDialog((s) => ({ ...s, color }))}
-                sx={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  backgroundColor: color,
-                  cursor: "pointer",
-                  border: tagDialog?.color === color ? "3px solid #fff" : "3px solid transparent",
-                  boxShadow: tagDialog?.color === color ? `0 0 0 2px ${color}` : "none",
-                }}
-              />
-            ))}
+          <Box sx={{ mt: 2 }}>
+            <ColorPicker
+              color={tagDialog?.color || TAG_COLORS[0]}
+              onChange={(color) => setTagDialog((s) => ({ ...s, color }))}
+              presets={TAG_COLORS}
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
