@@ -46,7 +46,9 @@ import {
 import {
   Add as AddIcon,
   ChevronRight as ChevronRightIcon,
+  Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
+  Search as SearchIcon,
 } from "@mui/icons-material";
 
 import ColorPicker from "../components/ColorPicker.jsx";
@@ -176,11 +178,15 @@ export default function TaskBoard() {
   // Note: organizationId is parent-level — subitems inherit their parent's
   // org at create-time, so the org filter is checked against the parent only.
   const matchesNonOrgFilters = useMemo(() => {
-    const q = (titleSearch || "").toLowerCase();
+    const q = (titleSearch || "").trim().toLowerCase();
     const card = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
     const activeCols = Object.entries(columnFilters).filter(([, v]) => v && v.length > 0);
     return (item) => {
-      if (q && !(item.title || "").toLowerCase().includes(q)) return false;
+      if (q) {
+        const title = (item.title || "").toLowerCase();
+        const desc = (item.description || "").toLowerCase();
+        if (!title.includes(q) && !desc.includes(q)) return false;
+      }
       if (card && !card.match(item)) return false;
       for (const [field, values] of activeCols) {
         if (field === "assigneeIds") {
@@ -650,7 +656,7 @@ export default function TaskBoard() {
         <TaskBoardColumnHeader
           label="Item" field="title" width="18%"
           sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted} sortOnly showSearch onSearchChange={setTitleSearch}
+          userSorted={userHasSorted} sortOnly
         />
         <TaskBoardColumnHeader
           label="ID" field="id" align="center" width="5%"
@@ -816,6 +822,28 @@ export default function TaskBoard() {
           />
         ))}
       </Stack>
+
+      {/* Search bar — matches title + description across items AND subtasks.
+          Cascades the same way other filters do: if a subtask's text matches
+          but the parent's doesn't, the parent surfaces and auto-expands. */}
+      <TextField
+        size="small"
+        placeholder="Search items and subtasks…"
+        value={titleSearch}
+        onChange={(e) => setTitleSearch(e.target.value)}
+        fullWidth
+        sx={{ maxWidth: 480 }}
+        InputProps={{
+          startAdornment: (
+            <SearchIcon sx={{ fontSize: 18, color: "text.disabled", mr: 1, flexShrink: 0 }} />
+          ),
+          endAdornment: titleSearch ? (
+            <IconButton size="small" onClick={() => setTitleSearch("")} aria-label="Clear search">
+              <CloseIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          ) : null,
+        }}
+      />
 
       {itemsLoading && (
         <Typography variant="body2" color="text.secondary">Loading…</Typography>
