@@ -63,6 +63,20 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Top-level shared categories. Items reference by categoryId string.
+    // Column-header filter popovers reduce to those used by visible items;
+    // row cell dropdown shows the full list.
+    match /categories/{categoryId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+
+    // Top-level shared tags. Items reference by tagIds string array.
+    match /tags/{tagId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+
     match /items/{itemId} {
       allow read, write: if isActiveUser();
 

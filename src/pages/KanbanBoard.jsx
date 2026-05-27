@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Alert, Box, Button, Card, CardContent, Snackbar, Stack, Typography } from "@mui/material";
 import { Sparkles } from "lucide-react";
 
-import ItemCard from "../components/ItemCard.jsx";
+import KanbanCard from "../components/KanbanCard.jsx";
 import { BOARD_COLUMNS, STATUS } from "../constants/itemStatuses.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useCollection } from "../hooks/useCollection.js";
@@ -11,7 +11,7 @@ import { seedSampleItems } from "../seed/sampleItems.js";
 
 const VISTAMAR_ORG_ID = "vistamar";
 
-export default function TaskBoard() {
+export default function KanbanBoard() {
   const { user, isAdmin } = useAuth();
   const { data: allItems, loading: itemsLoading, error: itemsError } = useItems();
   const { data: orgs } = useCollection("organizations");
@@ -125,7 +125,7 @@ export default function TaskBoard() {
 
               <Stack spacing={2}>
                 {columnItems.map((item) => (
-                  <ItemCard
+                  <KanbanCard
                     key={item.id}
                     item={item}
                     orgLookup={orgLookup}
