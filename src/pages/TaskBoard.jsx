@@ -38,6 +38,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -54,6 +55,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { db } from "../firebase.js";
 import { useCollection } from "../hooks/useCollection.js";
 import { useItems } from "../hooks/useItems.js";
+import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 
 const STATUSES = [
   { id: 1, name: "Assigned",    color: "#7b61ff" },
@@ -238,6 +240,97 @@ export default function TaskBoard() {
     setDeleteConfirm(null);
   };
 
+  // ───── Category CRUD ─────
+  // Add+Edit share one dialog. State shape: null | { mode, id?, name, color }.
+  const [categoryDialog, setCategoryDialog] = useState(null);
+  const [deleteCategoryConfirm, setDeleteCategoryConfirm] = useState(null);
+
+  const openAddCategory = () => setCategoryDialog({ mode: "add", name: "", color: CATEGORY_COLORS[0] });
+  const openEditCategory = (catId) => {
+    const cat = categories.find((c) => c.id === catId);
+    if (!cat) return;
+    setCategoryDialog({ mode: "edit", id: catId, name: cat.name, color: cat.color });
+  };
+  const requestDeleteCategory = (catId) => setDeleteCategoryConfirm(catId);
+
+  const handleSaveCategory = async () => {
+    const name = categoryDialog?.name?.trim();
+    if (!name) return;
+    if (categoryDialog.mode === "add") {
+      await addDoc(collection(db, "categories"), {
+        name,
+        color: categoryDialog.color,
+        sortOrder: categories.length + 1,
+        createdAt: serverTimestamp(),
+      });
+    } else {
+      await updateDoc(doc(db, "categories", categoryDialog.id), {
+        name,
+        color: categoryDialog.color,
+      });
+    }
+    setCategoryDialog(null);
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    const catId = deleteCategoryConfirm;
+    if (!catId) return;
+    // Clear categoryId on every item that referenced this category.
+    const affected = allItems.filter((i) => i.categoryId === catId);
+    await Promise.all(affected.map((i) =>
+      updateDoc(doc(db, "items", i.id), { categoryId: null, updatedAt: serverTimestamp() })
+    ));
+    await deleteDoc(doc(db, "categories", catId));
+    setDeleteCategoryConfirm(null);
+  };
+
+  // ───── Tag CRUD ─────
+  const [tagDialog, setTagDialog] = useState(null);
+  const [deleteTagConfirm, setDeleteTagConfirm] = useState(null);
+
+  const openAddTag = () => setTagDialog({ mode: "add", name: "", color: TAG_COLORS[0] });
+  const openEditTag = (tagId) => {
+    const tag = tags.find((t) => t.id === tagId);
+    if (!tag) return;
+    setTagDialog({ mode: "edit", id: tagId, name: tag.name, color: tag.color });
+  };
+  const requestDeleteTag = (tagId) => setDeleteTagConfirm(tagId);
+
+  const handleSaveTag = async () => {
+    const name = tagDialog?.name?.trim();
+    if (!name) return;
+    if (tagDialog.mode === "add") {
+      await addDoc(collection(db, "tags"), {
+        name,
+        color: tagDialog.color,
+        createdAt: serverTimestamp(),
+      });
+    } else {
+      await updateDoc(doc(db, "tags", tagDialog.id), {
+        name,
+        color: tagDialog.color,
+      });
+    }
+    setTagDialog(null);
+  };
+
+  const handleConfirmDeleteTag = async () => {
+    const tagId = deleteTagConfirm;
+    if (!tagId) return;
+    // Remove this tagId from every item's tagIds array.
+    const affected = allItems.filter((i) => (i.tagIds || []).includes(tagId));
+    await Promise.all(affected.map((i) => {
+      const next = (i.tagIds || []).filter((t) => t !== tagId);
+      return updateDoc(doc(db, "items", i.id), { tagIds: next, updatedAt: serverTimestamp() });
+    }));
+    await deleteDoc(doc(db, "tags", tagId));
+    setDeleteTagConfirm(null);
+  };
+
+  // Counts for delete-confirm dialog messages.
+  const categoryUsageCount = (catId) => allItems.filter((i) => i.categoryId === catId).length;
+  const tagUsageCount = (tagId) => allItems.filter((i) => (i.tagIds || []).includes(tagId)).length;
+
   // Compute rank for new items: place at end of current top-level list.
   const nextTopLevelOrder = () => {
     const tops = allItems.filter((i) => i.parentId == null);
@@ -331,30 +424,12 @@ export default function TaskBoard() {
     label: u.displayName || u.email,
     color: null,
   }));
-  // Filter values reduced to those actually USED by currently-visible items
-  // (the org-scoped top-level set). Categories/tags not in any visible row
-  // are hidden from the column-header filter popover.
-  const usedCategoryIds = useMemo(() => {
-    const ids = new Set();
-    for (const item of orgScopedTopLevel) {
-      if (item.categoryId) ids.add(item.categoryId);
-    }
-    return ids;
-  }, [orgScopedTopLevel]);
-  const usedTagIds = useMemo(() => {
-    const ids = new Set();
-    for (const item of orgScopedTopLevel) {
-      (item.tagIds || []).forEach((id) => ids.add(id));
-    }
-    return ids;
-  }, [orgScopedTopLevel]);
-
-  const categoryFilterValues = categories
-    .filter((c) => usedCategoryIds.has(c.id))
-    .map((c) => ({ value: c.id, label: c.name, color: c.color }));
-  const tagFilterValues = tags
-    .filter((t) => usedTagIds.has(t.id))
-    .map((t) => ({ value: t.id, label: t.name, color: t.color }));
+  // Categories + tags are global. Show ALL in the column-header popover so
+  // newly-added values are immediately visible and editable. Per-org
+  // reduction happens implicitly — picking a category not used in the
+  // current visible set just filters to zero items.
+  const categoryFilterValues = categories.map((c) => ({ value: c.id, label: c.name, color: c.color }));
+  const tagFilterValues = tags.map((t) => ({ value: t.id, label: t.name, color: t.color }));
 
   // Group renderer
   const renderGroup = (title, groupItems, expanded, setExpanded, color) => (
@@ -464,6 +539,10 @@ export default function TaskBoard() {
           filterValues={categoryFilterValues}
           selectedFilters={columnFilters.categoryId}
           onFilterChange={handleFilterChange}
+          showAddNew
+          onAddNew={openAddCategory}
+          onEditItem={openEditCategory}
+          onDeleteItem={requestDeleteCategory}
         />
         <TaskBoardColumnHeader
           label="Tags" field="tagIds" width="8%"
@@ -472,6 +551,10 @@ export default function TaskBoard() {
           filterValues={tagFilterValues}
           selectedFilters={columnFilters.tagIds}
           onFilterChange={handleFilterChange}
+          showAddNew
+          onAddNew={openAddTag}
+          onEditItem={openEditTag}
+          onDeleteItem={requestDeleteTag}
         />
         <TaskBoardColumnHeader
           label="Due" field="dueDate" width="7%"
@@ -624,6 +707,146 @@ export default function TaskBoard() {
           <Button variant="contained" color="error" onClick={handleConfirmDelete}>
             Delete
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ───────── Category Add/Edit ───────── */}
+      <Dialog open={Boolean(categoryDialog)} onClose={() => setCategoryDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>{categoryDialog?.mode === "edit" ? "Edit category" : "Add category"}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Category name"
+            value={categoryDialog?.name || ""}
+            onChange={(e) => setCategoryDialog((s) => ({ ...s, name: e.target.value }))}
+            variant="outlined"
+            margin="normal"
+          />
+          <Typography variant="caption" sx={{ mt: 1, mb: 1, display: "block", color: "text.secondary" }}>
+            Color
+          </Typography>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+            {CATEGORY_COLORS.map((color) => (
+              <Box
+                key={color}
+                onClick={() => setCategoryDialog((s) => ({ ...s, color }))}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  backgroundColor: color,
+                  cursor: "pointer",
+                  border: categoryDialog?.color === color ? "3px solid #fff" : "3px solid transparent",
+                  boxShadow: categoryDialog?.color === color ? `0 0 0 2px ${color}` : "none",
+                }}
+              />
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setCategoryDialog(null)}>Cancel</Button>
+          <Button variant="contained" color="primary" onClick={handleSaveCategory} disabled={!categoryDialog?.name?.trim()}>
+            {categoryDialog?.mode === "edit" ? "Save" : "Add"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ───────── Category Delete Confirm ───────── */}
+      <Dialog open={Boolean(deleteCategoryConfirm)} onClose={() => setDeleteCategoryConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>Delete category?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+            {categories.find((c) => c.id === deleteCategoryConfirm)?.name || "Untitled"}
+          </Typography>
+          {(() => {
+            const n = categoryUsageCount(deleteCategoryConfirm);
+            if (n === 0) return (
+              <Typography variant="body2" color="text.secondary">No items currently use this category.</Typography>
+            );
+            return (
+              <Typography variant="body2" color="text.secondary">
+                {n} item{n > 1 ? "s" : ""} will have their category cleared.
+              </Typography>
+            );
+          })()}
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteCategoryConfirm(null)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDeleteCategory}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ───────── Tag Add/Edit ───────── */}
+      <Dialog open={Boolean(tagDialog)} onClose={() => setTagDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>{tagDialog?.mode === "edit" ? "Edit tag" : "Add tag"}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Tag name"
+            value={tagDialog?.name || ""}
+            onChange={(e) => setTagDialog((s) => ({ ...s, name: e.target.value }))}
+            variant="outlined"
+            margin="normal"
+          />
+          <Typography variant="caption" sx={{ mt: 1, mb: 1, display: "block", color: "text.secondary" }}>
+            Color
+          </Typography>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+            {TAG_COLORS.map((color) => (
+              <Box
+                key={color}
+                onClick={() => setTagDialog((s) => ({ ...s, color }))}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  backgroundColor: color,
+                  cursor: "pointer",
+                  border: tagDialog?.color === color ? "3px solid #fff" : "3px solid transparent",
+                  boxShadow: tagDialog?.color === color ? `0 0 0 2px ${color}` : "none",
+                }}
+              />
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setTagDialog(null)}>Cancel</Button>
+          <Button variant="contained" color="primary" onClick={handleSaveTag} disabled={!tagDialog?.name?.trim()}>
+            {tagDialog?.mode === "edit" ? "Save" : "Add"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ───────── Tag Delete Confirm ───────── */}
+      <Dialog open={Boolean(deleteTagConfirm)} onClose={() => setDeleteTagConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>Delete tag?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+            {tags.find((t) => t.id === deleteTagConfirm)?.name || "Untitled"}
+          </Typography>
+          {(() => {
+            const n = tagUsageCount(deleteTagConfirm);
+            if (n === 0) return (
+              <Typography variant="body2" color="text.secondary">No items currently use this tag.</Typography>
+            );
+            return (
+              <Typography variant="body2" color="text.secondary">
+                {n} item{n > 1 ? "s" : ""} will have this tag removed. Items whose only tag was this one will go back to no tags.
+              </Typography>
+            );
+          })()}
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteTagConfirm(null)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDeleteTag}>Delete</Button>
         </DialogActions>
       </Dialog>
     </Stack>

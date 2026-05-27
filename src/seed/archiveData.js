@@ -48,6 +48,23 @@ export const PM_TAGS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Color palettes for the "+ Add New" / Edit dialogs in the Category and Tag
+// column headers. Distinct sets so the two namespaces stay visually
+// separable. Earth tones for Category (exclusive of Priority/Status palettes
+// per archive convention); jewel tones for Tag.
+// ---------------------------------------------------------------------------
+export const CATEGORY_COLORS = [
+  "#5c6bc0", "#8d6e63", "#00897b", "#546e7a", "#ad1457",
+  "#6d4c41", "#00695c", "#37474f", "#880e4f", "#4e342e",
+  "#004d40", "#263238",
+];
+
+export const TAG_COLORS = [
+  "#1565c0", "#c62828", "#00838f", "#e65100", "#2e7d32",
+  "#6a1b9a", "#4527a0", "#283593", "#00695c", "#bf360c",
+];
+
+// ---------------------------------------------------------------------------
 // ITEMS — full archive PM_ITEMS verbatim. All Org_Id 2 (Unio).
 // Tag_Ids only present where the archive included them.
 // ---------------------------------------------------------------------------
