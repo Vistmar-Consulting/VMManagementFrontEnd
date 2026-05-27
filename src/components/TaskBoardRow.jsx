@@ -70,7 +70,7 @@ export default function TaskBoardRow({
   canUpdate = true,
   getCommentCount = () => 0,
   onUpdate,
-  onDelete,
+  onRequestDelete,
   onAddSubitem,
   onOpenComments,
 }) {
@@ -529,7 +529,7 @@ export default function TaskBoardRow({
                   </MenuItem>
                 )}
                 <MenuItem
-                  onClick={() => { setActionAnchor(null); onDelete?.(item.id, isSubitem); }}
+                  onClick={() => { setActionAnchor(null); onRequestDelete?.(item, isSubitem); }}
                   sx={{ color: "error.main" }}
                 >
                   Delete
@@ -553,7 +553,7 @@ export default function TaskBoardRow({
           canUpdate={canUpdate}
           getCommentCount={getCommentCount}
           onUpdate={onUpdate}
-          onDelete={onDelete}
+          onRequestDelete={onRequestDelete}
           onOpenComments={onOpenComments}
         />
       ))}

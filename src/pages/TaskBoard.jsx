@@ -25,6 +25,10 @@ import {
   Button,
   Chip,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Paper,
   Stack,
@@ -213,8 +217,25 @@ export default function TaskBoard() {
     await updateDoc(doc(db, "items", itemId), { ...patch, updatedAt: serverTimestamp() });
   };
 
-  const handleDelete = async (itemId) => {
-    await deleteDoc(doc(db, "items", itemId));
+  // Delete confirmation dialog state. Set via handleRequestDelete from the
+  // row's action menu; cleared on Cancel or after Confirm completes.
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const handleRequestDelete = (item, isSubitem) => {
+    const subCount = !isSubitem ? (subitemsByParent[item.id] || []).length : 0;
+    setDeleteConfirm({ item, isSubitem, subitemCount: subCount });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const { item, isSubitem } = deleteConfirm;
+    // Cascade: delete subtasks before the parent so they don't orphan.
+    if (!isSubitem) {
+      const subs = subitemsByParent[item.id] || [];
+      await Promise.all(subs.map((s) => deleteDoc(doc(db, "items", s.id))));
+    }
+    await deleteDoc(doc(db, "items", item.id));
+    setDeleteConfirm(null);
   };
 
   // Compute rank for new items: place at end of current top-level list.
@@ -385,7 +406,7 @@ export default function TaskBoard() {
                       canUpdate={isAdmin}
                       getCommentCount={() => 0}
                       onUpdate={handleUpdate}
-                      onDelete={handleDelete}
+                      onRequestDelete={handleRequestDelete}
                       onAddSubitem={handleAddSubitem}
                     />
                   ))
@@ -575,6 +596,36 @@ export default function TaskBoard() {
           {renderGroup("Archive", archiveItems, archiveExpanded, setArchiveExpanded, "#9e9e9e")}
         </>
       )}
+
+      <Dialog
+        open={Boolean(deleteConfirm)}
+        onClose={() => setDeleteConfirm(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          Delete {deleteConfirm?.isSubitem ? "subtask" : "item"}?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+            {deleteConfirm?.item?.title || "Untitled"}
+          </Typography>
+          {deleteConfirm?.subitemCount > 0 && (
+            <Typography variant="body2" color="text.secondary">
+              This will also delete {deleteConfirm.subitemCount} subtask{deleteConfirm.subitemCount > 1 ? "s" : ""}.
+            </Typography>
+          )}
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDelete}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }
