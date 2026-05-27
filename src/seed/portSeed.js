@@ -83,7 +83,6 @@ async function seedItems({ createdBy }) {
   const childParents = deriveHasChildrenMap(portable);
 
   // Generate fractional rank order keys ascending across the batch.
-  // Items keep their archive sort within parent groups.
   const orders = [];
   let prev = null;
   for (let i = 0; i < portable.length; i += 1) {
@@ -99,6 +98,12 @@ async function seedItems({ createdBy }) {
     idMap.set(item.Id, doc(collection(db, "items")).id);
   }
 
+  // Track per-org item / subitem number sequences. After seeding, each
+  // org doc gets `nextItemNumber` and `nextSubitemNumber` so future
+  // addItem / addSubitem transactions can increment from there.
+  const itemCounters = {};   // { [orgSlug]: nextNumber }
+  const subitemCounters = {};
+
   // Write in batches of 400 (Firestore commit limit is 500).
   let batch = writeBatch(db);
   let opsInBatch = 0;
@@ -109,6 +114,15 @@ async function seedItems({ createdBy }) {
     const parentId = src.Parent_Item_Id != null ? idMap.get(src.Parent_Item_Id) : null;
     const hasChildren = childParents.has(src.Id);
     const type = parentId === null && hasChildren ? "project" : "task";
+
+    let itemNumber;
+    if (parentId === null) {
+      itemCounters[orgSlug] = (itemCounters[orgSlug] || 0) + 1;
+      itemNumber = itemCounters[orgSlug];
+    } else {
+      subitemCounters[orgSlug] = (subitemCounters[orgSlug] || 0) + 1;
+      itemNumber = subitemCounters[orgSlug];
+    }
 
     const ref = doc(db, "items", docId);
     batch.set(ref, {
@@ -122,10 +136,11 @@ async function seedItems({ createdBy }) {
       priorityId: src.Priority_Id ?? null,
       categoryId: src.Category_Id != null ? String(src.Category_Id) : null,
       tagIds: (src.Tag_Ids || []).map(String),
-      onHold: src.Status_Id === 3, // archive used Status_Id 3 = "On Hold"; map to V1 onHold flag
+      onHold: src.Status_Id === 3,
       dueDate: src.Due_Date ? new Date(src.Due_Date) : null,
       completedAt: src.Completed_At ? new Date(src.Completed_At) : null,
       assigneeIds: [],
+      itemNumber,
       createdBy,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -134,13 +149,41 @@ async function seedItems({ createdBy }) {
     });
     opsInBatch += 1;
     if (opsInBatch >= 400) {
-      // eslint-disable-next-line no-await-in-loop
       await batch.commit();
       batch = writeBatch(db);
       opsInBatch = 0;
     }
   }
   if (opsInBatch > 0) await batch.commit();
+
+  // Stamp the next-number counters on each org doc so future adds can
+  // continue the sequence atomically via runTransaction.
+  const orgSlugs = new Set([
+    ...Object.keys(itemCounters),
+    ...Object.keys(subitemCounters),
+  ]);
+  for (const slug of orgSlugs) {
+    await setDoc(
+      doc(db, "organizations", slug),
+      {
+        nextItemNumber: (itemCounters[slug] || 0) + 1,
+        nextSubitemNumber: (subitemCounters[slug] || 0) + 1,
+      },
+      { merge: true },
+    );
+  }
+  // Also initialize counters on orgs that got NO items, so a future
+  // first add starts at 1 cleanly without a missing-field race.
+  for (const seed of CLIENT_ORG_SEEDS) {
+    if (!orgSlugs.has(seed.slug)) {
+      await setDoc(
+        doc(db, "organizations", seed.slug),
+        { nextItemNumber: 1, nextSubitemNumber: 1 },
+        { merge: true },
+      );
+    }
+  }
+
   return portable.length;
 }
 

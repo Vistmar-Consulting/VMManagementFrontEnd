@@ -15,6 +15,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  runTransaction,
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
@@ -347,56 +348,74 @@ export default function TaskBoard() {
 
   const handleAddItem = async () => {
     if (orgFilter === "all") return;
-    await addDoc(collection(db, "items"), {
-      organizationId: orgFilter,
-      parentId: null,
-      hasChildren: false,
-      type: "task",
-      title: "",
-      description: "",
-      statusId: 1,
-      priorityId: null,
-      categoryId: null,
-      tagIds: [],
-      onHold: false,
-      dueDate: null,
-      completedAt: null,
-      assigneeIds: [],
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      order: nextTopLevelOrder(),
+    const orgRef = doc(db, "organizations", orgFilter);
+    const newItemRef = doc(collection(db, "items"));
+    const order = nextTopLevelOrder();
+    // Transaction atomically pulls the next item number from the org doc and
+    // bumps it — prevents race when two admins add at the same time.
+    await runTransaction(db, async (tx) => {
+      const orgSnap = await tx.get(orgRef);
+      const next = orgSnap.data()?.nextItemNumber ?? 1;
+      tx.set(newItemRef, {
+        organizationId: orgFilter,
+        parentId: null,
+        hasChildren: false,
+        type: "task",
+        title: "",
+        description: "",
+        statusId: 1,
+        priorityId: null,
+        categoryId: null,
+        tagIds: [],
+        onHold: false,
+        dueDate: null,
+        completedAt: null,
+        assigneeIds: [],
+        itemNumber: next,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        order,
+      });
+      tx.update(orgRef, { nextItemNumber: next + 1 });
     });
   };
 
   const handleAddSubitem = async (parentItem) => {
-    await addDoc(collection(db, "items"), {
-      organizationId: parentItem.organizationId,
-      parentId: parentItem.id,
-      hasChildren: false,
-      type: "task",
-      title: "",
-      description: "",
-      statusId: 1,
-      priorityId: null,
-      categoryId: null,
-      tagIds: [],
-      onHold: false,
-      dueDate: null,
-      completedAt: null,
-      assigneeIds: [],
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      order: nextSubitemOrder(parentItem.id),
-    });
-    // Maintain hasChildren denormalization client-side (Cloud Function later).
-    if (!parentItem.hasChildren) {
-      await updateDoc(doc(db, "items", parentItem.id), {
-        hasChildren: true,
+    const orgRef = doc(db, "organizations", parentItem.organizationId);
+    const newItemRef = doc(collection(db, "items"));
+    const parentRef = doc(db, "items", parentItem.id);
+    const order = nextSubitemOrder(parentItem.id);
+    await runTransaction(db, async (tx) => {
+      const orgSnap = await tx.get(orgRef);
+      const next = orgSnap.data()?.nextSubitemNumber ?? 1;
+      tx.set(newItemRef, {
+        organizationId: parentItem.organizationId,
+        parentId: parentItem.id,
+        hasChildren: false,
+        type: "task",
+        title: "",
+        description: "",
+        statusId: 1,
+        priorityId: null,
+        categoryId: null,
+        tagIds: [],
+        onHold: false,
+        dueDate: null,
+        completedAt: null,
+        assigneeIds: [],
+        itemNumber: next,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        order,
       });
-    }
+      tx.update(orgRef, { nextSubitemNumber: next + 1 });
+      // Maintain hasChildren denormalization (Cloud Function trigger later).
+      if (!parentItem.hasChildren) {
+        tx.update(parentRef, { hasChildren: true, updatedAt: serverTimestamp() });
+      }
+    });
   };
 
   // Categories + tags are global; pass the full list to every row.

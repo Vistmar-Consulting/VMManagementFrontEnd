@@ -116,7 +116,11 @@ export default function TaskBoardRow({
   }, [updatedAt]);
 
   const idPrefix = isSubitem ? "SI" : "I";
-  const shortId = item.id ? item.id.slice(0, 4) : "";
+  // Sequential per-org numbers stamped at create time via runTransaction
+  // (counters live on organizations/{slug}.nextItemNumber/nextSubitemNumber).
+  // Falls back to "?" for any item missing the field — e.g., pre-counter
+  // dev items, or if a transaction failed partway.
+  const idNumber = item.itemNumber ?? "?";
 
   const handleField = (patch) => onUpdate?.(item.id, patch);
 
@@ -202,7 +206,7 @@ export default function TaskBoardRow({
         {/* ID */}
         <TableCell align="center">
           <Typography variant="caption" sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-            {idPrefix}-{shortId}
+            {idPrefix}-{idNumber}
           </Typography>
         </TableCell>
 
