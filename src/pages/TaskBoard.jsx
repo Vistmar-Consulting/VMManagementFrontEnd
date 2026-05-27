@@ -171,31 +171,56 @@ export default function TaskBoard() {
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
 
-  // Top-level items only, with org filter + scorecard filter applied.
-  const topLevel = useMemo(() => {
-    let result = allItems.filter((item) => item.parentId == null);
-    if (orgFilter !== "all") result = result.filter((item) => item.organizationId === orgFilter);
-    if (titleSearch) {
-      const q = titleSearch.toLowerCase();
-      result = result.filter((item) => (item.title || "").toLowerCase().includes(q));
-    }
-    if (scorecardFilter) {
-      const card = SCORECARDS.find((c) => c.key === scorecardFilter);
-      if (card) result = result.filter(card.match);
-    }
-    // Column filters
-    Object.entries(columnFilters).forEach(([field, values]) => {
-      if (!values || values.length === 0) return;
-      if (field === "assigneeIds") {
-        result = result.filter((item) => (item.assigneeIds || []).some((id) => values.includes(id)));
-      } else if (field === "tagIds") {
-        result = result.filter((item) => (item.tagIds || []).some((id) => values.includes(id)));
-      } else {
-        result = result.filter((item) => values.includes(item[field]));
+  // Filter predicates — extracted so we can apply them to BOTH parents and
+  // subitems (used by the parent-or-subitem-match logic below).
+  // Note: organizationId is parent-level — subitems inherit their parent's
+  // org at create-time, so the org filter is checked against the parent only.
+  const matchesNonOrgFilters = useMemo(() => {
+    const q = (titleSearch || "").toLowerCase();
+    const card = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
+    const activeCols = Object.entries(columnFilters).filter(([, v]) => v && v.length > 0);
+    return (item) => {
+      if (q && !(item.title || "").toLowerCase().includes(q)) return false;
+      if (card && !card.match(item)) return false;
+      for (const [field, values] of activeCols) {
+        if (field === "assigneeIds") {
+          if (!(item.assigneeIds || []).some((id) => values.includes(id))) return false;
+        } else if (field === "tagIds") {
+          if (!(item.tagIds || []).some((id) => values.includes(id))) return false;
+        } else if (!values.includes(item[field])) {
+          return false;
+        }
       }
-    });
-    return result;
-  }, [allItems, orgFilter, titleSearch, scorecardFilter, columnFilters]);
+      return true;
+    };
+  }, [titleSearch, scorecardFilter, columnFilters]);
+
+  // Subitems map: parentId → subitems array. Built first because the
+  // top-level filter consults it to do the parent-or-subitem-match check.
+  const subitemsByParent = useMemo(() => {
+    const map = {};
+    for (const item of allItems) {
+      if (item.parentId) {
+        if (!map[item.parentId]) map[item.parentId] = [];
+        map[item.parentId].push(item);
+      }
+    }
+    return map;
+  }, [allItems]);
+
+  // Top-level items: keep if the parent itself passes filters OR any of
+  // its subitems does (so a match deep in the tree pulls its parent up
+  // into view). Org filter applies to parent only (subitems inherit).
+  const topLevel = useMemo(() => {
+    return allItems
+      .filter((item) => item.parentId == null)
+      .filter((item) => orgFilter === "all" || item.organizationId === orgFilter)
+      .filter((item) => {
+        if (matchesNonOrgFilters(item)) return true;
+        const subs = subitemsByParent[item.id] || [];
+        return subs.some(matchesNonOrgFilters);
+      });
+  }, [allItems, orgFilter, matchesNonOrgFilters, subitemsByParent]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -225,18 +250,6 @@ export default function TaskBoard() {
   const completedItems = sorted.filter((i) => i.statusId === DONE);
   const archiveItems = sorted.filter((i) => i.statusId === ARCHIVE);
 
-  // Subitems map: parentId → subitems array.
-  const subitemsByParent = useMemo(() => {
-    const map = {};
-    for (const item of allItems) {
-      if (item.parentId) {
-        if (!map[item.parentId]) map[item.parentId] = [];
-        map[item.parentId].push(item);
-      }
-    }
-    return map;
-  }, [allItems]);
-
   // Toggle-all logic: expand-all button shows when at least one expandable
   // item is collapsed; otherwise collapse-all. Only items with children
   // count toward "expandable" — leaves don't matter.
@@ -248,8 +261,28 @@ export default function TaskBoard() {
     return ids;
   }, [sorted, subitemsByParent]);
 
+  // Filter-driven auto-expand: if a parent is in the visible set only
+  // because one of its subitems matches the filter, force-expand it so
+  // the matching subitem is actually rendered.
+  const filterForceExpandedIds = useMemo(() => {
+    const hasAnyFilter =
+      Boolean(titleSearch)
+      || Boolean(scorecardFilter)
+      || Object.values(columnFilters).some((v) => v && v.length > 0);
+    if (!hasAnyFilter) return new Set();
+
+    const ids = new Set();
+    for (const item of sorted) {
+      const subs = subitemsByParent[item.id] || [];
+      if (subs.some(matchesNonOrgFilters)) ids.add(item.id);
+    }
+    return ids;
+  }, [sorted, subitemsByParent, matchesNonOrgFilters, titleSearch, scorecardFilter, columnFilters]);
+
+  const isItemExpanded = (id) => expandedItemIds.has(id) || filterForceExpandedIds.has(id);
+
   const allExpanded = expandableIds.size > 0
-    && Array.from(expandableIds).every((id) => expandedItemIds.has(id));
+    && Array.from(expandableIds).every(isItemExpanded);
 
   const toggleAllExpanded = () => {
     if (allExpanded) setExpandedItemIds(new Set());
@@ -562,7 +595,7 @@ export default function TaskBoard() {
                       categories={categories}
                       tags={tags}
                       canUpdate={isAdmin}
-                      expanded={expandedItemIds.has(item.id)}
+                      expanded={isItemExpanded(item.id)}
                       onSetExpanded={(val) => setItemExpanded(item.id, val)}
                       getCommentCount={getCommentCount}
                       getFileCount={getFileCount}
