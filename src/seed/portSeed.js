@@ -41,7 +41,13 @@ async function deleteAllItems() {
 }
 
 async function seedClientOrgs() {
-  // Vistamar (internal) already exists — leave it alone.
+  // Vistamar (internal) already exists — leave it alone except for sortOrder
+  // which the chip-row ordering depends on.
+  await setDoc(
+    doc(db, "organizations", "vistamar"),
+    { name: "Vistamar", sortOrder: 1 },
+    { merge: true },
+  );
   for (const org of CLIENT_ORG_SEEDS) {
     await setDoc(doc(db, "organizations", org.slug), {
       name: org.name,
@@ -49,6 +55,7 @@ async function seedClientOrgs() {
       accentColor: org.accentColor,
       active: true,
       archived: false,
+      sortOrder: org.sortOrder,
       createdAt: serverTimestamp(),
     });
   }

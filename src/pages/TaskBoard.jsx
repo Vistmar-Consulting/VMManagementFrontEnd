@@ -797,7 +797,9 @@ export default function TaskBoard() {
         })}
       </Stack>
 
-      {/* Organization filter chips */}
+      {/* Organization filter chips — sorted by org.sortOrder (lower first);
+          orgs missing sortOrder fall to the end, preserving Firestore order
+          among them. */}
       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }} useFlexGap>
         <Chip
           label="All"
@@ -806,7 +808,7 @@ export default function TaskBoard() {
           color={orgFilter === "all" ? "primary" : "default"}
           size="small"
         />
-        {orgs.map((org) => (
+        {[...orgs].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)).map((org) => (
           <Chip
             key={org.id}
             label={org.name}
