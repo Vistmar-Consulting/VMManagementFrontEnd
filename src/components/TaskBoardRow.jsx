@@ -394,32 +394,67 @@ export default function TaskBoardRow({
           )}
         </TableCell>
 
-        {/* Tags (multi-select) */}
+        {/* Tags (multi-select). Linear-style: stack of colored-dot + name
+            rows, one per tag. Empty state shows "—". */}
         <TableCell>
           {(() => {
             const tagIds = item.tagIds || [];
-            const label = tagIds.length === 0
-              ? "—"
-              : tagIds.length === 1
-                ? (tags.find((t) => t.id === tagIds[0])?.name || "1 tag")
-                : `${tagIds.length} tags`;
+            const selectedTags = tagIds
+              .map((id) => tags.find((t) => t.id === id))
+              .filter(Boolean);
             return (
               <>
-                <MuiChip
-                  label={label}
-                  size="small"
-                  sx={{
-                    backgroundColor: "#fff",
-                    color: "#333",
-                    border: "1px solid #bdbdbd",
-                    cursor: canUpdate ? "pointer" : "default",
-                    fontWeight: 500,
-                    fontSize: "0.75rem",
-                  }}
+                <Box
                   onClick={canUpdate ? (e) => setTagsAnchor(e.currentTarget) : undefined}
-                  onDelete={canUpdate ? (e) => { e.stopPropagation(); setTagsAnchor(e.currentTarget); } : undefined}
-                  deleteIcon={canUpdate ? <ArrowDropDownIcon sx={{ fontSize: 16, color: "#666 !important" }} /> : undefined}
-                />
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 0.5,
+                    cursor: canUpdate ? "pointer" : "default",
+                    minHeight: 24,
+                    "&:hover .tag-name": canUpdate ? { color: "primary.main" } : {},
+                  }}
+                >
+                  {selectedTags.length === 0 ? (
+                    <Typography
+                      variant="body2"
+                      className="tag-name"
+                      sx={{ color: "text.disabled", fontSize: "0.75rem" }}
+                    >
+                      —
+                    </Typography>
+                  ) : (
+                    selectedTags.map((t) => (
+                      <Box
+                        key={t.id}
+                        sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
+                      >
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            backgroundColor: t.color,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <Typography
+                          variant="body2"
+                          className="tag-name"
+                          sx={{
+                            fontSize: "0.75rem",
+                            fontWeight: 500,
+                            lineHeight: 1.3,
+                            whiteSpace: "normal",
+                            overflowWrap: "break-word",
+                          }}
+                        >
+                          {t.name}
+                        </Typography>
+                      </Box>
+                    ))
+                  )}
+                </Box>
                 {canUpdate && (
                   <Menu anchorEl={tagsAnchor} open={Boolean(tagsAnchor)} onClose={() => setTagsAnchor(null)}>
                     {tags.map((t) => {
