@@ -141,6 +141,18 @@ export default function TaskBoard() {
   const [notesModalItem, setNotesModalItem] = useState(null);
   const [filesModalItem, setFilesModalItem] = useState(null);
 
+  // Per-row expansion state lifted from TaskBoardRow so the "expand all /
+  // collapse all" header button can toggle everything at once.
+  const [expandedItemIds, setExpandedItemIds] = useState(() => new Set());
+  const setItemExpanded = (id, val) => {
+    setExpandedItemIds((prev) => {
+      const next = new Set(prev);
+      if (val) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
   // Org filter chip group — persisted in localStorage.
   const [orgFilter, setOrgFilter] = useLocalStorage("vm-board-org-filter", "all");
 
@@ -224,6 +236,25 @@ export default function TaskBoard() {
     }
     return map;
   }, [allItems]);
+
+  // Toggle-all logic: expand-all button shows when at least one expandable
+  // item is collapsed; otherwise collapse-all. Only items with children
+  // count toward "expandable" — leaves don't matter.
+  const expandableIds = useMemo(() => {
+    const ids = new Set();
+    for (const item of sorted) {
+      if ((subitemsByParent[item.id] || []).length > 0) ids.add(item.id);
+    }
+    return ids;
+  }, [sorted, subitemsByParent]);
+
+  const allExpanded = expandableIds.size > 0
+    && Array.from(expandableIds).every((id) => expandedItemIds.has(id));
+
+  const toggleAllExpanded = () => {
+    if (allExpanded) setExpandedItemIds(new Set());
+    else setExpandedItemIds(new Set(expandableIds));
+  };
 
   // Sort handler
   const handleSort = (field, direction) => {
@@ -531,6 +562,8 @@ export default function TaskBoard() {
                       categories={categories}
                       tags={tags}
                       canUpdate={isAdmin}
+                      expanded={expandedItemIds.has(item.id)}
+                      onSetExpanded={(val) => setItemExpanded(item.id, val)}
                       getCommentCount={getCommentCount}
                       getFileCount={getFileCount}
                       onUpdate={handleUpdate}
@@ -552,7 +585,19 @@ export default function TaskBoard() {
   const renderColumnHeaders = () => (
     <TableHead>
       <TableRow>
-        <TableCell sx={{ width: "2%", whiteSpace: "nowrap" }} />
+        <TableCell sx={{ width: "2%", whiteSpace: "nowrap", textAlign: "center", p: 0.5 }}>
+          {expandableIds.size > 0 && (
+            <Tooltip title={allExpanded ? "Collapse all" : "Expand all"} placement="top">
+              <IconButton
+                size="small"
+                onClick={toggleAllExpanded}
+                aria-label={allExpanded ? "Collapse all" : "Expand all"}
+              >
+                {allExpanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          )}
+        </TableCell>
         <TaskBoardColumnHeader
           label="Item" field="title" width="18%"
           sortField={sortField} sortDirection={sortDirection} onSort={handleSort}

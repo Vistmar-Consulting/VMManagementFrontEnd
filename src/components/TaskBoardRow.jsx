@@ -68,6 +68,8 @@ export default function TaskBoardRow({
   categories = [],
   tags = [],
   canUpdate = true,
+  expanded = false,
+  onSetExpanded = () => {},
   getCommentCount = () => 0,
   getFileCount = () => 0,
   onUpdate,
@@ -76,7 +78,6 @@ export default function TaskBoardRow({
   onOpenComments,
   onOpenFiles,
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [editingTitle, setEditingTitle] = useState(!item.title && canUpdate);
   const [titleValue, setTitleValue] = useState(item.title || "");
   const [priorityAnchor, setPriorityAnchor] = useState(null);
@@ -154,14 +155,14 @@ export default function TaskBoardRow({
         {/* Expand chevron */}
         <TableCell sx={{ width: 40, p: 0.5 }}>
           {!isSubitem && (hasSubitems || expanded) ? (
-            <IconButton size="small" onClick={() => setExpanded(!expanded)}>
+            <IconButton size="small" onClick={() => onSetExpanded(!expanded)}>
               {expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
             </IconButton>
           ) : !isSubitem && canUpdate ? (
             <Tooltip title="Expand to add subtasks" enterDelay={500} placement="right">
               <IconButton
                 size="small"
-                onClick={() => setExpanded(true)}
+                onClick={() => onSetExpanded(true)}
                 sx={{
                   opacity: 0,
                   transition: "opacity 0.15s",
@@ -631,7 +632,7 @@ export default function TaskBoardRow({
                 transformOrigin={{ vertical: "top", horizontal: "right" }}
               >
                 {!isSubitem && (
-                  <MenuItem onClick={() => { setActionAnchor(null); setExpanded(true); onAddSubitem?.(item); }}>
+                  <MenuItem onClick={() => { setActionAnchor(null); onSetExpanded(true); onAddSubitem?.(item); }}>
                     Add subtask
                   </MenuItem>
                 )}
