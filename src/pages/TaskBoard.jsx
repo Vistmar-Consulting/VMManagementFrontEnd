@@ -93,12 +93,24 @@ function tsToDate(ts) {
   return new Date(ts);
 }
 
+// "Due This Wk" = dueDate falls within the CURRENT business week,
+// Monday 00:00 → Friday 23:59:59 (local time). Weekend due dates and
+// next-week dates are excluded. An item due Monday that's now past is
+// still considered "this week" (it will also appear in "Overdue").
 function isDueThisWeek(date) {
   if (!date) return false;
-  const now = Date.now();
-  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const dow = now.getDay(); // 0=Sun, 1=Mon, …, 6=Sat
+  // Step back to Monday: Sunday → -6, Mon → 0, Tue → -1, …, Sat → -5.
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset);
+  monday.setHours(0, 0, 0, 0);
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+  friday.setHours(23, 59, 59, 999);
   const t = date.getTime();
-  return t >= now && t <= now + sevenDays;
+  return t >= monday.getTime() && t <= friday.getTime();
 }
 
 export default function TaskBoard() {
