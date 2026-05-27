@@ -14,3 +14,4 @@ firebase-debug.log
 .firebaserc.local
 .superpowers/
 .playwright-mcp/
+.vercel

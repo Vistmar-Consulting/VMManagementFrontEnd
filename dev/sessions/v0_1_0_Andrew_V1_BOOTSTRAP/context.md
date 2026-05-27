@@ -170,6 +170,20 @@ Project Board end-to-end:
 - Cross-stack naming parity rule (CLAUDE.md): FE field = Firestore field = Function payload field, lower-camelCase. Old SQL PascalCase is dead.
 - "Do not kill running dev servers" — CLAUDE.md hard rule.
 
+## Session check-in 2026-05-27 (Claude session closed; bootstrap session continues)
+
+Andy returned after a 2-week gap. This conversation oriented on the world (no code changes) and is being closed in favor of a separate Claude session that will execute the Project Board table port per `docs/plans/2026-05-14-project-board-port.md`.
+
+State observed at check-in:
+- Dev server already running on `localhost:5173` (owned by the other CC session in this repo working on V2 Meetings — PID 88364 at observation time; do not kill).
+- `/board` route renders the Kanban with 11 live Firestore items — read-only proof of the data layer; layout is the wrong shape per the 5/14 plan brief.
+- Foundation through slice 4 is committed and pushed to `origin/dev`. The next slice (Monday-style table port) has not started.
+- Loose files in the working tree at check-in: `.gitignore` (added `.vercel`), `docs/plans/2026-05-14-project-board-port.md`, `docs/superpowers/specs/2026-05-20-meetings-v2-design.md`. All three committed as part of this handoff.
+
+The bootstrap session itself remains `active` in `SESSION_INDEX.json` because the V1 work it umbrella's is still in flight — the next Claude session picks up this same `context.md`.
+
+Pointer: `dev/HANDOFF_2026-05-27_PROJECT_BOARD_PORT.md`.
+
 ## Deferred
 
 (track newly discovered items here; existing items live in `dev/DEFERRED.md`)
