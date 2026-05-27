@@ -184,6 +184,64 @@ The bootstrap session itself remains `active` in `SESSION_INDEX.json` because th
 
 Pointer: `dev/HANDOFF_2026-05-27_PROJECT_BOARD_PORT.md`.
 
+## Slice 5 — Project Board port + operational setup (2026-05-27 → 2026-05-28)
+
+Executed against `docs/plans/2026-05-14-project-board-port.md` after Andy returned and re-engaged the bootstrap.
+
+### Operational setup (was the plan's prerequisite section)
+
+- GitHub repo created: https://github.com/Vistmar-Consulting/VMManagementFrontEnd (private → made public so Vercel Hobby could connect — per Andy's explicit choice; auth via Firebase domain restriction means source visibility isn't a security exposure).
+- Local `main` pushed as `origin/dev` via `git push -u origin main:dev`. Default branch set to `dev`.
+- Vercel project linked under `adeemervms-projects` (Hobby; Pro upgrade deferred). GitHub auto-connect succeeded after repo was public.
+- 6 `VITE_FIREBASE_*` env vars pushed to Production + Development. **Initial push used `echo` which embedded trailing `\n` in every value** — caught later via the "Illegal url for new iframe (...%0A...)" error on prod signin. Wiped + re-added with `printf '%s' "$val" | tr -d '\n\r'`. Verified clean via `vercel env pull`.
+- First Vercel deploy live at `https://vm-management-front-end.vercel.app`.
+- Firebase Auth authorized domains: Andy added `vm-management-front-end.vercel.app` via Firebase console (Identity Toolkit Admin API rejected `firebase-tools` OAuth token type — not scriptable from CLI auth alone).
+- `vercel.json` SPA rewrite added (`/(.*)` → `/index.html`) — fixed 404 on direct `/board` hits.
+- `signInWithPopup` → `signInWithRedirect` in AuthContext: COOP headers on Vercel were silently closing the OAuth popup, completing as `auth/popup-closed-by-user`. Redirect flow works identically in dev + prod.
+- App.jsx wrapped with `LocalizationProvider` (date-pickers v6) so the inline DatePicker on the Due cell works.
+
+### Code port (Monday.com-style table replacing the kanban)
+
+- Kanban code preserved per plan: `src/pages/TaskBoard.jsx` → `src/pages/KanbanBoard.jsx`, `src/components/ItemCard.jsx` → `src/components/KanbanCard.jsx`. Mounted at `/board/kanban` URL-only — not in sidebar. The old kanban is the "alternate view" for far-future use.
+- New files ported from `_PM_Archive_From_Console_2026-05-12/src/pages/pages/`:
+  - `src/theme/pillColors.js` — `getPillBg` (+72%) / `getTextColor` (-55%) verbatim.
+  - `src/constants/itemPriorities.js` — `PRIORITY` enum + list, numeric IDs match `pm.Priorities` for trivial future migration.
+  - `src/components/MemberAvatar.jsx` — SVG-rendered initials avatar with multi-assignee overlap + `+N` overflow chip.
+  - `src/components/TaskBoardColumnHeader.jsx` — sort + filter Popover with checkboxes, search, per-row edit/delete icons, "+ Add New" link.
+  - `src/components/TaskBoardRow.jsx` — 14-cell row with inline title edit, priority/status pill dropdowns, multi-select assignees, category dropdown, multi-select tags, due DatePicker, comments+files badges, action menu.
+  - `src/pages/TaskBoard.jsx` (replaces Kanban at `/board`) — three collapsible groups (Active / Completed / Archive), `useLocalStorage` org filter chips, status scorecards row (7 KPIs clickable), full 14-column TableHead via ColumnHeader.
+- Add Item + Add Subtask wiring (caught by Andy as initial gap): "+ New item" button at page top (disabled when "All" org selected), action-menu and "+ Add subtask" link on each row both call `addDoc` with proper defaults + parent's `hasChildren` denormalization maintained client-side.
+
+### Data model decision (Andy 2026-05-27)
+
+- Categories + tags are **shared across orgs**, not per-org. Initial design had `organizations/{slug}/categories` subcollections; refactored to top-level `categories/{id}` and `tags/{id}` collections.
+- Column-header filter popovers reduce to values actually USED by currently-visible items (the org-scoped top-level set). Row cell dropdowns show the full global list.
+- Items reference `categoryId: string` and `tagIds: string[]`. IDs preserved as numeric-as-string from archive (`"1"`, `"2"`) so SQL migration later is a direct numeric copy.
+- `firestore.rules` updated: dropped per-org subcollection rules, added top-level `categories` + `tags` (admin write, active read).
+
+### Firestore seeding
+
+- `src/seed/archiveData.js` — verbatim copy of `pmItems.js` constants. Categories + tags stripped of `Org_Id` (now global). PM_ITEMS kept as-is.
+- `src/seed/portSeed.js` — `runPortSeed({ createdBy })` does: delete all items, upsert 4 client org docs (unio / bryn-mawr / golden-vision / id-care with placeholder accents), seed 8 categories + 5 tags, seed 44 archive items filtered to orgs in the slug map. Items get `assigneeIds: []` (Andy will reassign once team members sign in and get UIDs). Subitems linked via new Firestore doc IDs; `hasChildren` derived from parent presence in archive.
+- Seed executed via `agent-browser eval` against the running dev server while signed in as admin. Result: `{ deletedItems: 11, seededOrgs: 4, seededCategories: 8, seededTags: 5, seededItems: 44 }`.
+
+### Source disclosure (per Andy's check)
+
+Items are NOT from live `pm.Items` SQL — they are the Console-era **mock seed** from `archiveData.js` (44 hand-authored / AI-generated items mimicking real Unio work). Live SQL pull was offered + declined for this slice ("keep mock for now").
+
+### Still pending after this slice (deferred)
+
+- `src/components/TaskBoardModal.jsx` — comments dialog with threaded replies. Subcollection model is locked (`items/{id}/comments` with `parentCommentId: string | null`), just not wired.
+- Category + Tag CRUD wiring — column-header popover currently shows the filter list; add/edit/delete callbacks not connected to Firestore writes.
+- DnD reorder via `react-beautiful-dnd` + `generateKeyBetween` rank update.
+- File attachments — Blaze-gated, no Storage rules deployed.
+- Spec amendments (§4 + §6) per plan's "After the Port" section.
+
+### Verification
+
+- Localhost: full table renders against seeded data, scorecards show real counts (Active 17, Completed 9, etc.), org chips populated.
+- Production (vm-management-front-end.vercel.app): every fix above pushed via `npx vercel deploy --prod`. Most recent deploy ID `dpl_kxj921bmj` confirmed Ready. Andy visually verified after each deploy.
+
 ## Deferred
 
 (track newly discovered items here; existing items live in `dev/DEFERRED.md`)
