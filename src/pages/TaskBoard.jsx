@@ -197,6 +197,8 @@ export default function TaskBoard() {
 
   // Subitems map: parentId → subitems array. Built first because the
   // top-level filter consults it to do the parent-or-subitem-match check.
+  // This is the FULL map — used internally by counts (delete cascade, etc.).
+  // Rendering uses `visibleSubitemsByParent` below which respects the filter.
   const subitemsByParent = useMemo(() => {
     const map = {};
     for (const item of allItems) {
@@ -207,6 +209,25 @@ export default function TaskBoard() {
     }
     return map;
   }, [allItems]);
+
+  // Whether any non-org filter is currently active.
+  const hasAnyFilter = useMemo(() => {
+    return Boolean(titleSearch)
+      || Boolean(scorecardFilter)
+      || Object.values(columnFilters).some((v) => v && v.length > 0);
+  }, [titleSearch, scorecardFilter, columnFilters]);
+
+  // What gets RENDERED under an expanded parent. When any filter is active,
+  // narrow each parent's subitems to those that match the filter; otherwise
+  // pass through the full set. This is what TaskBoardRow consumes.
+  const visibleSubitemsByParent = useMemo(() => {
+    if (!hasAnyFilter) return subitemsByParent;
+    const out = {};
+    for (const [parentId, subs] of Object.entries(subitemsByParent)) {
+      out[parentId] = subs.filter(matchesNonOrgFilters);
+    }
+    return out;
+  }, [subitemsByParent, matchesNonOrgFilters, hasAnyFilter]);
 
   // Top-level items: keep if the parent itself passes filters OR any of
   // its subitems does (so a match deep in the tree pulls its parent up
@@ -265,19 +286,14 @@ export default function TaskBoard() {
   // because one of its subitems matches the filter, force-expand it so
   // the matching subitem is actually rendered.
   const filterForceExpandedIds = useMemo(() => {
-    const hasAnyFilter =
-      Boolean(titleSearch)
-      || Boolean(scorecardFilter)
-      || Object.values(columnFilters).some((v) => v && v.length > 0);
     if (!hasAnyFilter) return new Set();
-
     const ids = new Set();
     for (const item of sorted) {
       const subs = subitemsByParent[item.id] || [];
       if (subs.some(matchesNonOrgFilters)) ids.add(item.id);
     }
     return ids;
-  }, [sorted, subitemsByParent, matchesNonOrgFilters, titleSearch, scorecardFilter, columnFilters]);
+  }, [sorted, subitemsByParent, matchesNonOrgFilters, hasAnyFilter]);
 
   const isItemExpanded = (id) => expandedItemIds.has(id) || filterForceExpandedIds.has(id);
 
@@ -590,7 +606,7 @@ export default function TaskBoard() {
                     <TaskBoardRow
                       key={item.id}
                       item={item}
-                      subitems={subitemsByParent[item.id] || []}
+                      subitems={visibleSubitemsByParent[item.id] || []}
                       users={users}
                       categories={categories}
                       tags={tags}
