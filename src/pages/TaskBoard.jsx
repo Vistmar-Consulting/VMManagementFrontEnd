@@ -534,7 +534,7 @@ export default function TaskBoard() {
           onFilterChange={handleFilterChange}
         />
         <TaskBoardColumnHeader
-          label="Category" field="categoryId" width="10%"
+          label="Category" field="categoryId" width="12%"
           sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
           userSorted={userHasSorted}
           filterValues={categoryFilterValues}
@@ -563,7 +563,7 @@ export default function TaskBoard() {
           userSorted={userHasSorted} sortOnly
         />
         <TaskBoardColumnHeader
-          label="Updated" field="updatedAt" width="10%"
+          label="Updated" field="updatedAt" width="8%"
           sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
           userSorted={userHasSorted} sortOnly
         />

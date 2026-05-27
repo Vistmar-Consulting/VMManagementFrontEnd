@@ -318,25 +318,59 @@ export default function TaskBoardRow({
           )}
         </TableCell>
 
-        {/* Category (subitems inherit — render empty) */}
+        {/* Category (subitems inherit — render empty). Linear-style:
+            colored dot + plain text. No chip border/caret so full names
+            like "Provider Onboarding" fit; wraps to two lines if cell
+            is narrow rather than truncating with ellipsis. */}
         <TableCell>
           {isSubitem ? null : (
             <>
-              <MuiChip
-                label={category?.name || "—"}
-                size="small"
-                sx={{
-                  backgroundColor: "#fff",
-                  color: "#333",
-                  border: "1px solid #bdbdbd",
-                  cursor: canUpdate ? "pointer" : "default",
-                  fontWeight: 500,
-                  fontSize: "0.75rem",
-                }}
+              <Box
                 onClick={canUpdate ? (e) => setCategoryAnchor(e.currentTarget) : undefined}
-                onDelete={canUpdate ? (e) => { e.stopPropagation(); setCategoryAnchor(e.currentTarget); } : undefined}
-                deleteIcon={canUpdate ? <ArrowDropDownIcon sx={{ fontSize: 16, color: "#666 !important" }} /> : undefined}
-              />
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  cursor: canUpdate ? "pointer" : "default",
+                  minHeight: 24,
+                  "&:hover .cat-name": canUpdate ? { color: "primary.main" } : {},
+                }}
+              >
+                {category ? (
+                  <>
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        backgroundColor: category.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography
+                      variant="body2"
+                      className="cat-name"
+                      sx={{
+                        fontSize: "0.75rem",
+                        fontWeight: 500,
+                        lineHeight: 1.3,
+                        whiteSpace: "normal",
+                        overflowWrap: "break-word",
+                      }}
+                    >
+                      {category.name}
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography
+                    variant="body2"
+                    className="cat-name"
+                    sx={{ color: "text.disabled", fontSize: "0.75rem" }}
+                  >
+                    —
+                  </Typography>
+                )}
+              </Box>
               {canUpdate && (
                 <Menu anchorEl={categoryAnchor} open={Boolean(categoryAnchor)} onClose={() => setCategoryAnchor(null)}>
                   <MenuItem onClick={() => { setCategoryAnchor(null); handleField({ categoryId: null }); }}>
