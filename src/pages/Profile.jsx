@@ -1,5 +1,6 @@
-import { Avatar, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
+import { Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 
+import MemberAvatar from "../components/MemberAvatar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 export default function Profile() {
@@ -11,18 +12,7 @@ export default function Profile() {
     <Card sx={{ maxWidth: 560 }}>
       <CardContent>
         <Stack direction="row" spacing={4} alignItems="center" sx={{ mb: 4 }}>
-          <Avatar
-            sx={{
-              width: 56,
-              height: 56,
-              bgcolor: profile.avatarColor,
-              color: "rgba(0,0,0,0.78)",
-              fontWeight: 700,
-              fontSize: 22,
-            }}
-          >
-            {(profile.firstName || profile.email).slice(0, 1).toUpperCase()}
-          </Avatar>
+          <MemberAvatar user={profile} size={56} border={false} tooltip={false} />
           <Stack sx={{ flex: 1 }}>
             <Typography variant="h5">{profile.displayName}</Typography>
             <Typography variant="body2" color="text.secondary">{profile.email}</Typography>

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
-  Avatar,
   Box,
   Chip,
   IconButton,
@@ -12,6 +11,7 @@ import {
 } from "@mui/material";
 import { LogOut } from "lucide-react";
 
+import MemberAvatar from "./MemberAvatar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const ROUTE_TITLES = {
@@ -29,9 +29,6 @@ export default function AppTopBar() {
   const [menuAnchor, setMenuAnchor] = useState(null);
 
   const title = ROUTE_TITLES[location.pathname] || "Vistamar Management";
-  const initial = (profile?.firstName || profile?.email || user?.email || "?")
-    .slice(0, 1)
-    .toUpperCase();
 
   return (
     <Stack
@@ -60,18 +57,7 @@ export default function AppTopBar() {
           aria-label="Account menu"
           sx={{ p: 0 }}
         >
-          <Avatar
-            sx={{
-              width: 32,
-              height: 32,
-              bgcolor: profile?.avatarColor || "primary.main",
-              color: "rgba(0,0,0,0.78)",
-              fontSize: 13,
-              fontWeight: 700,
-            }}
-          >
-            {initial}
-          </Avatar>
+          <MemberAvatar user={profile || { email: user?.email }} size={32} border={false} tooltip={false} />
         </IconButton>
       </Stack>
 
