@@ -17,7 +17,7 @@ function CenteredSpinner({ caption }) {
 }
 
 export default function ProtectedRoute({ children, requireAdmin = false }) {
-  const { user, profile, loading, error, isAdmin, signOut } = useAuth();
+  const { user, profile, loading, error, isAdmin, signOut, retryBootstrap } = useAuth();
   const location = useLocation();
 
   if (loading) return <CenteredSpinner />;
@@ -33,9 +33,14 @@ export default function ProtectedRoute({ children, requireAdmin = false }) {
           <Alert severity="error">
             Failed to load your profile: {error.message}
           </Alert>
-          <Button variant="outlined" onClick={signOut} sx={{ alignSelf: "flex-start" }}>
-            Sign out
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button variant="contained" onClick={retryBootstrap}>
+              Retry
+            </Button>
+            <Button variant="outlined" onClick={signOut}>
+              Sign out
+            </Button>
+          </Stack>
         </Stack>
       </Box>
     );

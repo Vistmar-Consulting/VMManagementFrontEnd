@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   onAuthStateChanged,
   signOut as firebaseSignOut,
@@ -43,6 +43,10 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Bumping this nonce re-mounts the auth listener — used by the Retry button
+  // on ProtectedRoute when first-sign-in setDoc is rejected (rules race,
+  // transient network failure) and the user is otherwise stuck.
+  const [bootstrapNonce, setBootstrapNonce] = useState(0);
 
   useEffect(() => {
     let profileUnsubscribe = null;
@@ -125,18 +129,24 @@ export function AuthProvider({ children }) {
       authUnsubscribe();
       if (profileUnsubscribe) profileUnsubscribe();
     };
-  }, []);
+  }, [bootstrapNonce]);
 
   // Sign-in is initiated by the GIS button on the SignIn page (it calls
   // signInWithCredential directly). AuthContext only owns onAuthStateChanged
   // + signOut.
   const signOut = () => firebaseSignOut(auth);
 
+  const retryBootstrap = useCallback(() => {
+    setError(null);
+    setLoading(true);
+    setBootstrapNonce((n) => n + 1);
+  }, []);
+
   const isAdmin = profile?.role === "admin" && profile?.active === true;
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, error, isAdmin, signOut }}
+      value={{ user, profile, loading, error, isAdmin, signOut, retryBootstrap }}
     >
       {children}
     </AuthContext.Provider>
