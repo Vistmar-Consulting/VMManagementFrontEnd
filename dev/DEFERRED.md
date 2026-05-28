@@ -78,19 +78,35 @@ Write `dev/v2-graft-points.md` BEFORE V2 starts. Map every place V2 will touch V
 
 ## V2 Backlog — Meeting Scheduler (NEXT SESSION'S WORK)
 
-The next session is Andy starting Meeting Scheduler work. See `dev/HANDOFF_2026-05-27_MEETING_SCHEDULER_KICKOFF.md` for the full briefing.
+V2 kickoff session opened 2026-05-27 evening. See `dev/HANDOFF_2026-05-27_MEETING_SCHEDULER_KICKOFF.md` (original kickoff) and `dev/sessions/v0_2_0_Andrew_MEETING_SCHEDULER/context.md` (live brain). Implementation brief: `docs/plans/2026-05-27-meeting-scheduler-port.md` (architecture surface needs update — see below).
 
-Headline:
-- Port `api/meetings/*` from `~/Vistamar_Consulting/_PM_Archive_From_Console_2026-05-12/api/meetings/` to `functions/src/meetings/*` (requires Blaze upgrade)
-- M365-primary architecture (Graph canonical, Google mirror) per `[[project-v2-meeting-scheduler-direction]]` memory
-- Vistamar team gets **Google calendar ICS-mirrored events**; external attendees get the Graph .ics natively from Outlook/Teams
-- Service account: `meetings@vistamarconsulting.com` (already provisioned in `Console-Meetings` GCP project)
-- **Store the Graph Event ID** on the Calendar Series doc so agendas can marry up to the Graph event for updates/cancellations
+**Architecture (CORRECTED 2026-05-27 per Andy):**
+- Backend: **Vercel API routes** in `api/meetings/*` (NOT Firebase Functions — Andy explicitly questioned the Blaze requirement and ruled it out)
+- Secrets: **Reuse Console's Azure VistamarVault** via service-principal env vars (AZURE_KV_*) — NOT GCP Secret Manager
+- Google native Join meeting button: **PRESERVED** — `buildConferenceData` workaround in `_lib/google-calendar.js` ported intact per Andy's correction "I want the google native Join meeting button, don't fuck with that"
+- Postmark + Graph sendMail: **PRESERVED** (no Gmail swap) — port relay-mail.js + graph-mail.js intact
+- Tate's recurring meetings migration: separate one-shot script, not blocking V2.1
 
-V2 also requires:
-- Blaze upgrade on Firebase (auth-onCreate trigger, Cloud Functions for meeting endpoints, Storage for any meeting attachments)
-- Calendar UI lib decision (FullCalendar was dropped — Andy decides)
-- Postmark + Graph sendMail replaced by Gmail send via `meetings@` service account
+**V2.1 landed in same session (2026-05-27):**
+- ~~`api/meetings/_lib/*` ported verbatim from archive~~ ✓ (keyvault, cors, auth, attendee-helpers, google-calendar, graph-events, graph-mail, relay-mail, agenda-email, schedule-email)
+- ~~`api/meetings/{reschedule,list,create,cancel,rename,attendees,send-prep,send-schedule}.js` ported~~ ✓ (V2.1 ships reschedule + list; others come on in later slices)
+- ~~Slug-based orgId compat shim in list.js + listEvents + listEventResponses~~ ✓ (Console used numeric, Management uses slugs)
+- ~~`src/pages/Calendar.jsx` (read-only meeting list)~~ ✓
+- ~~`src/components/RescheduleDialog.jsx`~~ ✓ (V2.1 ⭐ ship target)
+- ~~`src/lib/meetingsApi.js` (fetch wrapper, X-User-Token = Firebase ID token)~~ ✓
+- ~~Route `/calendar` + sidebar link + QueryClientProvider wiring~~ ✓
+- ~~Deps: `@azure/identity`, `@azure/keyvault-secrets`, `googleapis`~~ ✓
+- ~~CORS allowlist updated for vm-management-front-end origin~~ ✓
+
+### Pending V2.1 ops (Andy)
+
+- **Vercel env vars** — copy from `~/Vistamar_Consulting/VMConsoleFrontEnd/.env.local` to Management's Vercel project (Settings → Environment Variables): `AZURE_KV_URL`, `AZURE_KV_TENANT_ID`, `AZURE_KV_CLIENT_ID`, `AZURE_KV_CLIENT_SECRET`. Set for Production + Preview + Development scopes. Trigger redeploy after.
+- **Live test** — once env vars are set: open `/calendar` on the deployed Management site → see meetings@'s upcoming events → reschedule a non-critical one (NOT the GV biweekly until smoke test passes) → verify Outlook + Google update correctly.
+
+### V2.1 → V2.2+ tightening
+
+- **Backend auth upgrade** — `api/meetings/_lib/auth.js` is presence-only (matches Console). Upgrade: verify Firebase ID token via `firebase-admin` (add dep, init Admin SDK in api/, parse `X-User-Token` as ID token, check `email.endsWith('@vistamarconsulting.com')`). Roughly 30 lines. Do before any cancel/delete endpoint ships in V2.2 (delete + bad auth = potential damage).
+- **`agenda-email.js` user-facing string** — has "View full agenda in Console" link. Update when porting send-prep + send-schedule in V2.4.
 
 ## V3 / Far-Future
 

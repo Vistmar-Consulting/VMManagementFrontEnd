@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import SignedInLayout from "./layouts/SignedInLayout.jsx";
+import Calendar from "./pages/Calendar.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import KanbanBoard from "./pages/KanbanBoard.jsx";
 import Members from "./pages/Members.jsx";
@@ -28,6 +29,7 @@ export default function AppRoutes() {
         <Route path="/board" element={<TaskBoard />} />
         {/* Hidden URL-only alternate view — not linked from sidebar. */}
         <Route path="/board/kanban" element={<KanbanBoard />} />
+        <Route path="/calendar" element={<Calendar />} />
         <Route
           path="/members"
           element={(
