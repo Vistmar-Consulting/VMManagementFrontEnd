@@ -9,6 +9,7 @@
 // detail pages don't exist yet (V2.3).
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import {
@@ -229,6 +230,7 @@ function AdHocCard({ meeting, userByEmail, onClick }) {
 
 export default function Calendar() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { data: orgs } = useCollection("organizations");
   const { data: users } = useCollection("users");
   // V2.1.1 — Firestore subscriptions for the substrate. Render is still
@@ -794,8 +796,36 @@ export default function Calendar() {
                 );
               })()}
 
-              {/* V2.1 primary action — Reschedule. V2.3 will add "Open Agenda"
-                  alongside this once agenda detail pages exist. */}
+              {/* Primary: Open Agenda (V2.2 — agenda detail page now exists).
+                  Secondary: Reschedule (kept on the popover for V2.2.1; will
+                  move into the agenda detail hero's schedule popover in
+                  V2.2.2). */}
+              <Box
+                component="button"
+                onClick={() => {
+                  closePopover();
+                  // Agenda doc id == series_id for recurring or event_id for ad-hoc.
+                  // The reconciliation worker uses the same key, so this URL
+                  // always lines up with a real agendas/{id} doc.
+                  const agendaIdForRoute = popoverMeeting.series_id || popoverMeeting.event_id;
+                  navigate(`/agendas/${agendaIdForRoute}`);
+                }}
+                sx={{
+                  width: "100%",
+                  py: 1,
+                  border: "none",
+                  borderRadius: "8px",
+                  background: t.copper,
+                  color: "white",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "background 0.15s",
+                  "&:hover": { background: "#a0622d" },
+                }}
+              >
+                Open Agenda
+              </Box>
               <Box
                 component="button"
                 onClick={() => {
@@ -805,16 +835,19 @@ export default function Calendar() {
                 disabled={!canReschedule}
                 sx={{
                   width: "100%",
-                  py: 1,
-                  border: "none",
+                  mt: 1,
+                  py: 0.8,
+                  border: `1px solid ${canReschedule ? t.cream3 : "#e0e0e0"}`,
                   borderRadius: "8px",
-                  background: canReschedule ? t.copper : "#cfcfcf",
-                  color: "white",
-                  fontSize: 13,
-                  fontWeight: 600,
+                  background: "transparent",
+                  color: canReschedule ? t.ink2 : t.ink3,
+                  fontSize: 12,
+                  fontWeight: 500,
                   cursor: canReschedule ? "pointer" : "not-allowed",
-                  transition: "background 0.15s",
-                  "&:hover": canReschedule ? { background: "#a0622d" } : {},
+                  transition: "background 0.15s, border-color 0.15s",
+                  "&:hover": canReschedule
+                    ? { background: t.cream2, borderColor: t.ink3 }
+                    : {},
                 }}
               >
                 Reschedule

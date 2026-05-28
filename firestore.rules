@@ -163,6 +163,18 @@ service cloud.firestore {
       match /topics/{topicId} {
         allow read, create, update, delete: if isActiveUser();
 
+        // Talking points: short bulleted strings, one row per point.
+        // Individual rows give us fractional sortOrder + Enter-insert UX
+        // without contention from concurrent edits to an array field.
+        match /talkingPoints/{tpId} {
+          allow read, create, update, delete: if isActiveUser();
+        }
+
+        // Topic notes: blue bullets, same row-per-item shape.
+        match /notes/{noteId} {
+          allow read, create, update, delete: if isActiveUser();
+        }
+
         match /comments/{commentId} {
           allow read: if isActiveUser();
           allow create: if isActiveUser()
@@ -170,6 +182,11 @@ service cloud.firestore {
           allow update, delete: if isActiveUser()
                                 && resource.data.authorId == request.auth.uid;
         }
+      }
+
+      // Open Floor: agenda-level discussion items, not tied to a topic.
+      match /openFloor/{itemId} {
+        allow read, create, update, delete: if isActiveUser();
       }
     }
   }
