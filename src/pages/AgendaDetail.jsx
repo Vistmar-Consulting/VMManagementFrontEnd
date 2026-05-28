@@ -1,8 +1,10 @@
 // V2.2.1 — Agenda detail page (Overview view first).
+// V2.2.2c — Working view chrome: Action Bar + ContentGrid + Sidebar shells.
 //
-// Per docs/AGENDA_DETAIL_PAGE_REFERENCE.md §10 port order: route + page
-// shell + Overview view. Working view body is a placeholder until V2.2.2
-// ports the action bar, sidebar, topic cards, Mini Project Board, etc.
+// Per docs/AGENDA_DETAIL_PAGE_REFERENCE.md §10 port order. Working view body
+// (AgendaTopicCard with KPI strip + Mini Project Board) ships in V2.2.2d/e.
+// V2.2.2c renders the layout shell + a fully wired Attendees sidebar + a
+// placeholder Meeting Focus KPI grid + a working Join Meeting button.
 //
 // Data: useDoc("agendas/:agendaId") + useDoc("calendar_series/:seriesId")
 // + useCollection("agendas/:agendaId/topics") + per-topic talkingPoints
@@ -12,20 +14,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
 import {
-  Avatar,
   Box,
   Chip,
   CircularProgress,
+  Divider,
   IconButton,
+  Menu,
+  MenuItem,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import {
   ArrowBack,
+  ArrowDropDown,
+  Check,
   Close,
+  PersonAdd,
   Schedule as ScheduleIcon,
 } from "@mui/icons-material";
+
+import MemberAvatar from "../components/MemberAvatar.jsx";
 import { format, parseISO } from "date-fns";
 import {
   addDoc,
@@ -521,29 +530,318 @@ function AddTopicButton({ agendaId, lastSortOrder }) {
   );
 }
 
-// ─── Working-view placeholder ──────────────────────────────────────────
+// ─── Working view — Action Bar (§4.1) ──────────────────────────────────
 
-function WorkingPlaceholder() {
+function TeamsLogo({ size = 18 }) {
+  return (
+    <Box sx={{ width: size, height: size, borderRadius: "3px", background: "#5059C9", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <Typography sx={{ fontSize: size * 0.55, fontWeight: 700, color: "white", lineHeight: 1 }}>T</Typography>
+    </Box>
+  );
+}
+
+function ActionBar({ agenda, calendarSeries }) {
+  const teamsUrl = agenda?.teamsUrl || calendarSeries?.teamsUrl || null;
+  const [sendMenuEl, setSendMenuEl] = useState(null);
+
   return (
     <Box
       sx={{
-        mx: 4,
-        my: 4,
-        py: 6,
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+        py: 1.5,
+        px: 4,
+        borderTop: `1px solid ${t.cream3}`,
+        borderBottom: `1px solid ${t.cream3}`,
+        background: "white",
+        mb: 2,
+      }}
+    >
+      {teamsUrl && (
+        <Box
+          component="a"
+          href={teamsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 1,
+            px: 1.5,
+            py: 0.8,
+            borderRadius: 1,
+            border: `1px solid ${t.cream3}`,
+            color: "#5059C9",
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: "none",
+            transition: "background 0.15s, border-color 0.15s",
+            "&:hover": { background: "#f3f4fb", borderColor: "#5059C9" },
+          }}
+        >
+          <TeamsLogo />
+          Join Meeting
+        </Box>
+      )}
+
+      <Box sx={{ flex: 1 }} />
+
+      <Tooltip title="Send Meeting Invite — ships in V2.2.2b">
+        <span>
+          <Box
+            component="button"
+            disabled
+            sx={{
+              px: 1.6,
+              py: 0.8,
+              borderRadius: 1,
+              border: `1px solid ${t.cream3}`,
+              background: "transparent",
+              color: t.ink3,
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "not-allowed",
+            }}
+          >
+            Send Meeting Invite
+          </Box>
+        </span>
+      </Tooltip>
+
+      <Box
+        component="button"
+        onClick={(e) => setSendMenuEl(e.currentTarget)}
+        sx={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 0.4,
+          px: 1.6,
+          py: 0.8,
+          borderRadius: 1,
+          border: `1px solid ${t.cream3}`,
+          background: "transparent",
+          color: t.ink2,
+          fontSize: 12,
+          fontWeight: 500,
+          cursor: "pointer",
+          transition: "background 0.15s, border-color 0.15s",
+          "&:hover": { background: t.cream2, borderColor: t.ink3 },
+        }}
+      >
+        Send <ArrowDropDown sx={{ fontSize: 16 }} />
+      </Box>
+      <Menu
+        anchorEl={sendMenuEl}
+        open={Boolean(sendMenuEl)}
+        onClose={() => setSendMenuEl(null)}
+        slotProps={{ paper: { sx: { mt: 0.5, minWidth: 220 } } }}
+      >
+        <MenuItem disabled sx={{ fontSize: 13 }}>Meeting Prep email · V2.2.2b</MenuItem>
+        <MenuItem disabled sx={{ fontSize: 13 }}>Schedule notification · V2.2.2b</MenuItem>
+      </Menu>
+
+      <Tooltip title="Conclude — ships in V2.2.2b">
+        <span>
+          <Box
+            component="button"
+            disabled
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.5,
+              px: 1.6,
+              py: 0.8,
+              borderRadius: 1,
+              border: `1px solid ${t.cream3}`,
+              background: "transparent",
+              color: t.ink3,
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "not-allowed",
+            }}
+          >
+            <Check sx={{ fontSize: 14 }} /> Conclude
+          </Box>
+        </span>
+      </Tooltip>
+    </Box>
+  );
+}
+
+// ─── Working view — Sidebar (§4.7-4.9) ─────────────────────────────────
+
+const FOCUS_KEYS = [
+  { key: "done", label: "Done", color: "#2e7d32" },
+  { key: "review", label: "Review", color: "#9c6ade" },
+  { key: "onHold", label: "On Hold", color: "#c62828" },
+  { key: "overdue", label: "Overdue", color: "#c62828" },
+];
+
+function MeetingFocusPanel({ value, onChange }) {
+  return (
+    <Box sx={{ background: t.cream, borderRadius: 2, p: 2, mb: 2 }}>
+      <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper, mb: 1 }}>
+        Meeting Focus
+      </Typography>
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+        {FOCUS_KEYS.map(({ key, label, color }) => {
+          const active = value === key;
+          return (
+            <Box
+              key={key}
+              onClick={() => onChange(active ? null : key)}
+              sx={{
+                p: 1,
+                borderRadius: 1,
+                background: "white",
+                border: active ? `2px solid ${color}` : "1px solid transparent",
+                cursor: "pointer",
+                opacity: active ? 1 : 0.85,
+                transition: "border-color 0.15s, opacity 0.15s",
+                "&:hover": { opacity: 1 },
+              }}
+            >
+              <Typography sx={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1.1 }}>—</Typography>
+              <Typography sx={{ fontSize: 10, color: t.ink3, mt: 0.3, textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</Typography>
+            </Box>
+          );
+        })}
+      </Box>
+      <Typography sx={{ fontSize: 10, color: t.ink3, mt: 1.2, opacity: 0.7 }}>
+        Counts populate when topic cards + Mini Project Board ship (V2.2.2d/e).
+      </Typography>
+    </Box>
+  );
+}
+
+function AttendeesPanel({ attendees, userByEmail, value, onChange }) {
+  const display = visibleAttendees(attendees);
+  const [clients, vmTeam] = useMemo(() => {
+    const c = [];
+    const v = [];
+    for (const a of display) {
+      const isVm = (a.email || "").toLowerCase().endsWith("@vistamarconsulting.com");
+      (isVm ? v : c).push(a);
+    }
+    const byName = (a, b) => (a.name || a.email || "").localeCompare(b.name || b.email || "");
+    return [c.sort(byName), v.sort(byName)];
+  }, [display]);
+
+  const row = (a, i) => {
+    const userRecord = a.email ? userByEmail[a.email.toLowerCase()] : null;
+    const userForAvatar = userRecord || { displayName: a.name || a.email, email: a.email };
+    const label = a.name || a.email;
+    const active = value === label;
+    return (
+      <Box
+        key={a.email || i}
+        onClick={() => onChange(active ? null : label)}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          px: 1,
+          py: 0.6,
+          borderRadius: 1,
+          cursor: "pointer",
+          background: active ? t.copperFaint : "transparent",
+          border: active ? `1px solid ${t.copper}` : "1px solid transparent",
+          transition: "background 0.15s, border-color 0.15s",
+          "&:hover": { background: active ? t.copperFaint : t.cream2 },
+        }}
+      >
+        <MemberAvatar user={userForAvatar} size={22} border={false} tooltip={false} />
+        <Typography sx={{ flex: 1, fontSize: 12, fontWeight: active ? 600 : 500, color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {label}
+        </Typography>
+        <Typography sx={{ fontSize: 10, color: t.ink3, ml: 0.5 }}>—</Typography>
+      </Box>
+    );
+  };
+
+  return (
+    <Box sx={{ background: t.cream, borderRadius: 2, p: 2, mb: 2 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+        <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper }}>
+          Attendees
+        </Typography>
+        <Tooltip title="Manage Guests — ships in V2.2.2b">
+          <span>
+            <Box
+              component="button"
+              disabled
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0.4,
+                px: 0.8,
+                py: 0.3,
+                borderRadius: 1,
+                border: `1px dashed ${t.cream3}`,
+                background: "transparent",
+                color: t.ink3,
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: "not-allowed",
+              }}
+            >
+              <PersonAdd sx={{ fontSize: 12 }} /> Manage
+            </Box>
+          </span>
+        </Tooltip>
+      </Box>
+
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.3 }}>
+        {clients.map(row)}
+        {clients.length > 0 && vmTeam.length > 0 && (
+          <Divider sx={{ my: 0.6, borderColor: t.cream3 }} />
+        )}
+        {vmTeam.map(row)}
+      </Box>
+
+      {display.length === 0 && (
+        <Typography sx={{ fontSize: 11, color: t.ink3, fontStyle: "italic" }}>
+          No attendees yet.
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+function PreparedByPanel() {
+  return (
+    <Box sx={{ background: t.cream, borderRadius: 2, p: 2 }}>
+      <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper, mb: 0.5 }}>
+        Prepared by
+      </Typography>
+      <Typography sx={{ fontSize: 13, fontWeight: 500, color: t.ink2 }}>Vistamar Consulting</Typography>
+      <Typography sx={{ fontSize: 11, color: t.ink3 }}>{format(new Date(), "MMM d 'at' h:mm a")}</Typography>
+    </Box>
+  );
+}
+
+// ─── Working view — body placeholder for topic cards ───────────────────
+
+function TopicCardsPlaceholder() {
+  return (
+    <Box
+      sx={{
+        py: 5,
         border: `1.5px dashed ${t.cream3}`,
         borderRadius: 2,
         textAlign: "center",
         color: t.ink3,
       }}
     >
-      <Typography sx={{ fontFamily: t.serif, fontSize: 18, color: t.ink2, mb: 1 }}>
-        Working view ships next
+      <Typography sx={{ fontFamily: t.serif, fontSize: 16, color: t.ink2, mb: 0.5 }}>
+        Topic cards ship in V2.2.2d
       </Typography>
-      <Typography sx={{ fontSize: 13 }}>
-        Action Bar · Topic cards with KPI scorecards · Mini Project Board · Sidebar (Meeting Focus, Attendees, Manage Guests)
+      <Typography sx={{ fontSize: 12 }}>
+        Each card: header · KPI scorecards · Talking Points · Mini Project Board · Topic Notes
       </Typography>
-      <Typography sx={{ fontSize: 12, mt: 1, opacity: 0.7 }}>
-        Use Overview for now — edits there persist to the same agenda doc Working view will read.
+      <Typography sx={{ fontSize: 11, mt: 1, opacity: 0.7 }}>
+        Use Overview to edit topics + talking points — same data, same docs.
       </Typography>
     </Box>
   );
@@ -555,6 +853,12 @@ export default function AgendaDetail() {
   const { agendaId } = useParams();
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState("overview");
+  // Working-view filters. Set from Meeting Focus / Attendees clicks; will
+  // drive topic-card auto-expand + Mini Project Board row filtering once
+  // those land. No-op for V2.2.2c — surfacing the state shape now so
+  // V2.2.2d/e wire to the same context.
+  const [meetingFocusFilter, setMeetingFocusFilter] = useState(null);
+  const [attendeeFilter, setAttendeeFilter] = useState(null);
 
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
     agendaId ? `agendas/${agendaId}` : null
@@ -567,6 +871,16 @@ export default function AgendaDetail() {
     agendaId ? `agendas/${agendaId}/topics` : null,
     topicsConstraints
   );
+
+  // Looking up users by email for sidebar avatar coloring.
+  const { data: users } = useCollection("users");
+  const userByEmail = useMemo(() => {
+    const m = {};
+    for (const u of users || []) {
+      if (u.email) m[u.email.toLowerCase()] = u;
+    }
+    return m;
+  }, [users]);
 
   if (agendaLoading) {
     return (
@@ -630,7 +944,35 @@ export default function AgendaDetail() {
           <OpenFloorSection agendaId={agendaId} />
         </Box>
       ) : (
-        <WorkingPlaceholder />
+        <>
+          <ActionBar agenda={agenda} calendarSeries={calendarSeries} />
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "1fr 320px" },
+              gap: 4,
+              px: 4,
+            }}
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <TopicCardsPlaceholder />
+              <Box sx={{ mt: 3 }}>
+                <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
+              </Box>
+              <OpenFloorSection agendaId={agendaId} />
+            </Box>
+            <Box>
+              <MeetingFocusPanel value={meetingFocusFilter} onChange={setMeetingFocusFilter} />
+              <AttendeesPanel
+                attendees={agenda.attendees}
+                userByEmail={userByEmail}
+                value={attendeeFilter}
+                onChange={setAttendeeFilter}
+              />
+              <PreparedByPanel />
+            </Box>
+          </Box>
+        </>
       )}
     </Box>
   );
