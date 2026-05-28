@@ -13,11 +13,11 @@ import { useLocalStorage } from "@uidotdev/usehooks";
 import {
   addDoc,
   collection,
-  deleteDoc,
   doc,
   runTransaction,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 import {
@@ -267,15 +267,19 @@ export default function TaskBoard() {
   // Sort
   const sorted = useMemo(() => {
     if (!sortField) return topLevel;
+    const categoryNameById = new Map(categories.map((c) => [c.id, (c.name || "").toLowerCase()]));
     const getVal = (item) => {
       switch (sortField) {
         case "title": return (item.title || "").toLowerCase();
+        case "id": return item.itemNumber ?? Infinity;
         case "statusId":
         case "priorityId": return item[sortField] ?? 999;
         case "dueDate": return item.dueDate ? tsToDate(item.dueDate).getTime() : Infinity;
         case "updatedAt": return item.updatedAt ? tsToDate(item.updatedAt).getTime() : 0;
         case "createdAt": return item.createdAt ? tsToDate(item.createdAt).getTime() : 0;
-        case "categoryId": return item.categoryId || "zzz";
+        // Sort categories by NAME (the visible label), not by raw id —
+        // raw ids are numeric-string sequences and produce nonsense order.
+        case "categoryId": return categoryNameById.get(item.categoryId) || "zzz";
         default: return item[sortField] ?? "";
       }
     };
@@ -286,7 +290,7 @@ export default function TaskBoard() {
       if (av > bv) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
-  }, [topLevel, sortField, sortDirection]);
+  }, [topLevel, sortField, sortDirection, categories]);
 
   const activeItems = sorted.filter((i) => i.statusId !== DONE && i.statusId !== ARCHIVE);
   const completedItems = sorted.filter((i) => i.statusId === DONE);
@@ -366,12 +370,15 @@ export default function TaskBoard() {
   const handleConfirmDelete = async () => {
     if (!deleteConfirm) return;
     const { item, isSubitem } = deleteConfirm;
-    // Cascade: delete subtasks before the parent so they don't orphan.
+    // Atomic cascade: parent + all children commit together so a
+    // Firestore hiccup can't leave subitems orphaned with no parent.
+    const batch = writeBatch(db);
     if (!isSubitem) {
       const subs = subitemsByParent[item.id] || [];
-      await Promise.all(subs.map((s) => deleteDoc(doc(db, "items", s.id))));
+      subs.forEach((s) => batch.delete(doc(db, "items", s.id)));
     }
-    await deleteDoc(doc(db, "items", item.id));
+    batch.delete(doc(db, "items", item.id));
+    await batch.commit();
     setDeleteConfirm(null);
   };
 
@@ -410,12 +417,19 @@ export default function TaskBoard() {
   const handleConfirmDeleteCategory = async () => {
     const catId = deleteCategoryConfirm;
     if (!catId) return;
-    // Clear categoryId on every item that referenced this category.
+    // Atomic: clear categoryId on every affected item AND delete the
+    // category doc in one batch. Prevents the partial-failure mode where
+    // the category is gone but items still reference its id.
     const affected = allItems.filter((i) => i.categoryId === catId);
-    await Promise.all(affected.map((i) =>
-      updateDoc(doc(db, "items", i.id), { categoryId: null, updatedAt: serverTimestamp() })
-    ));
-    await deleteDoc(doc(db, "categories", catId));
+    const batch = writeBatch(db);
+    affected.forEach((i) => {
+      batch.update(doc(db, "items", i.id), {
+        categoryId: null,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    batch.delete(doc(db, "categories", catId));
+    await batch.commit();
     setDeleteCategoryConfirm(null);
   };
 
@@ -452,13 +466,19 @@ export default function TaskBoard() {
   const handleConfirmDeleteTag = async () => {
     const tagId = deleteTagConfirm;
     if (!tagId) return;
-    // Remove this tagId from every item's tagIds array.
+    // Atomic: strip the tag from every affected item AND delete the tag
+    // doc in one batch — same partial-failure safety as the category path.
     const affected = allItems.filter((i) => (i.tagIds || []).includes(tagId));
-    await Promise.all(affected.map((i) => {
+    const batch = writeBatch(db);
+    affected.forEach((i) => {
       const next = (i.tagIds || []).filter((t) => t !== tagId);
-      return updateDoc(doc(db, "items", i.id), { tagIds: next, updatedAt: serverTimestamp() });
-    }));
-    await deleteDoc(doc(db, "tags", tagId));
+      batch.update(doc(db, "items", i.id), {
+        tagIds: next,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    batch.delete(doc(db, "tags", tagId));
+    await batch.commit();
     setDeleteTagConfirm(null);
   };
 
@@ -480,7 +500,12 @@ export default function TaskBoard() {
   };
 
   const handleAddItem = async () => {
-    if (orgFilter === "all") return;
+    // Fail loud rather than silent-return — the "New item" button is
+    // disabled in the "all orgs" state, so reaching here means the gate
+    // was bypassed (programmatic call, future keyboard shortcut, etc.).
+    if (orgFilter === "all") {
+      throw new Error("handleAddItem requires a specific org filter — pick a Client chip first.");
+    }
     const orgRef = doc(db, "organizations", orgFilter);
     const newItemRef = doc(collection(db, "items"));
     const order = nextTopLevelOrder();
@@ -515,13 +540,16 @@ export default function TaskBoard() {
   };
 
   const handleAddSubitem = async (parentItem) => {
-    const orgRef = doc(db, "organizations", parentItem.organizationId);
     const newItemRef = doc(collection(db, "items"));
     const parentRef = doc(db, "items", parentItem.id);
     const order = nextSubitemOrder(parentItem.id);
+    // Subitem counter is per-parent — SI-N is unique within a single
+    // parent, not across an org. Reading + bumping the counter inside
+    // the transaction also makes the `hasChildren` update race-safe
+    // (we read the parent in-tx, so concurrent writers serialize).
     await runTransaction(db, async (tx) => {
-      const orgSnap = await tx.get(orgRef);
-      const next = orgSnap.data()?.nextSubitemNumber ?? 1;
+      const parentSnap = await tx.get(parentRef);
+      const next = parentSnap.data()?.nextSubitemNumber ?? 1;
       tx.set(newItemRef, {
         organizationId: parentItem.organizationId,
         parentId: parentItem.id,
@@ -543,11 +571,11 @@ export default function TaskBoard() {
         updatedAt: serverTimestamp(),
         order,
       });
-      tx.update(orgRef, { nextSubitemNumber: next + 1 });
-      // Maintain hasChildren denormalization (Cloud Function trigger later).
-      if (!parentItem.hasChildren) {
-        tx.update(parentRef, { hasChildren: true, updatedAt: serverTimestamp() });
-      }
+      tx.update(parentRef, {
+        nextSubitemNumber: next + 1,
+        hasChildren: true,
+        updatedAt: serverTimestamp(),
+      });
     });
   };
 

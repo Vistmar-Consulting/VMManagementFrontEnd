@@ -120,7 +120,6 @@ firestore/
 │     active, archived,
 │     sortOrder,               ← AMENDED 2026-05-27: chip-row ordering
 │     nextItemNumber,          ← AMENDED 2026-05-27: per-org sequential I-N counter
-│     nextSubitemNumber,       ← AMENDED 2026-05-27: per-org SI-N counter
 │     createdAt
 │
 ├── items/{itemId}                       [V1]  unified projects + tasks
@@ -129,8 +128,17 @@ firestore/
 │     hasChildren: bool        ← denormalized; client-side at write-time in V1
 │                                (Cloud Function trigger when Blaze enables)
 │     type: 'project' | 'task' ← derived
-│     itemNumber: int          ← AMENDED 2026-05-27: per-org sequential; allocated
-│                                via runTransaction off org doc counter
+│     itemNumber: int          ← AMENDED 2026-05-27: I-N is per-org (off org doc
+│                                counter); SI-N is per-parent (off parent item doc
+│                                counter). See nextSubitemNumber below.
+│     nextSubitemNumber: int   ← AMENDED 2026-05-27 (later same day): ONLY on top-
+│                                level items with hasChildren=true. Replaces the
+│                                originally-proposed per-org subitem counter — the
+│                                latter produced semantics where SI-3 might appear
+│                                under a parent that only had SI-1, which was
+│                                confusing in the UI. Per-parent SI-N is unique
+│                                within its parent. Allocated atomically via
+│                                runTransaction reading the parent doc.
 │     title, description
 │     statusId: 1|2|4|5|6|7|8  ← AMENDED 2026-05-27: 8 = AI Gen (V3 placeholder);
 │                                6 = Pending; 3 dropped (folded into onHold flag)
@@ -197,7 +205,11 @@ firestore/
 **Key denormalization decisions:**
 
 - **`hasChildren`** on items — V1 maintained client-side at write time inside `runTransaction`. Cloud Function trigger lands at Blaze upgrade.
-- **`itemNumber`** on items — per-org sequential N (I-1, I-2, ... / SI-1, SI-2, ...) allocated atomically via `runTransaction` against `organizations/{slug}.nextItemNumber` (or `nextSubitemNumber`). Stable across deletes — matches Console's `pm.Items.Item_Number`.
+- **`itemNumber`** on items —
+  - **I-N (top-level)**: per-org sequential, allocated atomically via `runTransaction` against `organizations/{slug}.nextItemNumber`.
+  - **SI-N (subitems)**: **per-parent** sequential, allocated atomically via `runTransaction` against the parent item doc's `nextSubitemNumber` field. This means SI-1, SI-2, … are unique within each parent (not across the whole org).
+  - Stable across deletes (counter never decrements) — matches Console's `pm.Items.Item_Number`.
+  - Re-seed safety: the seeder's final counter writes use `Math.max(current, calculated)` so a concurrent live add during a reseed can't be clobbered.
 - **`itemId`** denormalized onto every comment + file doc — enables `collectionGroup("comments")` / `collectionGroup("files")` queries for per-row badge counts without N per-item subscriptions.
 - **Attendees as array on agenda doc** (V2) — 5–15 per meeting, well under 1 MB.
 - **Topics as subcollection** (V2) — they have their own threaded comments and can be long.

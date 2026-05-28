@@ -10,6 +10,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  runTransaction,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -89,6 +90,16 @@ async function seedItems({ createdBy }) {
   const portable = PM_ITEMS.filter((i) => ORG_SLUG_BY_LEGACY_ID[i.Org_Id]);
   const childParents = deriveHasChildrenMap(portable);
 
+  // Pre-count children per archive parent — used to initialize
+  // `nextSubitemNumber` on each parent doc as it's written.
+  const childCountByParentArchiveId = {};
+  for (const item of portable) {
+    if (item.Parent_Item_Id != null) {
+      childCountByParentArchiveId[item.Parent_Item_Id] =
+        (childCountByParentArchiveId[item.Parent_Item_Id] || 0) + 1;
+    }
+  }
+
   // Generate fractional rank order keys ascending across the batch.
   const orders = [];
   let prev = null;
@@ -105,11 +116,15 @@ async function seedItems({ createdBy }) {
     idMap.set(item.Id, doc(collection(db, "items")).id);
   }
 
-  // Track per-org item / subitem number sequences. After seeding, each
-  // org doc gets `nextItemNumber` and `nextSubitemNumber` so future
-  // addItem / addSubitem transactions can increment from there.
+  // Per-org item counter (top-level I-N). After seeding, each org doc
+  // gets `nextItemNumber` written atomically via Math.max so concurrent
+  // live adds during a reseed are not clobbered.
   const itemCounters = {};   // { [orgSlug]: nextNumber }
-  const subitemCounters = {};
+
+  // Per-parent subitem counter (SI-N is unique within parent, not org).
+  // Keyed by the parent's new Firestore doc id; written onto the parent
+  // doc as `nextSubitemNumber` in the same batch.
+  const subitemCountersByParentDocId = {};
 
   // Write in batches of 400 (Firestore commit limit is 500).
   let batch = writeBatch(db);
@@ -127,12 +142,13 @@ async function seedItems({ createdBy }) {
       itemCounters[orgSlug] = (itemCounters[orgSlug] || 0) + 1;
       itemNumber = itemCounters[orgSlug];
     } else {
-      subitemCounters[orgSlug] = (subitemCounters[orgSlug] || 0) + 1;
-      itemNumber = subitemCounters[orgSlug];
+      subitemCountersByParentDocId[parentId] =
+        (subitemCountersByParentDocId[parentId] || 0) + 1;
+      itemNumber = subitemCountersByParentDocId[parentId];
     }
 
     const ref = doc(db, "items", docId);
-    batch.set(ref, {
+    const docData = {
       organizationId: orgSlug,
       parentId,
       hasChildren,
@@ -153,7 +169,13 @@ async function seedItems({ createdBy }) {
       updatedAt: serverTimestamp(),
       order: orders[i],
       _seedMarker: "port-seed-2026-05-14",
-    });
+    };
+    // Top-level items that will have children get their subitem counter
+    // pre-initialized so the first live-added SI starts at the right spot.
+    if (parentId === null && hasChildren) {
+      docData.nextSubitemNumber = (childCountByParentArchiveId[src.Id] || 0) + 1;
+    }
+    batch.set(ref, docData);
     opsInBatch += 1;
     if (opsInBatch >= 400) {
       await batch.commit();
@@ -163,32 +185,32 @@ async function seedItems({ createdBy }) {
   }
   if (opsInBatch > 0) await batch.commit();
 
-  // Stamp the next-number counters on each org doc so future adds can
-  // continue the sequence atomically via runTransaction.
-  const orgSlugs = new Set([
-    ...Object.keys(itemCounters),
-    ...Object.keys(subitemCounters),
-  ]);
+  // Stamp `nextItemNumber` on each org doc transactionally with Math.max
+  // semantics: if a concurrent live add already bumped the counter past
+  // the seeded value, leave it alone — we never want the counter to go
+  // backwards, which would collide with already-assigned itemNumbers.
+  const orgSlugs = new Set(Object.keys(itemCounters));
   for (const slug of orgSlugs) {
-    await setDoc(
-      doc(db, "organizations", slug),
-      {
-        nextItemNumber: (itemCounters[slug] || 0) + 1,
-        nextSubitemNumber: (subitemCounters[slug] || 0) + 1,
-      },
-      { merge: true },
-    );
+    const orgRef = doc(db, "organizations", slug);
+    const seeded = (itemCounters[slug] || 0) + 1;
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(orgRef);
+      const current = snap.exists() ? (snap.data().nextItemNumber ?? 0) : 0;
+      const merged = Math.max(current, seeded);
+      tx.set(orgRef, { nextItemNumber: merged }, { merge: true });
+    });
   }
-  // Also initialize counters on orgs that got NO items, so a future
-  // first add starts at 1 cleanly without a missing-field race.
+  // Also initialize `nextItemNumber: 1` on orgs that got NO seeded items,
+  // so a future first add starts cleanly. Same Math.max guard.
   for (const seed of CLIENT_ORG_SEEDS) {
-    if (!orgSlugs.has(seed.slug)) {
-      await setDoc(
-        doc(db, "organizations", seed.slug),
-        { nextItemNumber: 1, nextSubitemNumber: 1 },
-        { merge: true },
-      );
-    }
+    if (orgSlugs.has(seed.slug)) continue;
+    const orgRef = doc(db, "organizations", seed.slug);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(orgRef);
+      const current = snap.exists() ? (snap.data().nextItemNumber ?? 0) : 0;
+      const merged = Math.max(current, 1);
+      tx.set(orgRef, { nextItemNumber: merged }, { merge: true });
+    });
   }
 
   return portable.length;

@@ -583,7 +583,7 @@ Only after all 16 boxes check, write the slice summary in `dev/sessions/v0_1_0_A
 4. **Priority defaults** — new items default to which priority? Recommendation: `null` (grey "—" pill), matches archive's "blank row" pattern.
 5. **Multi-assignee maximum** — overlapping avatars get visually cramped beyond ~4. Cap visible at 3 + "+N" chip per archive pattern. Confirm.
 6. **Comments author-only edit** — confirm. Spec §5 said author-only on comments; archive had no such guard. **Recommend author-only** for V1 (matches Firestore rule already in place).
-7. **Drag-and-drop library** — `react-beautiful-dnd` is in `package.json` already (matches archive). Confirm it's the chosen lib (alternative would be `@dnd-kit` which is more modern). Default: stick with `react-beautiful-dnd` for parity.
+7. **Drag-and-drop library** — *originally* `react-beautiful-dnd` for archive parity. Swapped to `@hello-pangea/dnd` post-port (2026-05-27 code review) because Atlassian archived the original in 2022 and it warns under React 18 StrictMode. API is a drop-in fork.
 
 ---
 
