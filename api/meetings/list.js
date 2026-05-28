@@ -12,10 +12,28 @@
 //
 // Spec: docs/specs/2026-04-28-m365-primary-meeting-scheduler-design.md
 
-import { listEvents } from "./_lib/google-calendar.js";
+import { listEvents, listEventsAcrossSubjects } from "./_lib/google-calendar.js";
 import { listEventResponses, graphResponseToGoogle } from "./_lib/graph-events.js";
 import { requireAuth } from "./_lib/auth.js";
 import { applyCors } from "./_lib/cors.js";
+
+// Subjects we impersonate via DWD to aggregate meetings. meetings@ first so
+// its copies of co-attended events are canonical. Add additional Workspace
+// users via the MEETINGS_LIST_SUBJECTS env var (comma-separated) — useful when
+// adding/removing Vistamar team members without a code deploy.
+const DEFAULT_SUBJECTS = [
+  "meetings@vistamarconsulting.com",
+  "trobinson@vistamarconsulting.com",  // Tate organizes VM Weekly Touch Base + Unio Weekly Marketing
+  "ctucksherman@vistamarconsulting.com", // Cedric organizes Vistamar Platform Dev updates
+];
+
+function resolveSubjects() {
+  const envList = process.env.MEETINGS_LIST_SUBJECTS;
+  if (envList) {
+    return envList.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return DEFAULT_SUBJECTS;
+}
 
 function mergeRsvps(events, graphRsvpsByEventId) {
   return events.map((ev) => {
@@ -52,7 +70,14 @@ export default async function handler(req, res) {
     // VMManagement uses slug-based orgIds (strings, e.g. 'vistamar', 'total-vision');
     // Console used numeric. Pass through as-is — null/empty = "all orgs" (FE filters).
     const orgId = org_id || null;
-    const events = await listEvents({ orgId, start, end });
+
+    // Aggregate across multiple Workspace users' calendars. The 4 meetings@-
+    // organized series + Tate's VM Weekly Touch Base + Tate's Unio Weekly +
+    // Cedric's Vistamar Platform Dev all surface in one merged, deduped list.
+    const subjects = resolveSubjects();
+    const events = subjects.length > 1
+      ? await listEventsAcrossSubjects({ subjects, orgId, start, end })
+      : await listEvents({ orgId, start, end, subject: subjects[0] });
 
     // Best-effort RSVP enrichment from Graph. If Graph fails, return Google-
     // only data with possibly-stale statuses rather than 500ing the whole list.

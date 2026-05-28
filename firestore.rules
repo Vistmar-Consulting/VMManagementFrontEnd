@@ -117,5 +117,60 @@ service cloud.firestore {
       allow read: if isActiveUser();
       allow write: if isAdmin();
     }
+
+    // V2.1.1 — Meeting scheduler / agendas.
+    //
+    // Data model (matches Console's pm.Calendar_Series ↔ pm.Meeting_Agendas
+    // FK shape; see docs/MEETING_AGENDAS_PAGE_REFERENCE.md §9):
+    //
+    //   calendar_series/{seriesId}     — one doc per meeting series (recurring
+    //                                    OR ad-hoc). Holds Graph/Google IDs +
+    //                                    recurrence + default attendees.
+    //   agendas/{agendaId}             — one doc per agenda. References its
+    //                                    calendar_series via calendarSeriesId.
+    //                                    Recurring series share one agenda
+    //                                    (the running agenda, updated each
+    //                                    instance). Ad-hoc has 1:1.
+    //
+    // Direct-FE-writable fields: title, notes, status, topics, organizationId,
+    // free-text display fields. Anything that mutates Graph/Google or
+    // depends on an external roundtrip (event IDs, recurrence, meetingDatetime
+    // on reschedule, attendee changes) MUST go through a callable — enforced
+    // via denylist on update.
+    //
+    // Create is open because the FE-side reconciliation worker auto-binds
+    // newly-discovered Graph events into Firestore. The worker writes Graph
+    // IDs at create time; lockdown applies to subsequent updates.
+
+    // V2.1.1 rules are intentionally permissive (read/create/update for any
+    // active VM user). The FE's only meeting-mutation surface is the
+    // RescheduleDialog, which routes through /api/meetings/reschedule for
+    // the Graph + Google writes and then mirrors the new datetime to
+    // Firestore. V2.2 re-adds the Graph-ID denylist when create / cancel /
+    // attendee UIs land — those would otherwise let a client diverge
+    // Firestore from external state.
+    match /calendar_series/{seriesId} {
+      allow read, create, update: if isActiveUser();
+      allow delete: if isAdmin();
+    }
+
+    match /agendas/{agendaId} {
+      allow read, create, update: if isActiveUser();
+      allow delete: if isAdmin();
+
+      // Topic cards live under each agenda. Pure Firestore state (no
+      // Graph/Google sync), so writes are open to any active VM user.
+      match /topics/{topicId} {
+        allow read, create, update, delete: if isActiveUser();
+
+        match /comments/{commentId} {
+          allow read: if isActiveUser();
+          allow create: if isActiveUser()
+                        && request.resource.data.authorId == request.auth.uid;
+          allow update, delete: if isActiveUser()
+                                && resource.data.authorId == request.auth.uid;
+        }
+      }
+    }
   }
 }

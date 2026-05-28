@@ -16,24 +16,30 @@
 import { google } from "googleapis";
 import { getGoogleCredentials } from "./keyvault.js";
 
-const CALENDAR_ID = "primary"; // meetings@'s primary calendar
+const CALENDAR_ID = "primary"; // primary calendar of whichever subject is impersonated
 const IMPERSONATE = "meetings@vistamarconsulting.com";
 const SCOPES = ["https://www.googleapis.com/auth/calendar"];
 
-let cachedClient = null;
+// DWD impersonation cache. Most write operations always target meetings@;
+// read aggregation (list events across multiple Workspace users) needs to
+// switch subject. Each subject gets its own cached calendar client because
+// the JWT subject is baked into the token.
+const cachedClientBySubject = new Map();
 
-async function getCalendar() {
-  if (cachedClient) return cachedClient;
+async function getCalendar(subject = IMPERSONATE) {
+  const existing = cachedClientBySubject.get(subject);
+  if (existing) return existing;
   const creds = await getGoogleCredentials();
   const auth = new google.auth.JWT({
     email: creds.client_email,
     key: creds.private_key,
     scopes: SCOPES,
-    subject: IMPERSONATE,
+    subject,
   });
   await auth.authorize();
-  cachedClient = google.calendar({ version: "v3", auth });
-  return cachedClient;
+  const client = google.calendar({ version: "v3", auth });
+  cachedClientBySubject.set(subject, client);
+  return client;
 }
 
 function buildDescription(teamsUrl, body) {
@@ -191,8 +197,13 @@ export async function createEvent({
   };
 }
 
-export async function listEvents({ orgId, start, end }) {
-  const cal = await getCalendar();
+// Read events from a single subject's primary calendar. `subject` defaults to
+// meetings@; pass another Workspace user's address (e.g. trobinson@,
+// ctucksherman@) to read THEIR primary calendar via DWD impersonation. The
+// `organizer_email` field is stamped onto each returned event so the FE /
+// reconciliation worker can tell which user's calendar it came from.
+export async function listEvents({ orgId, start, end, subject = IMPERSONATE }) {
+  const cal = await getCalendar(subject);
   const listParams = {
     calendarId: CALENDAR_ID,
     timeMin: new Date(start).toISOString(),
@@ -220,12 +231,62 @@ export async function listEvents({ orgId, start, end }) {
     end_date: e.end?.dateTime || e.end?.date,
     type: e.recurringEventId ? "recurring" : "single",
     teams_url: e.extendedProperties?.private?.teamsUrl || e.location || null,
+    organizer_email: e.organizer?.email || null,
+    source_calendar: subject,
     attendees: (e.attendees || []).map((a) => ({
       email: a.email,
       name: a.displayName || a.email,
       status: a.responseStatus || "needsAction",
     })),
   }));
+}
+
+// Aggregate `listEvents` across multiple Workspace users' calendars and dedupe
+// by iCalUID. The same meeting is typically on every attendee's calendar; the
+// canonical copy is whichever calendar the organizer's address matches —
+// otherwise we keep the first one seen (lookup-order preference).
+//
+// Subjects: array of Workspace user emails to impersonate. Order matters for
+// dedupe tie-breaking — list `meetings@` first so its copies are the
+// canonical ones for meetings@-organized events.
+export async function listEventsAcrossSubjects({ subjects, orgId, start, end }) {
+  if (!Array.isArray(subjects) || subjects.length === 0) {
+    return listEvents({ orgId, start, end });
+  }
+  const results = await Promise.allSettled(
+    subjects.map((subject) => listEvents({ orgId, start, end, subject }))
+  );
+  const seenByKey = new Map();
+  const fallbackOrder = new Map();
+  let order = 0;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status !== "fulfilled") {
+      console.error(`google-calendar.listEventsAcrossSubjects: subject ${subjects[i]} failed`, r.reason?.message || r.reason);
+      continue;
+    }
+    for (const ev of r.value) {
+      // Prefer the iCalUID; fall back to series_id then event_id if not present.
+      const key = ev.iCalUID || ev.series_id || ev.event_id;
+      if (!key) continue;
+      const incomingIsOrganizer = ev.organizer_email && subjects[i] && ev.organizer_email.toLowerCase() === subjects[i].toLowerCase();
+      const existing = seenByKey.get(key);
+      // Replace existing only if this subject is the organizer's calendar — that
+      // gives us the canonical copy with the cleanest extendedProperties and
+      // up-to-date attendee responses.
+      if (!existing || incomingIsOrganizer) {
+        seenByKey.set(key, ev);
+        if (!fallbackOrder.has(key)) {
+          fallbackOrder.set(key, order++);
+        }
+      }
+    }
+  }
+  return Array.from(seenByKey.values()).sort((a, b) => {
+    const ad = a.date ? new Date(a.date).getTime() : 0;
+    const bd = b.date ? new Date(b.date).getTime() : 0;
+    return ad - bd;
+  });
 }
 
 async function findInstanceByDate(cal, eventId, date) {

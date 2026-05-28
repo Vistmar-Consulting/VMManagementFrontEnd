@@ -8,7 +8,7 @@
 // Console's "Open Agenda" primary action for "Reschedule" since the agenda
 // detail pages don't exist yet (V2.3).
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import {
@@ -47,8 +47,10 @@ import {
 } from "date-fns";
 
 import { useCollection } from "../hooks/useCollection.js";
+import { useAuth } from "../contexts/AuthContext.jsx";
 import { listMeetings } from "../lib/meetingsApi.js";
 import { groupRecurringMeetings, detectCadence, visibleAttendees } from "../lib/meetingHelpers.js";
+import { reconcileMeetingsToFirestore } from "../lib/reconcileMeetings.js";
 import MemberAvatar from "../components/MemberAvatar.jsx";
 import RescheduleDialog from "../components/RescheduleDialog.jsx";
 
@@ -215,8 +217,15 @@ function AdHocCard({ meeting, userByEmail, onClick }) {
 // ─── Main page ─────────────────────────────────────────────────────────
 
 export default function Calendar() {
+  const { user } = useAuth();
   const { data: orgs } = useCollection("organizations");
   const { data: users } = useCollection("users");
+  // V2.1.1 — Firestore subscriptions for the substrate. Render is still
+  // API-driven below; these subs warm the local cache so V2.2 (Firestore-
+  // primary reads) flips with no further wiring. They also feed the joined
+  // view used by RescheduleDialog to find the matching agenda doc by id.
+  const { data: calendarSeriesDocs } = useCollection("calendar_series");
+  const { data: agendaDocs } = useCollection("agendas");
   const [orgFilter, setOrgFilter] = useLocalStorage("vm-calendar-org-filter", "all");
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [popoverAnchor, setPopoverAnchor] = useState(null);
@@ -242,14 +251,72 @@ export default function Calendar() {
   });
   const meetings = meetingsQuery.data?.meetings || [];
 
+  // V2.1.1 reconciliation worker — runs after each successful API fetch.
+  // Diffs the API response against calendar_series + agendas in Firestore
+  // and mints / updates docs as needed (auto-bind pattern from Console's
+  // autoBindCalendarMeeting). Ref-guarded to avoid re-running on stale data
+  // when an in-flight reconcile finishes after the user has navigated months.
+  const reconciledKeyRef = useRef(null);
+  useEffect(() => {
+    if (!meetingsQuery.data || !user?.uid || !orgs || orgs.length === 0) return;
+    const key = `${queryWindow.start}:${queryWindow.end}:${meetings.length}`;
+    if (reconciledKeyRef.current === key) return;
+    reconciledKeyRef.current = key;
+    (async () => {
+      try {
+        const stats = await reconcileMeetingsToFirestore({
+          meetings,
+          orgs,
+          uid: user.uid,
+        });
+        if (stats.unassigned > 0 && import.meta.env.DEV) {
+          console.warn(
+            `[reconcileMeetings] ${stats.unassigned} meetings missing an organizations[].consoleOrgId match. ` +
+            `Set consoleOrgId on each org doc (Firebase console) to enable per-org filtering.`
+          );
+        }
+      } catch (err) {
+        console.error("[reconcileMeetings] failed:", err);
+      }
+    })();
+  }, [meetingsQuery.data, meetings, orgs, user?.uid, queryWindow.start, queryWindow.end]);
+
+  // Build a Graph→Firestore-agenda lookup so RescheduleDialog can pass the
+  // matching agenda doc through and write its meetingDatetime field after
+  // the API call succeeds. Keyed by graphEventId then googleEventId.
+  const agendaByExternalId = useMemo(() => {
+    const map = {};
+    for (const a of agendaDocs || []) {
+      if (a.graphEventId) map[a.graphEventId] = a;
+      if (a.googleEventId) map[a.googleEventId] = a;
+    }
+    return map;
+  }, [agendaDocs]);
+
   // Client-side org filter applied to all three sections. NOTE legacy
   // meetings@'s events still carry numeric Console-era orgIds in
   // extendedProperties; Management orgs use slugs. Until a one-shot rewrite
   // runs, only "All" matches every existing meeting.
+  // Build the numeric Console-orgId → slug lookup from the organizations
+  // collection. Each org doc carries an optional `consoleOrgId` number set by
+  // an admin during V2.1.1 bootstrap (see DEFERRED.md). Meetings whose
+  // numeric org_id has no matching org doc fall through as "unassigned" and
+  // only appear under the "All" chip until manually assigned.
+  const consoleOrgLookup = useMemo(() => {
+    const map = {};
+    for (const o of orgs || []) {
+      if (o.consoleOrgId != null) map[String(o.consoleOrgId)] = o.id;
+    }
+    return map;
+  }, [orgs]);
+
   const filtered = useMemo(() => {
     if (orgFilter === "all") return meetings;
-    return meetings.filter((m) => m.org_id === orgFilter);
-  }, [meetings, orgFilter]);
+    return meetings.filter((m) => {
+      const slug = m.org_id != null ? consoleOrgLookup[String(m.org_id)] : null;
+      return slug === orgFilter;
+    });
+  }, [meetings, orgFilter, consoleOrgLookup]);
 
   // Recurring series — derived from filtered list
   const recurringSeries = useMemo(() => groupRecurringMeetings(filtered), [filtered]);
@@ -754,6 +821,12 @@ export default function Calendar() {
       {rescheduleTarget && (
         <RescheduleDialog
           meeting={rescheduleTarget}
+          agenda={
+            agendaByExternalId[rescheduleTarget.event_id]
+            || agendaByExternalId[rescheduleTarget.m365EventId]
+            || agendaByExternalId[rescheduleTarget.series_id]
+            || null
+          }
           onClose={() => setRescheduleTarget(null)}
           onSuccess={() => {
             setRescheduleTarget(null);

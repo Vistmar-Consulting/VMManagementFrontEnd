@@ -1,8 +1,13 @@
 // src/components/RescheduleDialog.jsx
 //
-// V2.1 ship target. Lets a signed-in VM user move a single instance or an
-// entire series. Dual-write: backend PATCHes Graph first (Graph fans .ics
-// updates to all attendees), then mirrors to Google.
+// V2.1.1 dual-write reschedule:
+//   1. POST /api/meetings/reschedule (PATCHes Graph → Google mirror)
+//   2. On success, write the new meetingDatetime + rescheduledFrom to the
+//      Firestore agenda doc that matches this meeting (joined via
+//      graphEventId or googleEventId).
+//
+// Step 2 makes Firestore the source of truth for app state. Future agenda
+// detail views read meetingDatetime from the agenda doc, not the API.
 
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -24,12 +29,16 @@ import {
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
 import { format } from "date-fns";
+import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
 import { rescheduleMeeting } from "../lib/meetingsApi.js";
+import { db } from "../firebase.js";
+import { useAuth } from "../contexts/AuthContext.jsx";
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 
-export default function RescheduleDialog({ meeting, onClose, onSuccess }) {
+export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }) {
+  const { user } = useAuth();
   const originalStart = useMemo(
     () => (meeting?.date ? new Date(meeting.date) : new Date()),
     [meeting?.date]
@@ -55,8 +64,28 @@ export default function RescheduleDialog({ meeting, onClose, onSuccess }) {
   const [newTime, setNewTime] = useState(originalStart);
   const [error, setError] = useState(null);
 
+  // Dual-write: call API, then mirror the new meetingDatetime to the
+  // matching Firestore agenda doc. Failure to update Firestore doesn't roll
+  // back the API write (Graph + Google are already moved) — it surfaces as
+  // a warning. Reconciliation will pick up the drift on next page load.
   const mutation = useMutation({
-    mutationFn: rescheduleMeeting,
+    mutationFn: async (vars) => {
+      const apiResult = await rescheduleMeeting(vars);
+      if (agenda?.id) {
+        try {
+          await updateDoc(doc(db, "agendas", agenda.id), {
+            meetingDatetime: new Date(`${vars.new_date_iso}`),
+            durationMinutes: vars.durationMinutes,
+            rescheduledFrom: agenda.meetingDatetime || null,
+            updatedAt: serverTimestamp(),
+            updatedByUid: user?.uid || null,
+          });
+        } catch (firestoreErr) {
+          console.error("[RescheduleDialog] Firestore agenda update failed (Graph + Google succeeded):", firestoreErr);
+        }
+      }
+      return apiResult;
+    },
     onSuccess: () => {
       setError(null);
       onSuccess?.();
@@ -73,6 +102,14 @@ export default function RescheduleDialog({ meeting, onClose, onSuccess }) {
     const dateStr = format(newDate, "yyyy-MM-dd");
     const timeStr = `${pad2(newTime.getHours())}:${pad2(newTime.getMinutes())}`;
     const originalDateStr = format(originalStart, "yyyy-MM-dd");
+    // Construct a wall-clock ISO for the Firestore Timestamp write — uses the
+    // local browser TZ same way the picker captured the inputs. Pacific is
+    // hardcoded server-side in the API; Firestore stores the absolute instant.
+    const newDateIso = (() => {
+      const d = new Date(newDate);
+      d.setHours(newTime.getHours(), newTime.getMinutes(), 0, 0);
+      return d.toISOString();
+    })();
 
     // For recurring meetings, the eventId passed to the backend MUST be the
     // recurring master id (series_id). Google's events.instances() rejects
@@ -92,6 +129,7 @@ export default function RescheduleDialog({ meeting, onClose, onSuccess }) {
       timezone: "America/Los_Angeles",
       durationMinutes: originalDurationMinutes,
       orgId: meeting.org_id || null,
+      new_date_iso: newDateIso,  // passed through for Firestore write only
     });
   };
 
