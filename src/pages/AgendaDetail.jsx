@@ -36,8 +36,11 @@ import {
   Schedule as ScheduleIcon,
 } from "@mui/icons-material";
 
+import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
+
 import MemberAvatar from "../components/MemberAvatar.jsx";
 import MiniProjectBoard from "../components/MiniProjectBoard.jsx";
+import OrgAssignDialog from "../components/OrgAssignDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
 import { format, parseISO } from "date-fns";
@@ -119,13 +122,25 @@ function ViewToggle({ value, onChange }) {
   );
 }
 
-function AgendaHero({ agenda, agendaId, calendarSeries, viewMode, setViewMode }) {
+function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewMode }) {
   const { user } = useAuth();
   const [titleDraft, setTitleDraft] = useState(agenda?.title || "");
+  const [orgPickerOpen, setOrgPickerOpen] = useState(false);
 
   useEffect(() => {
     setTitleDraft(agenda?.title || "");
   }, [agenda?.title]);
+
+  const seriesOrgId = calendarSeries?.organizationId || null;
+  const seriesId = calendarSeries?.id || agenda?.calendarSeriesId || agendaId;
+  const orgName = useMemo(() => {
+    if (!seriesOrgId) return null;
+    return (orgs || []).find((o) => o.id === seriesOrgId)?.name || seriesOrgId;
+  }, [orgs, seriesOrgId]);
+  const orgAccent = useMemo(() => {
+    if (!seriesOrgId) return null;
+    return (orgs || []).find((o) => o.id === seriesOrgId)?.accentColor || null;
+  }, [orgs, seriesOrgId]);
 
   const persistTitle = async () => {
     const trimmed = titleDraft.trim();
@@ -180,6 +195,36 @@ function AgendaHero({ agenda, agendaId, calendarSeries, viewMode, setViewMode })
           </Typography>
         )}
       </Box>
+
+      {/* Organization chip — shows the assigned org name with accentColor
+          when set, or an amber "Unassigned" badge when null. Click to open
+          the picker. Without an assignment the embedded MiniProjectBoard
+          renders nothing even when categories are set. */}
+      <Box sx={{ display: "flex", justifyContent: "center", mt: 1.5 }}>
+        <Chip
+          onClick={() => setOrgPickerOpen(true)}
+          size="small"
+          label={seriesOrgId ? orgName : "Unassigned · click to assign"}
+          sx={{
+            bgcolor: seriesOrgId ? (orgAccent || "primary.main") : "rgba(239,108,0,0.12)",
+            color: seriesOrgId ? "#fff" : "#ef6c00",
+            fontWeight: 600,
+            fontSize: 11,
+            cursor: "pointer",
+            border: seriesOrgId ? "none" : "1px dashed #ef6c00",
+            "&:hover": { opacity: 0.85 },
+          }}
+        />
+      </Box>
+
+      {orgPickerOpen && seriesId && (
+        <OrgAssignDialog
+          seriesId={seriesId}
+          currentOrgId={seriesOrgId}
+          orgs={orgs}
+          onClose={() => setOrgPickerOpen(false)}
+        />
+      )}
     </Box>
   );
 }
@@ -1301,8 +1346,10 @@ export default function AgendaDetail() {
     topicsConstraints
   );
 
-  // Looking up users by email for sidebar avatar coloring.
+  // Looking up users by email for sidebar avatar coloring + orgs for the
+  // hero's org badge + assignment picker.
   const { data: users } = useCollection("users");
+  const { data: orgs } = useCollection("organizations");
   const userByEmail = useMemo(() => {
     const m = {};
     for (const u of users || []) {
@@ -1350,6 +1397,33 @@ export default function AgendaDetail() {
 
   const lastTopicSort = topics?.length ? topics[topics.length - 1].sortOrder ?? 0 : 0;
 
+  // Drag-reorder topics. Uses simple numeric midpoint sort orders to match
+  // the existing Enter-insert +0.5 pattern from V2.2.1. The Firestore
+  // subscription re-orders the list after the write lands.
+  const handleTopicDragEnd = async (result) => {
+    if (!result?.destination) return;
+    const srcIdx = result.source.index;
+    const dstIdx = result.destination.index;
+    if (srcIdx === dstIdx || !topics) return;
+    const moved = topics[srcIdx];
+    if (!moved) return;
+    const reordered = [...topics];
+    reordered.splice(srcIdx, 1);
+    reordered.splice(dstIdx, 0, moved);
+    const prev = reordered[dstIdx - 1]?.sortOrder;
+    const next = reordered[dstIdx + 1]?.sortOrder;
+    let newSort;
+    if (prev == null && next == null) newSort = 1;
+    else if (prev == null) newSort = next - 1;
+    else if (next == null) newSort = prev + 1;
+    else newSort = (prev + next) / 2;
+    await updateDoc(doc(db, "agendas", agendaId, "topics", moved.id), {
+      sortOrder: newSort,
+      updatedAt: serverTimestamp(),
+      updatedByUid: user?.uid || null,
+    });
+  };
+
   return (
     <Box sx={{ maxWidth: 1280, mx: "auto", pb: 8 }}>
       <Box sx={{ pt: 2, px: 4 }}>
@@ -1370,6 +1444,7 @@ export default function AgendaDetail() {
         agenda={agenda}
         agendaId={agendaId}
         calendarSeries={calendarSeries}
+        orgs={orgs}
         viewMode={viewMode}
         setViewMode={setViewMode}
       />
@@ -1377,9 +1452,32 @@ export default function AgendaDetail() {
       {viewMode === "overview" ? (
         <Box sx={{ px: 4 }}>
           <AttendeeChipStrip attendees={agenda.attendees} />
-          {(topics || []).map((topic) => (
-            <OverviewTopic key={topic.id} topic={topic} agendaId={agendaId} />
-          ))}
+          <DragDropContext onDragEnd={handleTopicDragEnd}>
+            <Droppable droppableId="overview-topics">
+              {(droppableProvided) => (
+                <Box ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+                  {(topics || []).map((topic, idx) => (
+                    <Draggable key={topic.id} draggableId={topic.id} index={idx}>
+                      {(dragProvided, snapshot) => (
+                        <Box
+                          ref={dragProvided.innerRef}
+                          {...dragProvided.draggableProps}
+                          {...dragProvided.dragHandleProps}
+                          sx={{
+                            background: snapshot.isDragging ? "rgba(184,115,51,0.04)" : "transparent",
+                            borderRadius: 1,
+                          }}
+                        >
+                          <OverviewTopic topic={topic} agendaId={agendaId} />
+                        </Box>
+                      )}
+                    </Draggable>
+                  ))}
+                  {droppableProvided.placeholder}
+                </Box>
+              )}
+            </Droppable>
+          </DragDropContext>
           <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
           <OpenFloorSection agendaId={agendaId} />
         </Box>
@@ -1395,20 +1493,42 @@ export default function AgendaDetail() {
             }}
           >
             <Box sx={{ minWidth: 0 }}>
-              {(topics || []).map((topic) => (
-                <AgendaTopicCard
-                  key={topic.id}
-                  topic={topic}
-                  agendaId={agendaId}
-                  organizationId={organizationId}
-                  items={allItems}
-                  users={users}
-                  categories={categories}
-                  tags={tags}
-                  focusFilter={meetingFocusFilter}
-                  attendeeFilter={attendeeFilter}
-                />
-              ))}
+              <DragDropContext onDragEnd={handleTopicDragEnd}>
+                <Droppable droppableId="working-topics">
+                  {(droppableProvided) => (
+                    <Box ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+                      {(topics || []).map((topic, idx) => (
+                        <Draggable key={topic.id} draggableId={topic.id} index={idx}>
+                          {(dragProvided, snapshot) => (
+                            <Box
+                              ref={dragProvided.innerRef}
+                              {...dragProvided.draggableProps}
+                              {...dragProvided.dragHandleProps}
+                              sx={{
+                                background: snapshot.isDragging ? "rgba(184,115,51,0.04)" : "transparent",
+                                borderRadius: 1.5,
+                              }}
+                            >
+                              <AgendaTopicCard
+                                topic={topic}
+                                agendaId={agendaId}
+                                organizationId={organizationId}
+                                items={allItems}
+                                users={users}
+                                categories={categories}
+                                tags={tags}
+                                focusFilter={meetingFocusFilter}
+                                attendeeFilter={attendeeFilter}
+                              />
+                            </Box>
+                          )}
+                        </Draggable>
+                      ))}
+                      {droppableProvided.placeholder}
+                    </Box>
+                  )}
+                </Droppable>
+              </DragDropContext>
               <Box sx={{ mt: 2 }}>
                 <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
               </Box>
