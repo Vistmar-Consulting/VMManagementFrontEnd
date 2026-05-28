@@ -95,10 +95,11 @@ export default function SignIn() {
         if (initGoogle()) clearInterval(interval);
       }, 100);
       // Safety: stop polling after 10s.
-      setTimeout(() => clearInterval(interval), 10000);
+      const safetyTimeout = setTimeout(() => clearInterval(interval), 10000);
       return () => {
         cancelled = true;
         clearInterval(interval);
+        clearTimeout(safetyTimeout);
       };
     }
     return () => {
