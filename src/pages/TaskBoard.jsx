@@ -63,6 +63,7 @@ import { useCollection } from "../hooks/useCollection.js";
 import { useCollectionGroup } from "../hooks/useCollectionGroup.js";
 import { useItems } from "../hooks/useItems.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
+import { tsToDate } from "../utils/firestoreTime.js";
 
 const STATUSES = [
   // AI Gen first — items AI-suggested from upcoming Fireflies / agenda
@@ -88,13 +89,6 @@ const SCORECARDS = [
   { key: "overdue",    label: "Overdue",      color: "#d32f2f", match: (i) => i.dueDate && tsToDate(i.dueDate) < new Date() && i.statusId !== DONE && i.statusId !== ARCHIVE },
   { key: "dueThisWk",  label: "Due This Wk",  color: "#ef6c00", match: (i) => i.dueDate && isDueThisWeek(tsToDate(i.dueDate)) && i.statusId !== DONE && i.statusId !== ARCHIVE },
 ];
-
-function tsToDate(ts) {
-  if (!ts) return null;
-  if (ts.toDate) return ts.toDate();
-  if (ts instanceof Date) return ts;
-  return new Date(ts);
-}
 
 // "Due This Wk" = dueDate falls within the CURRENT business week,
 // Monday 00:00 → Friday 23:59:59 (local time). Weekend due dates and

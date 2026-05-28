@@ -43,15 +43,9 @@ import MemberAvatar from "./MemberAvatar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { db } from "../firebase.js";
 import { useCollection } from "../hooks/useCollection.js";
+import { tsToDate } from "../utils/firestoreTime.js";
 
 const COMMENTS_ORDER = Object.freeze([orderBy("createdAt", "asc")]);
-
-function tsToDate(ts) {
-  if (!ts) return null;
-  if (ts.toDate) return ts.toDate();
-  if (ts instanceof Date) return ts;
-  return new Date(ts);
-}
 
 export default function TaskBoardModal({ open, onClose, item, users = [] }) {
   const { user } = useAuth();

@@ -40,6 +40,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import MemberAvatar from "./MemberAvatar.jsx";
 import { PRIORITY_LIST } from "../constants/itemPriorities.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
+import { tsToDate } from "../utils/firestoreTime.js";
 
 const STATUS_OPTIONS = [
   // AI Gen sits at the top — these items are AI-suggested (e.g., from a
@@ -56,13 +57,6 @@ const STATUS_OPTIONS = [
 
 const STATUS_BY_ID = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id, s]));
 const PRIORITY_BY_ID = Object.fromEntries(PRIORITY_LIST.map((p) => [p.id, p]));
-
-function tsToDate(ts) {
-  if (!ts) return null;
-  if (ts.toDate) return ts.toDate();
-  if (ts instanceof Date) return ts;
-  return new Date(ts);
-}
 
 export default function TaskBoardRow({
   item,
