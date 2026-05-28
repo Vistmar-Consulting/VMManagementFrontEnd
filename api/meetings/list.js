@@ -35,6 +35,23 @@ function resolveSubjects() {
   return DEFAULT_SUBJECTS;
 }
 
+// Filter to Vistamar business meetings only. Cross-calendar aggregation
+// surfaces Tate's + Cedric's personal entries (birthdays, garbage day, etc.)
+// because we read their primary calendars; this strips them out.
+//
+// Rule: keep an event if it's organized from @vistamarconsulting.com OR it has
+// ≥2 attendees on the @vistamarconsulting.com domain. Either signal indicates
+// a real Vistamar business meeting; solo personal entries fail both checks.
+const VM_DOMAIN = "@vistamarconsulting.com";
+function isVistamarBusinessMeeting(ev) {
+  const organizerIsVm = (ev.organizer_email || "").toLowerCase().endsWith(VM_DOMAIN);
+  if (organizerIsVm) return true;
+  const vmAttendeeCount = (ev.attendees || []).filter(
+    (a) => typeof a.email === "string" && a.email.toLowerCase().endsWith(VM_DOMAIN)
+  ).length;
+  return vmAttendeeCount >= 2;
+}
+
 function mergeRsvps(events, graphRsvpsByEventId) {
   return events.map((ev) => {
     const key = ev.m365EventId || ev.series_id;
@@ -75,9 +92,12 @@ export default async function handler(req, res) {
     // organized series + Tate's VM Weekly Touch Base + Tate's Unio Weekly +
     // Cedric's Vistamar Platform Dev all surface in one merged, deduped list.
     const subjects = resolveSubjects();
-    const events = subjects.length > 1
+    const rawEvents = subjects.length > 1
       ? await listEventsAcrossSubjects({ subjects, orgId, start, end })
       : await listEvents({ orgId, start, end, subject: subjects[0] });
+
+    // Strip personal-calendar noise (birthdays, garbage day, solo entries).
+    const events = rawEvents.filter(isVistamarBusinessMeeting);
 
     // Best-effort RSVP enrichment from Graph. If Graph fails, return Google-
     // only data with possibly-stale statuses rather than 500ing the whole list.
