@@ -287,14 +287,14 @@ function AddBullet({ topicId, agendaId, lastSortOrder, subcollection, accent, pl
           submit();
         }
       }}
-      placeholder="+ Add a talking point…"
+      placeholder={placeholder || "+ Add a bullet…"}
       sx={{
         ...inputBase,
         fontSize: 12,
         py: "4px",
         color: t.ink3,
         borderBottom: "1px dashed transparent",
-        "&:focus": { borderBottomColor: t.copper, color: t.ink },
+        "&:focus": { borderBottomColor: accent, color: t.ink },
         ml: 1.5,
       }}
     />
