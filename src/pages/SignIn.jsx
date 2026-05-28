@@ -16,10 +16,12 @@
 // blockers, no COOP issues, no redirect-state IndexedDB flakiness.
 
 import { useEffect, useRef, useState } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
 
 import { auth } from "../firebase.js";
+import { useAuth } from "../contexts/AuthContext.jsx";
 
 // Public OAuth client ID for the management-db9eb Firebase project. Same
 // client Firebase Auth's Google provider uses under the hood — visible in
@@ -30,6 +32,16 @@ export default function SignIn() {
   const buttonRef = useRef(null);
   const [error, setError] = useState(null);
   const [gsiReady, setGsiReady] = useState(false);
+  const { user, loading: authLoading } = useAuth();
+  const location = useLocation();
+
+  // If the user is already signed in (or just completed sign-in via GIS),
+  // bounce them to wherever they were trying to go (set by ProtectedRoute's
+  // redirect when they hit a protected route signed-out) or /dashboard.
+  if (!authLoading && user) {
+    const to = location.state?.from || "/dashboard";
+    return <Navigate to={to} replace />;
+  }
 
   useEffect(() => {
     let cancelled = false;
