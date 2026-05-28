@@ -60,6 +60,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { useCollection } from "../hooks/useCollection.js";
 import { useDoc } from "../hooks/useDoc.js";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
+import { sendMeetingPrep } from "../lib/meetingsApi.js";
 
 // Design tokens (mirror of Calendar.jsx). V2.2.2 cleanup will hoist to a
 // shared module.
@@ -690,9 +691,63 @@ function TeamsLogo({ size = 18 }) {
   );
 }
 
-function ActionBar({ agenda, calendarSeries }) {
+function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems }) {
+  const { user } = useAuth();
   const teamsUrl = agenda?.teamsUrl || calendarSeries?.teamsUrl || null;
   const [sendMenuEl, setSendMenuEl] = useState(null);
+  const [busy, setBusy] = useState(null); // null | "concluding" | "sending-prep"
+  const [feedback, setFeedback] = useState(null); // { kind: 'success' | 'error', msg: string }
+
+  const isConcluded = agenda?.status === "concluded";
+
+  const handleConclude = async () => {
+    if (isConcluded) return;
+    if (!window.confirm("Conclude this agenda? Topics and notes stay visible but the agenda's status flips to read-only.")) return;
+    setBusy("concluding");
+    try {
+      await updateDoc(doc(db, "agendas", agendaId), {
+        status: "concluded",
+        concludedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        updatedByUid: user?.uid || null,
+      });
+      setFeedback({ kind: "success", msg: "Agenda concluded." });
+    } catch (err) {
+      setFeedback({ kind: "error", msg: err.message || "Conclude failed." });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleSendPrep = async () => {
+    setSendMenuEl(null);
+    setBusy("sending-prep");
+    try {
+      const dt = agenda?.meetingDatetime?.toDate
+        ? agenda.meetingDatetime.toDate()
+        : null;
+      const result = await sendMeetingPrep({
+        title: agenda?.title || "(untitled)",
+        dateFormatted: dt ? format(dt, "EEEE, MMMM d 'at' h:mm a") : "Date TBD",
+        topics: (topics || []).map((tp) => ({ Topic_Name: tp.name })),
+        openFloor: (openFloorItems || []).map((it) => ({ Discussion_Item: it.text })),
+        attendees: visibleAttendees(agenda?.attendees).map((a) => ({
+          email: a.email,
+          name: a.name || a.email,
+          tasks: [],
+        })),
+        lastMeetingOverview: null,
+      });
+      setFeedback({
+        kind: result?.failed > 0 ? "error" : "success",
+        msg: `Meeting Prep emails sent — ${result?.sent ?? 0} sent, ${result?.failed ?? 0} failed.`,
+      });
+    } catch (err) {
+      setFeedback({ kind: "error", msg: err.message || "Send Meeting Prep failed." });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <Box
@@ -737,7 +792,7 @@ function ActionBar({ agenda, calendarSeries }) {
 
       <Box sx={{ flex: 1 }} />
 
-      <Tooltip title="Send Meeting Invite — ships in V2.2.2b">
+      <Tooltip title="Send Meeting Invite — ships in V2.2.2b.2 alongside the Schedule popover">
         <span>
           <Box
             component="button"
@@ -787,15 +842,22 @@ function ActionBar({ agenda, calendarSeries }) {
         onClose={() => setSendMenuEl(null)}
         slotProps={{ paper: { sx: { mt: 0.5, minWidth: 220 } } }}
       >
-        <MenuItem disabled sx={{ fontSize: 13 }}>Meeting Prep email · V2.2.2b</MenuItem>
-        <MenuItem disabled sx={{ fontSize: 13 }}>Schedule notification · V2.2.2b</MenuItem>
+        <MenuItem
+          onClick={handleSendPrep}
+          disabled={busy === "sending-prep"}
+          sx={{ fontSize: 13 }}
+        >
+          {busy === "sending-prep" ? "Sending…" : "Meeting Prep email"}
+        </MenuItem>
+        <MenuItem disabled sx={{ fontSize: 13 }}>Schedule notification · V2.2.2b.2</MenuItem>
       </Menu>
 
-      <Tooltip title="Conclude — ships in V2.2.2b">
+      <Tooltip title={isConcluded ? "This agenda is concluded." : "Conclude this agenda"}>
         <span>
           <Box
             component="button"
-            disabled
+            onClick={handleConclude}
+            disabled={isConcluded || busy === "concluding"}
             sx={{
               display: "inline-flex",
               alignItems: "center",
@@ -803,18 +865,44 @@ function ActionBar({ agenda, calendarSeries }) {
               px: 1.6,
               py: 0.8,
               borderRadius: 1,
-              border: `1px solid ${t.cream3}`,
-              background: "transparent",
-              color: t.ink3,
+              border: `1px solid ${isConcluded ? "#cfcfcf" : "#2e7d32"}`,
+              background: isConcluded ? "#f4f4f4" : "transparent",
+              color: isConcluded ? "#9e9e9e" : "#2e7d32",
               fontSize: 12,
-              fontWeight: 500,
-              cursor: "not-allowed",
+              fontWeight: 600,
+              cursor: isConcluded || busy === "concluding" ? "not-allowed" : "pointer",
+              transition: "background 0.15s",
+              "&:hover": isConcluded || busy === "concluding" ? {} : { background: "rgba(46,125,50,0.08)" },
             }}
           >
-            <Check sx={{ fontSize: 14 }} /> Conclude
+            <Check sx={{ fontSize: 14 }} />
+            {busy === "concluding" ? "Concluding…" : isConcluded ? "Concluded" : "Conclude"}
           </Box>
         </span>
       </Tooltip>
+
+      {feedback && (
+        <Box
+          onClick={() => setFeedback(null)}
+          sx={{
+            ml: 1,
+            px: 1.2,
+            py: 0.4,
+            borderRadius: 0.8,
+            fontSize: 11,
+            fontWeight: 500,
+            cursor: "pointer",
+            background: feedback.kind === "success" ? "#e8f5e9" : "#ffebee",
+            color: feedback.kind === "success" ? "#2e7d32" : "#c62828",
+            maxWidth: 280,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {feedback.msg}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -1363,6 +1451,16 @@ export default function AgendaDetail() {
     return m;
   }, [users]);
 
+  // V2.2.2b: agenda-level openFloor subscription so the ActionBar's Meeting
+  // Prep send can include the current discussion items in the payload.
+  // OpenFloorSection still owns its own writes — this read just mirrors so
+  // the parent has access for the Send menu.
+  const openFloorConstraints = useMemo(() => [orderBy("sortOrder", "asc")], []);
+  const { data: openFloorItems } = useCollection(
+    agendaId ? `agendas/${agendaId}/openFloor` : null,
+    openFloorConstraints
+  );
+
   // V2.2.2e: data sources for the embedded MiniProjectBoard. Items,
   // categories, tags are read once at this level and threaded down to every
   // topic card; each card filters them locally by its categoryIds + tagIds.
@@ -1488,7 +1586,13 @@ export default function AgendaDetail() {
         </Box>
       ) : (
         <>
-          <ActionBar agenda={agenda} calendarSeries={calendarSeries} />
+          <ActionBar
+            agenda={agenda}
+            agendaId={agendaId}
+            calendarSeries={calendarSeries}
+            topics={topics}
+            openFloorItems={openFloorItems}
+          />
           <Box
             sx={{
               display: "grid",

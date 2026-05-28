@@ -33,7 +33,7 @@ function addMinutes(localIso, minutes) {
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
   if (req.method !== "PUT") return res.status(405).json({ error: "Method not allowed" });
-  if (!requireAuth(req, res)) return;
+  if (!(await requireAuth(req, res))) return;
 
   try {
     const { org_id, event_id, mode, original_date, new_date, new_time, timezone, duration_minutes } = req.body;

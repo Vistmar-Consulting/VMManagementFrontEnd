@@ -70,3 +70,36 @@ export function rescheduleMeeting({ orgId, eventId, mode, originalDate, newDate,
     },
   });
 }
+
+// POST /api/meetings/send-prep
+// Sends the Meeting Prep email to every attendee. The endpoint walks the
+// attendees array and renders + sends a per-attendee HTML email via Postmark
+// (for @vistamarconsulting.com) or Graph (for everyone else).
+export function sendMeetingPrep({ title, dateFormatted, topics, openFloor, attendees, lastMeetingOverview }) {
+  return call("send-prep", {
+    method: "POST",
+    body: {
+      title,
+      dateFormatted,
+      topics: topics || [],
+      openFloor: openFloor || [],
+      attendees: attendees || [],
+      lastMeetingOverview: lastMeetingOverview || null,
+    },
+  });
+}
+
+// POST /api/meetings/send-schedule
+// Sends the schedule confirmation email per attendee.
+export function sendScheduleEmail({ title, dateFormatted, teamsUrl, isReschedule, attendees }) {
+  return call("send-schedule", {
+    method: "POST",
+    body: {
+      title,
+      dateFormatted,
+      teamsUrl,
+      isReschedule: !!isReschedule,
+      attendees: attendees || [],
+    },
+  });
+}
