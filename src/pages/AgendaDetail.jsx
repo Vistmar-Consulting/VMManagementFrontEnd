@@ -30,6 +30,8 @@ import {
   ArrowDropDown,
   Check,
   Close,
+  ExpandMore,
+  MoreVert,
   PersonAdd,
   Schedule as ScheduleIcon,
 } from "@mui/icons-material";
@@ -180,18 +182,35 @@ function AgendaHero({ agenda, agendaId, calendarSeries, viewMode, setViewMode })
 }
 
 // ─── Inline-editable bullet rows ───────────────────────────────────────
+//
+// Generic component shared by Talking Points (copper) and Topic Notes
+// (blue). Caller passes the subcollection segment under the topic and the
+// accent color; everything else is the same UX:
+//   - inline-edit row
+//   - Enter inserts a new blank row at sortOrder + 0.5 (returned via onAfterEnter)
+//   - blur with empty trimmed value → deleteDoc
+//   - hover reveals X icon for explicit delete
+//
+// `extraSx` is optional, used by Topic Notes to enable multi-line behavior.
 
-function TalkingPointRow({ topicId, agendaId, point, onAfterEnter, autoFocus }) {
+function BulletRow({
+  topicId,
+  agendaId,
+  point,
+  subcollection,
+  accent,
+  multiline,
+  onAfterEnter,
+  autoFocus,
+}) {
   const [value, setValue] = useState(point.text || "");
   const inputRef = useRef(null);
-  useEffect(() => {
-    setValue(point.text || "");
-  }, [point.text]);
+  useEffect(() => setValue(point.text || ""), [point.text]);
   useEffect(() => {
     if (autoFocus && inputRef.current) inputRef.current.focus();
   }, [autoFocus]);
 
-  const ref = doc(db, "agendas", agendaId, "topics", topicId, "talkingPoints", point.id);
+  const ref = doc(db, "agendas", agendaId, "topics", topicId, subcollection, point.id);
   const handleBlur = async () => {
     const trimmed = value.trim();
     if (!trimmed) {
@@ -202,31 +221,37 @@ function TalkingPointRow({ topicId, agendaId, point, onAfterEnter, autoFocus }) 
     await updateDoc(ref, { text: trimmed, updatedAt: serverTimestamp() });
   };
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
+    // Multi-line bullets: Shift+Enter inserts a newline, plain Enter blurs +
+    // inserts a new row below (Console pattern for Topic Notes).
+    if (e.key === "Enter" && (!multiline || !e.shiftKey)) {
       e.preventDefault();
       e.currentTarget.blur();
       onAfterEnter?.(point.sortOrder);
     }
   };
 
+  const inputComponent = multiline ? "textarea" : "input";
+  const extraInputSx = multiline ? { resize: "none", minHeight: 18 } : {};
+
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.4, "&:hover .row-x": { opacity: 1 } }}>
-      <Box sx={{ width: 5, height: 5, borderRadius: "50%", background: t.copper, flexShrink: 0 }} />
+    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, py: 0.4, "&:hover .row-x": { opacity: 1 } }}>
+      <Box sx={{ width: 5, height: 5, borderRadius: "50%", background: accent, flexShrink: 0, mt: "8px" }} />
       <Box
-        component="input"
+        component={inputComponent}
         ref={inputRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder="…"
-        sx={{ ...inputBase, fontSize: 13, py: "2px", color: t.ink }}
+        rows={multiline ? 1 : undefined}
+        sx={{ ...inputBase, fontSize: 13, py: "2px", color: t.ink, "&:focus": { borderBottomColor: accent }, ...extraInputSx }}
       />
       <IconButton
         size="small"
         className="row-x"
         onClick={() => deleteDoc(ref).catch(() => {})}
-        sx={{ opacity: 0, transition: "opacity 0.15s", color: t.ink3, p: 0.3 }}
+        sx={{ opacity: 0, transition: "opacity 0.15s", color: t.ink3, p: 0.3, mt: "1px" }}
         aria-label="Delete bullet"
       >
         <Close sx={{ fontSize: 14 }} />
@@ -235,14 +260,14 @@ function TalkingPointRow({ topicId, agendaId, point, onAfterEnter, autoFocus }) 
   );
 }
 
-function AddTalkingPoint({ topicId, agendaId, lastSortOrder }) {
+function AddBullet({ topicId, agendaId, lastSortOrder, subcollection, accent, placeholder, multiline }) {
   const { user } = useAuth();
   const [value, setValue] = useState("");
   const submit = async () => {
     const trimmed = value.trim();
     if (!trimmed) return;
     setValue("");
-    await addDoc(collection(db, "agendas", agendaId, "topics", topicId, "talkingPoints"), {
+    await addDoc(collection(db, "agendas", agendaId, "topics", topicId, subcollection), {
       text: trimmed,
       sortOrder: (lastSortOrder ?? 0) + 1,
       createdAt: serverTimestamp(),
@@ -345,16 +370,88 @@ function OverviewTopic({ topic, agendaId }) {
       />
       <Box sx={{ pl: 1 }}>
         {points.map((p) => (
-          <TalkingPointRow
+          <BulletRow
             key={p.id}
             topicId={topic.id}
             agendaId={agendaId}
             point={p}
+            subcollection="talkingPoints"
+            accent={t.copper}
             onAfterEnter={insertAfter}
             autoFocus={focusOnNext === p.id}
           />
         ))}
-        <AddTalkingPoint topicId={topic.id} agendaId={agendaId} lastSortOrder={lastSort} />
+        <AddBullet
+          topicId={topic.id}
+          agendaId={agendaId}
+          lastSortOrder={lastSort}
+          subcollection="talkingPoints"
+          accent={t.copper}
+          placeholder="+ Add a talking point…"
+        />
+      </Box>
+    </Box>
+  );
+}
+
+// ─── Topic Notes (Working view, blue accent) ───────────────────────────
+//
+// Same UX as Talking Points but blue. Lives in
+// agendas/{agendaId}/topics/{topicId}/notes subcollection.
+
+function TopicNotesSection({ topic, agendaId }) {
+  const { user } = useAuth();
+  const constraints = useMemo(() => [orderBy("sortOrder", "asc")], []);
+  const { data: notesRaw } = useCollection(
+    `agendas/${agendaId}/topics/${topic.id}/notes`,
+    constraints
+  );
+  const notes = notesRaw || [];
+  const lastSort = notes.length ? notes[notes.length - 1].sortOrder ?? 0 : 0;
+
+  const [focusOnNext, setFocusOnNext] = useState(null);
+  const insertAfter = async (currentSort) => {
+    const newDoc = await addDoc(
+      collection(db, "agendas", agendaId, "topics", topic.id, "notes"),
+      {
+        text: "",
+        sortOrder: (currentSort ?? 0) + 0.5,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdByUid: user?.uid || null,
+      }
+    );
+    setFocusOnNext(newDoc.id);
+  };
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Typography sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.blue, mb: 0.5 }}>
+        Topic Notes
+      </Typography>
+      <Box sx={{ pl: 0.5 }}>
+        {notes.map((n) => (
+          <BulletRow
+            key={n.id}
+            topicId={topic.id}
+            agendaId={agendaId}
+            point={n}
+            subcollection="notes"
+            accent={t.blue}
+            multiline
+            onAfterEnter={insertAfter}
+            autoFocus={focusOnNext === n.id}
+          />
+        ))}
+        <AddBullet
+          topicId={topic.id}
+          agendaId={agendaId}
+          lastSortOrder={lastSort}
+          subcollection="notes"
+          accent={t.blue}
+          placeholder="+ Add a note…"
+          multiline
+        />
       </Box>
     </Box>
   );
@@ -821,28 +918,268 @@ function PreparedByPanel() {
   );
 }
 
-// ─── Working view — body placeholder for topic cards ───────────────────
+// ─── Working view — Topic KPI scorecard strip (§4.3 item 1) ────────────
+//
+// 7-cell horizontal strip — Assigned · In Progress · Review · On Hold ·
+// Done · Overdue · Due This Wk. Each cell clickable to filter the
+// embedded MiniProjectBoard's items. Counts wire to real item data when
+// V2.2.2e ports the MiniProjectBoard; until then every cell is "—" and
+// non-clickable (opacity 0.4).
 
-function TopicCardsPlaceholder() {
+const KPI_CELLS = [
+  { key: "assigned", label: "Assigned", color: "#376fd0" },
+  { key: "inProgress", label: "In Progress", color: "#b87333" },
+  { key: "review", label: "Review", color: "#9c6ade" },
+  { key: "onHold", label: "On Hold", color: "#c62828" },
+  { key: "done", label: "Done", color: "#2e7d32" },
+  { key: "overdue", label: "Overdue", color: "#c62828" },
+  { key: "dueThisWeek", label: "Due This Wk", color: "#ef6c00" },
+];
+
+function TopicKpiStrip({ value, onChange }) {
   return (
     <Box
       sx={{
-        py: 5,
-        border: `1.5px dashed ${t.cream3}`,
-        borderRadius: 2,
+        display: "grid",
+        gridTemplateColumns: "repeat(7, 1fr)",
+        gap: 0.5,
+        py: 1,
+        mb: 1.5,
+        borderBottom: `1px solid ${t.cream2}`,
+      }}
+    >
+      {KPI_CELLS.map(({ key, label, color }) => {
+        const active = value === key;
+        // Counts will become real in V2.2.2e. For now every cell shows "—"
+        // and is non-clickable (opacity 0.4) to match the "zero-value cell"
+        // visual rule from the reference doc.
+        const isZero = true;
+        return (
+          <Box
+            key={key}
+            onClick={isZero ? undefined : () => onChange(active ? null : key)}
+            sx={{
+              textAlign: "center",
+              py: 0.5,
+              px: 0.5,
+              borderRadius: 0.5,
+              borderBottom: active ? `2px solid ${color}` : "2px solid transparent",
+              background: active ? t.copperFaint : "transparent",
+              cursor: isZero ? "default" : "pointer",
+              opacity: isZero ? 0.4 : 1,
+              transition: "background 0.15s",
+            }}
+          >
+            <Typography sx={{ fontSize: 16, fontWeight: 700, color, lineHeight: 1.1 }}>—</Typography>
+            <Typography sx={{ fontSize: 8.5, color: t.ink3, mt: 0.2, textTransform: "uppercase", letterSpacing: 0.6 }}>
+              {label}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+// ─── MiniProjectBoard placeholder ──────────────────────────────────────
+
+function MiniProjectBoardPlaceholder() {
+  return (
+    <Box
+      sx={{
+        py: 3,
+        my: 1,
+        border: `1px dashed ${t.cream3}`,
+        borderRadius: 1,
         textAlign: "center",
         color: t.ink3,
       }}
     >
-      <Typography sx={{ fontFamily: t.serif, fontSize: 16, color: t.ink2, mb: 0.5 }}>
-        Topic cards ship in V2.2.2d
+      <Typography sx={{ fontSize: 12, fontWeight: 600, color: t.ink2, mb: 0.3 }}>
+        Project Board ships in V2.2.2e
       </Typography>
-      <Typography sx={{ fontSize: 12 }}>
-        Each card: header · KPI scorecards · Talking Points · Mini Project Board · Topic Notes
+      <Typography sx={{ fontSize: 10.5 }}>
+        Active · Completed · Archive groups, reused from the main Task Board surface
       </Typography>
-      <Typography sx={{ fontSize: 11, mt: 1, opacity: 0.7 }}>
-        Use Overview to edit topics + talking points — same data, same docs.
-      </Typography>
+    </Box>
+  );
+}
+
+// ─── AgendaTopicCard (§4.3) ────────────────────────────────────────────
+
+function AgendaTopicCard({ topic, agendaId, focusFilter, attendeeFilter }) {
+  const { user } = useAuth();
+  const [expanded, setExpanded] = useState(false);
+  const [menuEl, setMenuEl] = useState(null);
+  const [nameDraft, setNameDraft] = useState(topic.name || "");
+  // Per-topic KPI filter — drives Mini Project Board row filtering once
+  // V2.2.2e wires it. Separate from page-level meetingFocusFilter (the
+  // sidebar's Meeting Focus panel).
+  const [topicKpiFilter, setTopicKpiFilter] = useState(null);
+
+  useEffect(() => setNameDraft(topic.name || ""), [topic.name]);
+
+  const persistName = async () => {
+    const trimmed = nameDraft.trim() || "New Topic";
+    if (trimmed === topic.name) return;
+    await updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
+      name: trimmed,
+      updatedAt: serverTimestamp(),
+      updatedByUid: user?.uid || null,
+    });
+  };
+
+  const handleDelete = async () => {
+    setMenuEl(null);
+    if (!window.confirm(`Delete topic "${topic.name || "Untitled"}"? Talking points + notes go with it.`)) return;
+    // For V2.2.2d we delete just the topic doc; orphaned talkingPoints/notes
+    // subcollection docs become unreachable but don't violate rules. A
+    // proper cascading delete via writeBatch lands when V2.2.2e ports
+    // useItemMutations or when V2.2 enables a cancel-cascade Cloud Function.
+    await deleteDoc(doc(db, "agendas", agendaId, "topics", topic.id)).catch(() => {});
+  };
+
+  // Talking points
+  const tpConstraints = useMemo(() => [orderBy("sortOrder", "asc")], []);
+  const { data: tpRaw } = useCollection(
+    `agendas/${agendaId}/topics/${topic.id}/talkingPoints`,
+    tpConstraints
+  );
+  const talkingPoints = tpRaw || [];
+  const lastTpSort = talkingPoints.length ? talkingPoints[talkingPoints.length - 1].sortOrder ?? 0 : 0;
+  const [focusOnNextTp, setFocusOnNextTp] = useState(null);
+  const insertTpAfter = async (currentSort) => {
+    const newDoc = await addDoc(
+      collection(db, "agendas", agendaId, "topics", topic.id, "talkingPoints"),
+      {
+        text: "",
+        sortOrder: (currentSort ?? 0) + 0.5,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdByUid: user?.uid || null,
+      }
+    );
+    setFocusOnNextTp(newDoc.id);
+  };
+
+  return (
+    <Box
+      sx={{
+        background: "white",
+        borderRadius: 1.5,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+        borderLeft: `4px solid ${t.copper}`,
+        mb: 2,
+        overflow: "hidden",
+      }}
+    >
+      {/* Header */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          px: 1.5,
+          py: 1.2,
+          borderBottom: expanded ? `1px solid ${t.cream2}` : "none",
+          cursor: "pointer",
+        }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <ExpandMore
+          sx={{
+            fontSize: 20,
+            color: t.ink3,
+            transition: "transform 0.15s",
+            transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
+          }}
+        />
+        <Box
+          component="input"
+          value={nameDraft}
+          onChange={(e) => setNameDraft(e.target.value)}
+          onBlur={persistName}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
+          placeholder="New Topic"
+          sx={{
+            ...inputBase,
+            fontFamily: t.serif,
+            fontSize: 18,
+            fontWeight: 500,
+            color: t.ink,
+            py: "2px",
+            flex: 1,
+          }}
+        />
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuEl(e.currentTarget);
+          }}
+          sx={{ color: t.ink3 }}
+          aria-label="Topic menu"
+        >
+          <MoreVert sx={{ fontSize: 18 }} />
+        </IconButton>
+        <Menu
+          anchorEl={menuEl}
+          open={Boolean(menuEl)}
+          onClose={() => setMenuEl(null)}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MenuItem disabled sx={{ fontSize: 13 }}>Edit · categories & tags V2.2.2e</MenuItem>
+          <MenuItem onClick={handleDelete} sx={{ fontSize: 13, color: "#c62828" }}>
+            Delete topic
+          </MenuItem>
+        </Menu>
+      </Box>
+
+      {expanded && (
+        <Box sx={{ p: 1.8 }}>
+          <TopicKpiStrip value={topicKpiFilter} onChange={setTopicKpiFilter} />
+
+          {/* Talking Points */}
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper, mb: 0.5 }}>
+              Talking Points
+            </Typography>
+            <Box sx={{ pl: 0.5 }}>
+              {talkingPoints.map((p) => (
+                <BulletRow
+                  key={p.id}
+                  topicId={topic.id}
+                  agendaId={agendaId}
+                  point={p}
+                  subcollection="talkingPoints"
+                  accent={t.copper}
+                  onAfterEnter={insertTpAfter}
+                  autoFocus={focusOnNextTp === p.id}
+                />
+              ))}
+              <AddBullet
+                topicId={topic.id}
+                agendaId={agendaId}
+                lastSortOrder={lastTpSort}
+                subcollection="talkingPoints"
+                accent={t.copper}
+                placeholder="+ Add a talking point…"
+              />
+            </Box>
+          </Box>
+
+          <MiniProjectBoardPlaceholder />
+
+          <TopicNotesSection topic={topic} agendaId={agendaId} />
+        </Box>
+      )}
     </Box>
   );
 }
@@ -955,8 +1292,16 @@ export default function AgendaDetail() {
             }}
           >
             <Box sx={{ minWidth: 0 }}>
-              <TopicCardsPlaceholder />
-              <Box sx={{ mt: 3 }}>
+              {(topics || []).map((topic) => (
+                <AgendaTopicCard
+                  key={topic.id}
+                  topic={topic}
+                  agendaId={agendaId}
+                  focusFilter={meetingFocusFilter}
+                  attendeeFilter={attendeeFilter}
+                />
+              ))}
+              <Box sx={{ mt: 2 }}>
                 <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
               </Box>
               <OpenFloorSection agendaId={agendaId} />
