@@ -105,34 +105,75 @@ No `api/meetings/` folder. Vercel functions are gone. Backend = Firebase Functio
 
 ## 4. Data Model (Firestore)
 
+**AMENDED 2026-05-27** — original §4 below has been superseded by the actual shipped V1 model. Diffs from the 2026-05-12 original are called out inline.
+
 ```
 firestore/
 ├── users/{uid}                          [V1]  uid = Firebase Auth UID
 │     firstName, lastName, email, displayName, avatarColor,
 │     role: 'admin' | 'member', active, joinedAt
 │
-├── organizations/{orgSlug}              [V1]  slug = 'vistamar', 'total-vision', …
-│     name, type: 'internal' | 'client', accentColor, active,
-│     createdAt, archived
+├── organizations/{orgSlug}              [V1]  slug = 'vistamar', 'unio', 'bryn-mawr',
+│     name,                                     'golden-vision', 'id-care'
+│     type: 'internal' | 'client',
+│     accentColor,
+│     active, archived,
+│     sortOrder,               ← AMENDED 2026-05-27: chip-row ordering
+│     nextItemNumber,          ← AMENDED 2026-05-27: per-org sequential I-N counter
+│     nextSubitemNumber,       ← AMENDED 2026-05-27: per-org SI-N counter
+│     createdAt
 │
 ├── items/{itemId}                       [V1]  unified projects + tasks
 │     organizationId           ← the tag
 │     parentId: string | null  ← null = top-level
-│     hasChildren: bool        ← denormalized; maintained by Function trigger
-│     type: 'project' | 'task' ← derived: parentId==null && hasChildren ? project : task
+│     hasChildren: bool        ← denormalized; client-side at write-time in V1
+│                                (Cloud Function trigger when Blaze enables)
+│     type: 'project' | 'task' ← derived
+│     itemNumber: int          ← AMENDED 2026-05-27: per-org sequential; allocated
+│                                via runTransaction off org doc counter
 │     title, description
-│     statusId: 1..7   (7 = Archive)
+│     statusId: 1|2|4|5|6|7|8  ← AMENDED 2026-05-27: 8 = AI Gen (V3 placeholder);
+│                                6 = Pending; 3 dropped (folded into onHold flag)
+│     priorityId: 1|2|3|4 | null    ← AMENDED 2026-05-27: was missing
+│     categoryId: string | null     ← AMENDED 2026-05-27: was missing; ref → /categories
+│     tagIds: string[]               ← AMENDED 2026-05-27: was missing; refs → /tags
 │     onHold: bool
 │     dueDate: Timestamp | null
-│     assigneeId: uid | null
+│     completedAt: Timestamp | null  ← AMENDED 2026-05-27: was missing
+│     assigneeIds: uid[]             ← AMENDED 2026-05-27: was singular assigneeId; now
+│                                      multi (multiple team members per item)
 │     createdBy, createdAt, updatedAt
 │     order: string             ← fractional rank (fractional-indexing library)
-│   └─ comments/{commentId}              [V1]  subcollection (threaded via parentCommentId)
-│         authorId, body, createdAt, parentCommentId: string | null
+│   ├─ comments/{commentId}             [V1]
+│   │     itemId,               ← AMENDED 2026-05-27: denormalized so collectionGroup
+│   │                             queries can group locally for badge counts
+│   │     authorId, body, parentCommentId: string | null, createdAt, updatedAt?
+│   └─ files/{fileId}                   [V1] AMENDED 2026-05-27: NEW subcollection
+│         itemId,               ← same denormalization
+│         name, url,            ← URL-link only in V1 (Storage uploads when Blaze)
+│         authorId, createdAt
 │
-├── calendar_series/{seriesId}           [V2]  seriesId = Google Calendar series eventId
-│     organizationId           ← tag
-│     title, recurrenceRule, conferenceType: 'meet',
+├── categories/{categoryId}              [V1] AMENDED 2026-05-27: NEW top-level
+│     name, color, sortOrder, createdAt
+│     (Was originally per-org subcollections; promoted to global per 2026-05-27
+│      decision — items reference by categoryId string, filter popovers reduce
+│      to in-use values for the org-scoped view, row cell dropdowns show full
+│      global list.)
+│
+├── tags/{tagId}                         [V1] AMENDED 2026-05-27: NEW top-level
+│     name, color, createdAt
+│     (Same global pattern as categories.)
+│
+├── calendar_series/{seriesId}           [V2]  AMENDED 2026-05-27: seriesId = Graph
+│     organizationId,                          series eventId (not Google's)
+│     title, recurrenceRule,
+│     conferenceType: 'teams',           ← AMENDED 2026-05-27: was 'meet'
+│     graphEventId,                      ← AMENDED 2026-05-27: marriage point with
+│                                          Meeting Agendas + Graph for updates/
+│                                          cancellations/attendee patches
+│     googleEventId,                     ← AMENDED 2026-05-27: the Google ICS
+│                                          mirror copy id
+│     iCalUID,                           ← RFC 5545 stable
 │     defaultAttendees: [{ email, displayName, memberId }],
 │     googleCalendarId: 'meetings@vistamarconsulting.com'
 │   └─ agendas/{agendaId}                [V2]
@@ -148,16 +189,21 @@ firestore/
 ```
 
 **Storage:**
-- `gs://vm-management.appspot.com/items/{itemId}/{filename}` — task attachments
-- `gs://vm-management.appspot.com/agendas/{agendaId}/{filename}` — meeting attachments (V2)
+- `gs://management-db9eb.firebasestorage.app/items/{itemId}/{filename}` — task attachments (Blaze required)
+- `gs://management-db9eb.firebasestorage.app/agendas/{agendaId}/{filename}` — meeting attachments (V2)
+
+(Note bucket name uses new Firebase `.firebasestorage.app` scheme, not `.appspot.com` — original §4 was outdated.)
 
 **Key denormalization decisions:**
 
-- **`hasChildren`** on items — Cloud Function trigger maintains it on child create/delete. Lets the board filter "tasks only" with one composite index instead of a fan-out read.
-- **Attendees as array on agenda doc** — 5–15 per meeting, well under 1 MB. Subcollection would mean N+1 reads to render a guest list.
-- **Topics as subcollection** — they have their own threaded comments and can be long, so they earn their own document.
-- **Members = `users/{uid}`** — no separate `members` collection. Firebase Auth UID is canonical. Task assignment stores `assigneeId: uid`; no denormalized name (single doc read; you'll cache all users anyway).
-- **Organization always a real document, never an enum.** Vistamar-internal is `organizations/vistamar`. Total Vision is `organizations/total-vision`.
+- **`hasChildren`** on items — V1 maintained client-side at write time inside `runTransaction`. Cloud Function trigger lands at Blaze upgrade.
+- **`itemNumber`** on items — per-org sequential N (I-1, I-2, ... / SI-1, SI-2, ...) allocated atomically via `runTransaction` against `organizations/{slug}.nextItemNumber` (or `nextSubitemNumber`). Stable across deletes — matches Console's `pm.Items.Item_Number`.
+- **`itemId`** denormalized onto every comment + file doc — enables `collectionGroup("comments")` / `collectionGroup("files")` queries for per-row badge counts without N per-item subscriptions.
+- **Attendees as array on agenda doc** (V2) — 5–15 per meeting, well under 1 MB.
+- **Topics as subcollection** (V2) — they have their own threaded comments and can be long.
+- **Members = `users/{uid}`** — no separate `members` collection. Firebase Auth UID is canonical. Task assignment stores `assigneeIds: uid[]` (multi-assignee). No denormalized names.
+- **Organization always a real document.** Vistamar-internal is `organizations/vistamar`. Clients are `organizations/{slug}` with `type: 'client'`.
+- **Categories + tags are global** (top-level collections), not per-org. Filter popovers reduce to in-use values within the org-scoped view; row dropdowns show full list. (Original §4 omitted these entirely.)
 
 ---
 
@@ -248,24 +294,59 @@ Comment edit policy: **author-only**. Items themselves are any-active-user-write
 
 ## 6. Project Board V1 — UI Surface
 
+**AMENDED 2026-05-27** — original §6 said "TaskBoard … columns by status" which led to a wrong kanban implementation in Slice 4. The shipped V1 is a Monday.com-style TABLE. See `docs/plans/2026-05-14-project-board-port.md` for the port brief.
+
 **Pages (under `src/pages/`):**
 
-- `SignIn.jsx` — single Google button
-- `Dashboard.jsx` — Mini Project Board + recent activity
-- `TaskBoard.jsx` — main board (columns by status, drag-and-drop, Organization filter chip group)
-- `ItemDetail.jsx` (or modal — port `TaskBoardModal` shape)
-- `Members.jsx` — admin view; promote/demote, deactivate
-- `Organizations.jsx` — admin CRUD for client orgs + Vistamar
-- `Settings.jsx` — slim user preferences
-- `Profile.jsx` — own user profile
+- `SignIn.jsx` — Google Identity Services button (ID token → `signInWithCredential`). Domain-restricted to `@vistamarconsulting.com` via `AuthContext` guard + Firestore rules.
+- `Dashboard.jsx` — placeholder. Mini Project Board lands in V2 alongside Agendas.
+- `TaskBoard.jsx` — **Monday.com-style table** with three collapsible groups (Active / Completed / Archive), 14 columns, all CRUD inline. NOT a kanban.
+- `KanbanBoard.jsx` — the original Slice-4 kanban grid, preserved at `/board/kanban` as a hidden URL-only alternate view. Not linked from the sidebar.
+- `Members.jsx` — stub. Route still mounted at `/members` for the future Members admin page slice, but unlinked from the sidebar.
+- `Organizations.jsx` — admin-only, nested under Settings in the sidebar. Currently read-only against live `useCollection('organizations')`; CRUD comes when needed.
+- `Profile.jsx` — own user profile (read-only).
+- `Settings.jsx` — stub page (route mounted; sidebar uses Settings only as an expandable parent group, not a navigable route).
 
-**Components reused (ported, not copied wholesale):**
+**Project Board table columns (14):**
+1. Expand chevron (also a click-to-toggle-all in the header)
+2. Item (title — inline edit)
+3. ID (`I-N` / `SI-N`, per-org sequential)
+4. Priority (pill + dropdown)
+5. Status (pill + dropdown — AI Gen / Assigned / In Progress / Pending / Review / Done / Archive)
+6. Assigned (multi-assignee overlapping avatars + dropdown, `+N` overflow chip beyond 3)
+7. Category (dot + text, click → dropdown with Add/Edit/Delete CRUD on column header)
+8. Tags (stacked dot + text per tag, multi-select dropdown with Add/Edit/Delete CRUD)
+9. Due (inline DatePicker — date text itself opens picker, no calendar icon)
+10. Updated (relative time)
+11. Created (date)
+12. Notes (clickable icon with copper count badge; opens `TaskBoardModal`)
+13. Files (clickable icon with copper count badge; opens `TaskBoardFilesModal`)
+14. Action menu (vertical ellipsis: Add subtask, Delete with confirmation)
 
-- TaskBoardRow, TaskBoardColumnHeader, TaskBoardModal, TaskBoardFileModal
-- PmAvatar (rename to `MemberAvatar` since "Pm" prefix is meaningless in this app)
-- Pastel Pill System (status pills, organization pills)
-- Topic Cards (V2)
-- Threaded Comments component
+**Above the table:**
+- "Project Board" heading + "New item" button (admin-only, disabled until an org filter is picked)
+- **7 status scorecards** clickable as single-select filter: Assigned / In Progress / Review / On Hold / Done / Overdue / Due This Wk (Mon–Fri current business week)
+- **Organization filter chip group** persisted via `useLocalStorage`. Sorted by `org.sortOrder`: All · Vistamar · Unio · Bryn Mawr · Golden Vision · ID Care.
+- **Search bar** (standalone, below the chips) — matches title + description across both items and subtasks; same cascade as other filters.
+
+**Filter cascade behavior** (all of column-filter + scorecard + search):
+- Parents whose subtasks match are surfaced into view
+- Matching parents auto-expand to show only the matching subtasks (sibling subtasks that don't match are hidden)
+- Clears restore the full board
+
+**Components shipped:**
+
+- `MemberAvatar.jsx` — unified avatar (used in AppTopBar, Profile, assignee column, assignee dropdown). FL initials, near-black text on pastel `avatarColor`. Single + multi-overlap modes.
+- `TaskBoardColumnHeader.jsx` — sort + filter Popover with search, checkboxes, edit/delete hover icons, "+ Add New" link.
+- `TaskBoardRow.jsx` — full 14-cell row with inline edits + dropdowns + DnD-ready row scaffold.
+- `TaskBoardModal.jsx` — Notes (threaded-ready, flat in V1) with author-only edit + delete.
+- `TaskBoardFilesModal.jsx` — URL link attachments (file uploads when Blaze).
+- `ColorPicker.jsx` — Free-form HSV + hex + curated preset palette. Used by category/tag dialogs.
+- `Sidebar.jsx` — Dashboard / Task Board / Settings (collapsed group → Organizations + Profile when expanded).
+- `AppTopBar.jsx` — route-derived title + admin chip + avatar dropdown menu.
+- `ProtectedRoute.jsx` — loading spinner / unauth redirect / profile spinner / disabled-account screen / admin gate.
+
+**Pastel Pill System** — `getPillBg(hex)` lightens 72% → background; `getTextColor(hex)` darkens 55% → text. Same hex stored on category / tag / priority / status; pill renders airy with readable dark text.
 
 **Contexts:**
 
