@@ -39,13 +39,20 @@ function resolveSubjects() {
 // surfaces Tate's + Cedric's personal entries (birthdays, garbage day, etc.)
 // because we read their primary calendars; this strips them out.
 //
-// Rule: keep an event if it's organized from @vistamarconsulting.com OR it has
-// ≥2 attendees on the @vistamarconsulting.com domain. Either signal indicates
-// a real Vistamar business meeting; solo personal entries fail both checks.
+// Rule: keep an event ONLY if it has ≥2 attendees on the @vistamarconsulting.com
+// domain. The first-pass "organizer is VM" shortcut was too loose — Cedric's
+// every solo personal entry has organizer=ctucksherman@vistamarconsulting.com
+// so it would pass. Requiring 2+ VM attendees discriminates cleanly: every
+// real Vistamar meeting has multiple internal participants; personal entries
+// (dentist, birthdays, holidays) almost never do.
+//
+// Special-case meetings@ as organizer (it counts as one VM attendee). When
+// meetings@ schedules a meeting it might only invite one other VM person —
+// still a business meeting we want to track.
 const VM_DOMAIN = "@vistamarconsulting.com";
+const SYSTEM_ORGANIZER = "meetings@vistamarconsulting.com";
 function isVistamarBusinessMeeting(ev) {
-  const organizerIsVm = (ev.organizer_email || "").toLowerCase().endsWith(VM_DOMAIN);
-  if (organizerIsVm) return true;
+  if ((ev.organizer_email || "").toLowerCase() === SYSTEM_ORGANIZER) return true;
   const vmAttendeeCount = (ev.attendees || []).filter(
     (a) => typeof a.email === "string" && a.email.toLowerCase().endsWith(VM_DOMAIN)
   ).length;
