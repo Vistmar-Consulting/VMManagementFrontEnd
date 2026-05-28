@@ -1035,20 +1035,24 @@ function AgendaTopicCard({
   const [topicKpiFilter, setTopicKpiFilter] = useState(null);
 
   // Compute the matched items for this topic so the KPI strip + the
-  // MiniProjectBoard render off the same filter.
+  // MiniProjectBoard render off the same filter. Must match the org filter
+  // used in MiniProjectBoard (same shape) so the counts and the visible
+  // rows can't diverge.
   const matchedItems = useMemo(() => {
+    if (!organizationId) return [];
     const cats = topic.categoryIds || [];
     const tgs = topic.tagIds || [];
     if (cats.length === 0 && tgs.length === 0) return [];
     const catSet = new Set(cats);
     const tagSet = new Set(tgs);
     return (items || []).filter((it) => {
+      if (it.organizationId !== organizationId) return false;
       if (it.parentId) return false;
       if (it.categoryId && catSet.has(it.categoryId)) return true;
       if (Array.isArray(it.tagIds) && it.tagIds.some((t) => tagSet.has(t))) return true;
       return false;
     });
-  }, [items, topic.categoryIds, topic.tagIds]);
+  }, [items, organizationId, topic.categoryIds, topic.tagIds]);
 
   // Real KPI counts. "Due This Wk" matches the existing TaskBoard
   // Mon-Fri business-week logic loosely (within next 7 days, ignoring weekend

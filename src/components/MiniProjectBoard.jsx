@@ -102,20 +102,24 @@ export default function MiniProjectBoard({
   const topicCatIds = topic?.categoryIds || [];
   const topicTagIds = topic?.tagIds || [];
 
-  // Filter: item matches if its category is in the topic's set OR any of
-  // its tags intersect. Items in the Archive status still appear (in the
-  // Archive group); the filter is content-based, not status-based.
+  // Filter: scope to the agenda's organization FIRST so GV's biweekly never
+  // shows Bryn Mawr's items, even if both orgs use the same category. Then
+  // apply the topic's category/tag filter on top. Agendas without an
+  // assigned organizationId render no items — they're a separate problem
+  // (V2.1.1 left 11 series unassigned; admin UI to assign comes V2.2.2f).
   const matchedItems = useMemo(() => {
+    if (!organizationId) return [];
     if (topicCatIds.length === 0 && topicTagIds.length === 0) return [];
     const catSet = new Set(topicCatIds);
     const tagSet = new Set(topicTagIds);
     return (items || []).filter((it) => {
+      if (it.organizationId !== organizationId) return false;
       if (it.parentId) return false; // subitems show under their parent (V2.2.2e+ work)
       if (it.categoryId && catSet.has(it.categoryId)) return true;
       if (Array.isArray(it.tagIds) && it.tagIds.some((t) => tagSet.has(t))) return true;
       return false;
     });
-  }, [items, topicCatIds, topicTagIds]);
+  }, [items, organizationId, topicCatIds, topicTagIds]);
 
   const grouped = useMemo(() => {
     const out = { active: [], completed: [], archive: [] };
