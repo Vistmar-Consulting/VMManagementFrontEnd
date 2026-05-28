@@ -1,13 +1,13 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import {
-  getRedirectResult,
   onAuthStateChanged,
-  signInWithRedirect,
   signOut as firebaseSignOut,
 } from "firebase/auth";
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 
-import { auth, db, googleProvider } from "../firebase.js";
+import { auth, db } from "../firebase.js";
+
+const REQUIRED_EMAIL_DOMAIN = "vistamarconsulting.com";
 
 const AuthContext = createContext(null);
 
@@ -47,13 +47,6 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let profileUnsubscribe = null;
 
-    // Pick up the result of a signInWithRedirect round-trip if one just
-    // completed. onAuthStateChanged still fires on its own; this just
-    // surfaces redirect-specific errors (e.g., auth/unauthorized-domain).
-    getRedirectResult(auth).catch((err) => {
-      if (err?.code !== "auth/no-redirect-result") setError(err);
-    });
-
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (profileUnsubscribe) {
         profileUnsubscribe();
@@ -64,6 +57,21 @@ export function AuthProvider({ children }) {
         setUser(null);
         setProfile(null);
         setError(null);
+        setLoading(false);
+        return;
+      }
+
+      // Domain enforcement — defense in depth alongside Firestore rules.
+      // If a non-vistamarconsulting.com Google account makes it through
+      // (e.g., user picks the wrong account from the chooser), sign them
+      // out immediately and surface an actionable error.
+      const email = (firebaseUser.email || "").toLowerCase();
+      if (!email.endsWith(`@${REQUIRED_EMAIL_DOMAIN}`)) {
+        await firebaseSignOut(auth);
+        setError(new Error(
+          `Sign-in is restricted to @${REQUIRED_EMAIL_DOMAIN} accounts. `
+          + `(You signed in with ${firebaseUser.email || "an unknown email"}.)`
+        ));
         setLoading(false);
         return;
       }
@@ -119,17 +127,16 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  // signInWithRedirect (not Popup) — popups fail on Vercel due to COOP headers
-  // blocking the popup's postMessage back to the parent. Redirect flow works
-  // identically in dev (localhost) and prod.
-  const signIn = () => signInWithRedirect(auth, googleProvider);
+  // Sign-in is initiated by the GIS button on the SignIn page (it calls
+  // signInWithCredential directly). AuthContext only owns onAuthStateChanged
+  // + signOut.
   const signOut = () => firebaseSignOut(auth);
 
   const isAdmin = profile?.role === "admin" && profile?.active === true;
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, error, isAdmin, signIn, signOut }}
+      value={{ user, profile, loading, error, isAdmin, signOut }}
     >
       {children}
     </AuthContext.Provider>

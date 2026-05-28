@@ -5,6 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vistamar Management</title>
+    <!-- Google Identity Services (GIS) — renders the official Sign in with
+         Google button on the /signin page. ID token round-trips happen via
+         Google's iframe, avoiding popup-blocker / COOP / redirect-state
+         failure modes of the older Firebase Auth signInWithPopup and
+         signInWithRedirect flows. -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <div id="root"></div>
