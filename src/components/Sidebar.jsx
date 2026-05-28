@@ -1,25 +1,69 @@
-import { NavLink } from "react-router-dom";
-import { Box, List, ListItemButton, ListItemIcon, ListItemText, Stack, Typography } from "@mui/material";
+import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+import {
+  Box,
+  Collapse,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  Typography,
+} from "@mui/material";
 import {
   Building2,
+  ChevronDown,
+  ChevronRight,
   LayoutDashboard,
   Settings,
   SquareKanban,
   UserCircle,
-  Users,
 } from "lucide-react";
 
-const NAV_ITEMS = [
+// Top-level routes. Members route removed from sidebar 2026-05-27 — page
+// stub still mounted at /members for future Members admin work, just not
+// linked from anywhere.
+const TOP_LEVEL = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/board", label: "Task Board", icon: SquareKanban },
-  { to: "/members", label: "Members", icon: Users, requireAdmin: true },
+];
+
+// Settings is now a parent group, not a navigable route itself. Clicking
+// it toggles its child list; Organizations + Profile each navigate.
+const SETTINGS_CHILDREN = [
   { to: "/organizations", label: "Organizations", icon: Building2, requireAdmin: true },
-  { to: "/settings", label: "Settings", icon: Settings },
   { to: "/profile", label: "Profile", icon: UserCircle },
 ];
 
+const navItemSx = (theme) => ({
+  mx: 2,
+  borderRadius: 1.5,
+  color: theme.sidebar.color,
+  "&.active": {
+    bgcolor: theme.sidebar.active,
+    color: "#FFFFFF",
+  },
+  "&:hover": {
+    bgcolor: "rgba(255,255,255,0.04)",
+    color: "#FFFFFF",
+  },
+});
+
 export default function Sidebar({ isAdmin }) {
-  const visible = NAV_ITEMS.filter((item) => !item.requireAdmin || isAdmin);
+  const location = useLocation();
+  const visibleSettingsChildren = SETTINGS_CHILDREN.filter(
+    (c) => !c.requireAdmin || isAdmin,
+  );
+  const isOnSettingsChild = visibleSettingsChildren.some(
+    (c) => c.to === location.pathname,
+  );
+  const [settingsOpen, setSettingsOpen] = useState(isOnSettingsChild);
+
+  // Auto-expand if the user navigates to a child route via URL (e.g.,
+  // pastes a /profile link or follows an internal link).
+  useEffect(() => {
+    if (isOnSettingsChild) setSettingsOpen(true);
+  }, [isOnSettingsChild]);
 
   return (
     <Box
@@ -58,31 +102,68 @@ export default function Sidebar({ isAdmin }) {
       </Stack>
 
       <List sx={{ py: 2 }}>
-        {visible.map(({ to, label, icon: Icon }) => (
+        {TOP_LEVEL.map(({ to, label, icon: Icon }) => (
           <ListItemButton
             key={to}
             component={NavLink}
             to={to}
-            sx={(theme) => ({
-              mx: 2,
-              borderRadius: 1.5,
-              color: theme.sidebar.color,
-              "&.active": {
-                bgcolor: theme.sidebar.active,
-                color: "#FFFFFF",
-              },
-              "&:hover": {
-                bgcolor: "rgba(255,255,255,0.04)",
-                color: "#FFFFFF",
-              },
-            })}
+            sx={navItemSx}
           >
             <ListItemIcon sx={{ minWidth: 36, color: "inherit" }}>
               <Icon size={18} strokeWidth={2} />
             </ListItemIcon>
-            <ListItemText primary={label} primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }} />
+            <ListItemText
+              primary={label}
+              primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
+            />
           </ListItemButton>
         ))}
+
+        {/* Settings group — clickable parent that toggles expansion only,
+            does NOT navigate. Children render indented inside <Collapse>. */}
+        <ListItemButton
+          onClick={() => setSettingsOpen((o) => !o)}
+          sx={(theme) => ({
+            ...navItemSx(theme),
+            // Highlight the parent when a child is the current route.
+            ...(isOnSettingsChild && {
+              color: "#FFFFFF",
+            }),
+          })}
+        >
+          <ListItemIcon sx={{ minWidth: 36, color: "inherit" }}>
+            <Settings size={18} strokeWidth={2} />
+          </ListItemIcon>
+          <ListItemText
+            primary="Settings"
+            primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
+          />
+          {settingsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </ListItemButton>
+
+        <Collapse in={settingsOpen} timeout="auto" unmountOnExit>
+          <List disablePadding>
+            {visibleSettingsChildren.map(({ to, label, icon: Icon }) => (
+              <ListItemButton
+                key={to}
+                component={NavLink}
+                to={to}
+                sx={(theme) => ({
+                  ...navItemSx(theme),
+                  pl: 6,
+                })}
+              >
+                <ListItemIcon sx={{ minWidth: 28, color: "inherit" }}>
+                  <Icon size={15} strokeWidth={2} />
+                </ListItemIcon>
+                <ListItemText
+                  primary={label}
+                  primaryTypographyProps={{ fontSize: 13, fontWeight: 500 }}
+                />
+              </ListItemButton>
+            ))}
+          </List>
+        </Collapse>
       </List>
     </Box>
   );
