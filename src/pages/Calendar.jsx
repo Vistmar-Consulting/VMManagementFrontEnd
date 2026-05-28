@@ -115,51 +115,79 @@ function AttendeeAvatars({ attendees, userByEmail, max = 5 }) {
 
 // ─── Cards ─────────────────────────────────────────────────────────────
 
+// Uniform card dimensions so every Recurring + AdHoc card is the same size
+// regardless of title length / attendee count. Tighter than the first cut
+// (Andy 2026-05-28: "smaller, all same size").
+const CARD_SX = {
+  background: "white",
+  borderRadius: "10px",
+  cursor: "pointer",
+  overflow: "hidden",
+  transition: "transform 0.15s, box-shadow 0.15s",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 118,
+};
+const CARD_TITLE_SX = {
+  fontFamily: t.serif,
+  fontSize: 14,
+  fontWeight: 500,
+  color: t.ink,
+  lineHeight: 1.25,
+  // Clamp to 2 lines so a long title can't push the card taller than peers.
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  mb: 0.4,
+};
+const CARD_META_SX = {
+  fontSize: 11,
+  color: t.ink3,
+  mb: 1,
+  display: "flex",
+  alignItems: "center",
+  gap: 0.5,
+};
+const CARD_FOOTER_SX = {
+  display: "flex",
+  alignItems: "center",
+  mt: "auto",
+  pt: 1,
+  borderTop: `1px solid ${t.cream}`,
+  minHeight: 32,
+};
+
 function RecurringCard({ series, userByEmail, onClick }) {
   const cadenceLabel = detectCadence(series.instanceCount);
   const nextDt = series.nextDate ? parseISO(series.nextDate) : null;
-  const displayAttendees = visibleAttendees(series.attendees);
 
   return (
     <Box
       onClick={onClick}
       sx={{
-        background: "white",
-        borderRadius: "14px",
-        cursor: "pointer",
-        overflow: "hidden",
-        transition: "transform 0.15s, box-shadow 0.15s",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
+        ...CARD_SX,
         borderLeft: `4px solid ${t.copper}`,
-        "&:hover": {
-          transform: "translateY(-2px)",
-          boxShadow: "0 4px 20px rgba(184,115,51,0.15)",
-        },
-        display: "flex",
-        flexDirection: "column",
+        "&:hover": { transform: "translateY(-2px)", boxShadow: "0 4px 16px rgba(184,115,51,0.15)" },
       }}
     >
-      <Box sx={{ p: 2.5, flex: 1, display: "flex", flexDirection: "column" }}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
+      <Box sx={{ p: 1.5, flex: 1, display: "flex", flexDirection: "column" }}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
           <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper }}>
             Recurring{cadenceLabel ? ` · ${cadenceLabel}` : ""}
           </Typography>
-          <ChevronRight sx={{ fontSize: 18, color: t.cream3 }} />
+          <ChevronRight sx={{ fontSize: 16, color: t.cream3 }} />
         </Box>
-
-        <Typography sx={{ fontFamily: t.serif, fontSize: 18, fontWeight: 500, color: t.ink, mb: 0.3 }}>
-          {series.title || "(untitled)"}
-        </Typography>
-        <Typography sx={{ fontSize: 11, color: t.ink3, mb: 1.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+        <Typography sx={CARD_TITLE_SX}>{series.title || "(untitled)"}</Typography>
+        <Typography sx={CARD_META_SX}>
           <Schedule sx={{ fontSize: 12 }} />
-          {nextDt ? `Next: ${format(nextDt, "MMM d 'at' h:mm a")}` : "No upcoming instances"}
+          {nextDt ? `Next: ${format(nextDt, "MMM d · h:mm a")}` : "No upcoming instances"}
         </Typography>
-
-        {displayAttendees.length > 0 && (
-          <Box sx={{ display: "flex", alignItems: "center", mt: "auto", pt: 1.5, borderTop: `1px solid ${t.cream}` }}>
-            <AttendeeAvatars attendees={series.attendees} userByEmail={userByEmail} />
-          </Box>
-        )}
+        <Box sx={CARD_FOOTER_SX}>
+          <AttendeeAvatars attendees={series.attendees} userByEmail={userByEmail} />
+        </Box>
       </Box>
     </Box>
   );
@@ -167,48 +195,31 @@ function RecurringCard({ series, userByEmail, onClick }) {
 
 function AdHocCard({ meeting, userByEmail, onClick }) {
   const dt = meeting.date ? parseISO(meeting.date) : null;
-  const displayAttendees = visibleAttendees(meeting.attendees);
   return (
     <Box
       onClick={onClick}
       sx={{
-        background: "white",
-        borderRadius: "14px",
-        cursor: "pointer",
-        overflow: "hidden",
-        transition: "transform 0.15s, box-shadow 0.15s",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        border: "2px solid transparent",
+        ...CARD_SX,
         borderLeft: `4px solid ${t.purple}`,
-        "&:hover": {
-          transform: "translateY(-2px)",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
-        },
-        display: "flex",
-        flexDirection: "column",
+        "&:hover": { transform: "translateY(-2px)", boxShadow: "0 4px 16px rgba(94,53,177,0.15)" },
       }}
     >
-      <Box sx={{ p: 2.5, flex: 1, display: "flex", flexDirection: "column" }}>
-        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}>
-          <ChevronRight sx={{ fontSize: 18, color: t.cream3 }} />
-        </Box>
-
-        <Typography sx={{ fontFamily: t.serif, fontSize: 18, fontWeight: 500, color: t.ink, mb: 0.3 }}>
-          {meeting.title || "(untitled)"}
-        </Typography>
-
-        {dt && (
-          <Typography sx={{ fontSize: 11, color: t.ink3, mb: 1.5, display: "flex", alignItems: "center", gap: 0.5 }}>
-            <Schedule sx={{ fontSize: 12 }} />
-            {format(dt, "MMM d 'at' h:mm a")}
+      <Box sx={{ p: 1.5, flex: 1, display: "flex", flexDirection: "column" }}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+          <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.purple }}>
+            Ad Hoc
           </Typography>
-        )}
+          <ChevronRight sx={{ fontSize: 16, color: t.cream3 }} />
+        </Box>
+        <Typography sx={CARD_TITLE_SX}>{meeting.title || "(untitled)"}</Typography>
 
-        {displayAttendees.length > 0 && (
-          <Box sx={{ display: "flex", alignItems: "center", mt: "auto", pt: 1.5, borderTop: `1px solid ${t.cream}` }}>
-            <AttendeeAvatars attendees={meeting.attendees} userByEmail={userByEmail} />
-          </Box>
-        )}
+        <Typography sx={CARD_META_SX}>
+          <Schedule sx={{ fontSize: 12 }} />
+          {dt ? format(dt, "MMM d · h:mm a") : "Date TBD"}
+        </Typography>
+        <Box sx={CARD_FOOTER_SX}>
+          <AttendeeAvatars attendees={meeting.attendees} userByEmail={userByEmail} />
+        </Box>
       </Box>
     </Box>
   );
@@ -426,7 +437,7 @@ export default function Calendar() {
 
       {/* ═══ RECURRING MEETINGS ═══ */}
       <GroupHeader color={t.copper} label="Recurring Meetings" />
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 2, mb: 3.5, ml: "11px" }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 2, mb: 3.5, ml: "11px" }}>
         {recurringSeries.map((series) => {
           // The "actionable" target for popover/reschedule is the next instance
           // of the series — that's the event the reschedule callable patches.
@@ -449,7 +460,7 @@ export default function Calendar() {
 
       {/* ═══ UPCOMING MEETINGS ═══ */}
       <GroupHeader color={t.purple} label="Upcoming Meetings" />
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 2, mb: 3.5, ml: "11px" }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 2, mb: 3.5, ml: "11px" }}>
         {upcomingMeetings.map((m) => (
           <AdHocCard
             key={m.event_id}
@@ -489,7 +500,7 @@ export default function Calendar() {
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
             gap: 2,
             mb: 3.5,
             ml: "11px",
