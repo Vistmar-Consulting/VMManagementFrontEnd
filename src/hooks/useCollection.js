@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { collection, onSnapshot, query } from "firebase/firestore";
 
 import { db } from "../firebase.js";
@@ -19,7 +19,30 @@ export function useCollection(path, constraints = EMPTY_CONSTRAINTS) {
   const [loading, setLoading] = useState(Boolean(path));
   const [error, setError] = useState(null);
 
+  // Dev-only: detect callers passing a new array reference each render with
+  // identical content. That signature means they forgot to memoize, which
+  // re-subscribes the Firestore listener on every render.
+  const prevSignatureRef = useRef({ path: null, json: null });
+
   useEffect(() => {
+    if (import.meta.env.DEV && constraints !== EMPTY_CONSTRAINTS) {
+      try {
+        const currJson = JSON.stringify(constraints);
+        if (
+          prevSignatureRef.current.path === path &&
+          prevSignatureRef.current.json === currJson
+        ) {
+          console.warn(
+            `[useCollection] constraints array for "${path}" changed identity but serializes identically — ` +
+              `the Firestore listener is re-subscribing on every render. Wrap the constraints array in useMemo.`,
+          );
+        }
+        prevSignatureRef.current = { path, json: currJson };
+      } catch {
+        // Non-serializable constraint (circular refs, etc.) — skip the check.
+      }
+    }
+
     if (!path) {
       setData([]);
       setLoading(false);
