@@ -37,6 +37,9 @@ import {
 } from "@mui/icons-material";
 
 import MemberAvatar from "../components/MemberAvatar.jsx";
+import MiniProjectBoard from "../components/MiniProjectBoard.jsx";
+import TopicEditDialog from "../components/TopicEditDialog.jsx";
+import { useItems } from "../hooks/useItems.js";
 import { format, parseISO } from "date-fns";
 import {
   addDoc,
@@ -936,7 +939,7 @@ const KPI_CELLS = [
   { key: "dueThisWeek", label: "Due This Wk", color: "#ef6c00" },
 ];
 
-function TopicKpiStrip({ value, onChange }) {
+function TopicKpiStrip({ counts, value, onChange }) {
   return (
     <Box
       sx={{
@@ -950,10 +953,8 @@ function TopicKpiStrip({ value, onChange }) {
     >
       {KPI_CELLS.map(({ key, label, color }) => {
         const active = value === key;
-        // Counts will become real in V2.2.2e. For now every cell shows "—"
-        // and is non-clickable (opacity 0.4) to match the "zero-value cell"
-        // visual rule from the reference doc.
-        const isZero = true;
+        const count = counts?.[key] ?? 0;
+        const isZero = count === 0;
         return (
           <Box
             key={key}
@@ -970,7 +971,9 @@ function TopicKpiStrip({ value, onChange }) {
               transition: "background 0.15s",
             }}
           >
-            <Typography sx={{ fontSize: 16, fontWeight: 700, color, lineHeight: 1.1 }}>—</Typography>
+            <Typography sx={{ fontSize: 16, fontWeight: 700, color, lineHeight: 1.1 }}>
+              {isZero ? "—" : count}
+            </Typography>
             <Typography sx={{ fontSize: 8.5, color: t.ink3, mt: 0.2, textTransform: "uppercase", letterSpacing: 0.6 }}>
               {label}
             </Typography>
@@ -1007,15 +1010,66 @@ function MiniProjectBoardPlaceholder() {
 
 // ─── AgendaTopicCard (§4.3) ────────────────────────────────────────────
 
-function AgendaTopicCard({ topic, agendaId, focusFilter, attendeeFilter }) {
+function AgendaTopicCard({
+  topic,
+  agendaId,
+  organizationId,
+  items,
+  users,
+  categories,
+  tags,
+  focusFilter,
+  attendeeFilter,
+  onOpenComments,
+  onOpenFiles,
+  getCommentCount,
+  getFileCount,
+}) {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(false);
   const [menuEl, setMenuEl] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState(topic.name || "");
-  // Per-topic KPI filter — drives Mini Project Board row filtering once
-  // V2.2.2e wires it. Separate from page-level meetingFocusFilter (the
-  // sidebar's Meeting Focus panel).
+  // Per-topic KPI filter — drives Mini Project Board row filtering. Separate
+  // from page-level meetingFocusFilter (the sidebar's Meeting Focus panel).
   const [topicKpiFilter, setTopicKpiFilter] = useState(null);
+
+  // Compute the matched items for this topic so the KPI strip + the
+  // MiniProjectBoard render off the same filter.
+  const matchedItems = useMemo(() => {
+    const cats = topic.categoryIds || [];
+    const tgs = topic.tagIds || [];
+    if (cats.length === 0 && tgs.length === 0) return [];
+    const catSet = new Set(cats);
+    const tagSet = new Set(tgs);
+    return (items || []).filter((it) => {
+      if (it.parentId) return false;
+      if (it.categoryId && catSet.has(it.categoryId)) return true;
+      if (Array.isArray(it.tagIds) && it.tagIds.some((t) => tagSet.has(t))) return true;
+      return false;
+    });
+  }, [items, topic.categoryIds, topic.tagIds]);
+
+  // Real KPI counts. "Due This Wk" matches the existing TaskBoard
+  // Mon-Fri business-week logic loosely (within next 7 days, ignoring weekend
+  // refinement — full parity ships with the Meeting Focus sidebar in V2.2.2e.2).
+  const kpiCounts = useMemo(() => {
+    const now = new Date();
+    const counts = { assigned: 0, inProgress: 0, review: 0, onHold: 0, done: 0, overdue: 0, dueThisWeek: 0 };
+    for (const it of matchedItems) {
+      if (it.onHold) counts.onHold += 1;
+      if (it.statusId === 1) counts.assigned += 1;
+      else if (it.statusId === 2) counts.inProgress += 1;
+      else if (it.statusId === 4) counts.review += 1;
+      else if (it.statusId === 5) counts.done += 1;
+      if (it.dueDate && !(it.statusId === 5 || it.statusId === 7)) {
+        const dd = it.dueDate?.toDate ? it.dueDate.toDate() : new Date(it.dueDate);
+        if (dd && dd < now) counts.overdue += 1;
+        else if (dd && (dd - now) / 86400000 <= 7) counts.dueThisWeek += 1;
+      }
+    }
+    return counts;
+  }, [matchedItems]);
 
   useEffect(() => setNameDraft(topic.name || ""), [topic.name]);
 
@@ -1135,7 +1189,15 @@ function AgendaTopicCard({ topic, agendaId, focusFilter, attendeeFilter }) {
           onClose={() => setMenuEl(null)}
           onClick={(e) => e.stopPropagation()}
         >
-          <MenuItem disabled sx={{ fontSize: 13 }}>Edit · categories & tags V2.2.2e</MenuItem>
+          <MenuItem
+            onClick={() => {
+              setMenuEl(null);
+              setEditOpen(true);
+            }}
+            sx={{ fontSize: 13 }}
+          >
+            Edit categories &amp; tags
+          </MenuItem>
           <MenuItem onClick={handleDelete} sx={{ fontSize: 13, color: "#c62828" }}>
             Delete topic
           </MenuItem>
@@ -1144,7 +1206,11 @@ function AgendaTopicCard({ topic, agendaId, focusFilter, attendeeFilter }) {
 
       {expanded && (
         <Box sx={{ p: 1.8 }}>
-          <TopicKpiStrip value={topicKpiFilter} onChange={setTopicKpiFilter} />
+          <TopicKpiStrip
+            counts={kpiCounts}
+            value={topicKpiFilter}
+            onChange={setTopicKpiFilter}
+          />
 
           {/* Talking Points */}
           <Box sx={{ mb: 2 }}>
@@ -1175,10 +1241,32 @@ function AgendaTopicCard({ topic, agendaId, focusFilter, attendeeFilter }) {
             </Box>
           </Box>
 
-          <MiniProjectBoardPlaceholder />
+          <MiniProjectBoard
+            topic={topic}
+            agendaId={agendaId}
+            organizationId={organizationId}
+            items={items}
+            users={users}
+            categories={categories}
+            tags={tags}
+            onOpenComments={onOpenComments}
+            onOpenFiles={onOpenFiles}
+            getCommentCount={getCommentCount}
+            getFileCount={getFileCount}
+          />
 
           <TopicNotesSection topic={topic} agendaId={agendaId} />
         </Box>
+      )}
+
+      {editOpen && (
+        <TopicEditDialog
+          topic={topic}
+          agendaId={agendaId}
+          categories={categories}
+          tags={tags}
+          onClose={() => setEditOpen(false)}
+        />
       )}
     </Box>
   );
@@ -1218,6 +1306,17 @@ export default function AgendaDetail() {
     }
     return m;
   }, [users]);
+
+  // V2.2.2e: data sources for the embedded MiniProjectBoard. Items,
+  // categories, tags are read once at this level and threaded down to every
+  // topic card; each card filters them locally by its categoryIds + tagIds.
+  // V1 already wires the items collection for the main Task Board.
+  const { data: allItems } = useItems();
+  const { data: categories } = useCollection("categories");
+  const { data: tags } = useCollection("tags");
+  // organizationId for "+ New Item" — read from the calendar_series doc since
+  // that's where reconciliation stamps the resolved Management slug.
+  const organizationId = calendarSeries?.organizationId || agenda?.organizationId || null;
 
   if (agendaLoading) {
     return (
@@ -1297,6 +1396,11 @@ export default function AgendaDetail() {
                   key={topic.id}
                   topic={topic}
                   agendaId={agendaId}
+                  organizationId={organizationId}
+                  items={allItems}
+                  users={users}
+                  categories={categories}
+                  tags={tags}
                   focusFilter={meetingFocusFilter}
                   attendeeFilter={attendeeFilter}
                 />
