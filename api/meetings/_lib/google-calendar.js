@@ -214,6 +214,7 @@ export async function listEvents({ orgId, start, end }) {
     series_id: e.recurringEventId || null,
     iCalUID: e.iCalUID || null,
     m365EventId: e.extendedProperties?.private?.m365EventId || null,
+    org_id: e.extendedProperties?.private?.orgId || null,
     title: e.summary,
     date: e.start?.dateTime || e.start?.date,
     end_date: e.end?.dateTime || e.end?.date,

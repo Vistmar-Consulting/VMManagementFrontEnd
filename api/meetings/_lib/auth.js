@@ -35,3 +35,18 @@ export async function getUserFromToken(_token) {
   // Plan C's imports don't break when its endpoints land.
   return null;
 }
+
+// V2.1 ships only `list` + `reschedule`. The other 6 endpoints (create,
+// cancel, rename, attendees, send-prep, send-schedule) are committed but
+// gated behind this flag so they don't expose an unintended public surface
+// (send-prep / send-schedule could be phishing-fanout primitives via
+// meetings@'s mailbox under presence-only auth). Set MEETINGS_V2_2_ENABLED=true
+// on Vercel when V2.2 ships, and remove this gate when proper Firebase ID
+// token validation lands in requireAuth above.
+export function requireV2_2Enabled(req, res) {
+  if (process.env.MEETINGS_V2_2_ENABLED !== "true") {
+    res.status(404).json({ error: "Endpoint not enabled in V2.1" });
+    return false;
+  }
+  return true;
+}

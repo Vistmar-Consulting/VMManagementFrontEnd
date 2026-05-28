@@ -23,7 +23,7 @@ import {
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 
 import { rescheduleMeeting } from "../lib/meetingsApi.js";
 
@@ -34,9 +34,22 @@ export default function RescheduleDialog({ meeting, onClose, onSuccess }) {
     () => (meeting?.date ? new Date(meeting.date) : new Date()),
     [meeting?.date]
   );
+  const originalEnd = useMemo(
+    () => (meeting?.end_date ? new Date(meeting.end_date) : null),
+    [meeting?.end_date]
+  );
   const isRecurring = meeting?.type === "recurring";
 
-  // Default scope: instance for recurring, "series" is irrelevant for singles
+  // Preserve original duration on reschedule (archive defaulted to 1hr).
+  const originalDurationMinutes = useMemo(() => {
+    if (!originalEnd || !originalStart || isNaN(originalEnd) || isNaN(originalStart)) return 60;
+    const min = Math.round((originalEnd.getTime() - originalStart.getTime()) / 60000);
+    return min > 0 ? min : 60;
+  }, [originalStart, originalEnd]);
+
+  // Scope only meaningful for recurring meetings. Non-recurring meetings
+  // always patch their own event directly — the backend's `series` mode does
+  // exactly that (events.patch on the event_id, no findInstanceByDate).
   const [mode, setMode] = useState("instance");
   const [newDate, setNewDate] = useState(originalStart);
   const [newTime, setNewTime] = useState(originalStart);
@@ -61,14 +74,24 @@ export default function RescheduleDialog({ meeting, onClose, onSuccess }) {
     const timeStr = `${pad2(newTime.getHours())}:${pad2(newTime.getMinutes())}`;
     const originalDateStr = format(originalStart, "yyyy-MM-dd");
 
+    // For recurring meetings, the eventId passed to the backend MUST be the
+    // recurring master id (series_id). Google's events.instances() rejects
+    // expanded-instance ids like "<master>_20260527T140000Z". For
+    // non-recurring meetings, event_id IS the master (no series exists).
+    const eventIdForApi = isRecurring ? meeting.series_id : meeting.event_id;
+    // Collapse non-recurring meetings to "series" mode so the backend skips
+    // findInstanceByDate (which is recurring-only) and patches directly.
+    const effectiveMode = isRecurring ? mode : "series";
+
     mutation.mutate({
-      eventId: meeting.event_id,
-      mode,
-      originalDate: mode === "instance" ? originalDateStr : null,
+      eventId: eventIdForApi,
+      mode: effectiveMode,
+      originalDate: effectiveMode === "instance" ? originalDateStr : null,
       newDate: dateStr,
       newTime: timeStr,
       timezone: "America/Los_Angeles",
-      orgId: meeting.org_id || meeting.orgId || null,
+      durationMinutes: originalDurationMinutes,
+      orgId: meeting.org_id || null,
     });
   };
 
@@ -117,8 +140,9 @@ export default function RescheduleDialog({ meeting, onClose, onSuccess }) {
           </Stack>
 
           <Typography variant="caption" color="text.secondary">
+            Times shown in Pacific (Vistamar HQ). Duration preserved at {originalDurationMinutes} min.
             Attendees will be notified automatically via Outlook (Microsoft Graph fans the
-            updated invite to every attendee). The Google Calendar mirror is updated silently.
+            updated invite to every attendee); the Google Calendar mirror is updated silently.
           </Typography>
 
           {error && <Alert severity="error">{error}</Alert>}

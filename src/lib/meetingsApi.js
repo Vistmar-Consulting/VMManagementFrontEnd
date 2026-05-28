@@ -50,18 +50,23 @@ export function listMeetings({ start, end, orgId }) {
 
 // PUT /api/meetings/reschedule
 // mode: 'instance' | 'series'
-// For 'instance', originalDate is required.
-export function rescheduleMeeting({ orgId, eventId, mode, originalDate, newDate, newTime, timezone }) {
+// For 'instance', originalDate is required and eventId must be the recurring
+// series master id (not an expanded instance id) — Google's events.instances
+// API rejects instance ids when looking up the target instance.
+// durationMinutes preserves the meeting's original length (defaults to 60 if
+// the caller omits it).
+export function rescheduleMeeting({ orgId, eventId, mode, originalDate, newDate, newTime, timezone, durationMinutes }) {
   return call("reschedule", {
     method: "PUT",
     body: {
-      org_id: orgId || "management",  // backend only checks presence
+      org_id: orgId || "unspecified",  // backend only checks presence; flag obviously
       event_id: eventId,
       mode,
       original_date: originalDate,
       new_date: newDate,
       new_time: newTime,
       timezone: timezone || "America/Los_Angeles",
+      duration_minutes: durationMinutes,
     },
   });
 }

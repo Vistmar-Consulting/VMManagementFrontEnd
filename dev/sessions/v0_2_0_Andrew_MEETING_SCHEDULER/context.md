@@ -112,6 +112,17 @@
 - `_lib/agenda-email.js:201` has a "View full agenda in Console" string. Fix when V2.4 ports send-prep + send-schedule.
 - `org_id` flow is asymmetric: existing Console events on meetings@'s calendar have NUMERIC orgIds in extendedProperties; new Management events will have SLUG orgIds. List endpoint skips the filter when null so both coexist. Don't enable orgId filtering on list.js without a backfill plan.
 
+## Post-Review Fixes Landed (2026-05-27 late evening)
+
+Code-review pass (superpowers:code-reviewer subagent) surfaced 3 Critical + 1 Important issue. All addressed in a follow-up commit:
+
+- **C1 — org_id missing in listEvents mapper.** `_lib/google-calendar.js` `listEvents` was filtering by `orgId` on the read but never returning it in the response. Calendar.jsx's org chip filter compared `m.org_id` against every meeting and stripped them all when any chip other than "All" was picked. Fix: add `org_id: e.extendedProperties?.private?.orgId || null` to the mapper.
+- **C2 — 6 dormant endpoints exposed phishing-fanout primitives.** `create.js`, `cancel.js`, `rename.js`, `attendees.js`, `send-prep.js`, `send-schedule.js` were all reachable on prod URL with presence-only auth — `send-*` particularly nasty (could send from `meetings@vistamarconsulting.com` to attacker-chosen recipients). Fix: new `requireV2_2Enabled` helper in `_lib/auth.js` that 404s unless `MEETINGS_V2_2_ENABLED=true` env var is set. Wired into all 6 dormant endpoints. V2.1-live endpoints (reschedule, list) unchanged.
+- **C3 — Reschedule passed Google-instance ID where master ID was needed.** Calendar.jsx returns 1 row per expanded instance via `singleEvents: true`, so `event_id` for recurring rows = `<master>_<date>`. The archive's `findInstanceByDate` calls `cal.events.instances({ eventId })` which requires the master ID — would have failed on every recurring reschedule. Fix: in RescheduleDialog, pick `meeting.series_id` for recurring (the master), `meeting.event_id` for singles. Force non-recurring meetings to "series" mode (patches directly via `cal.events.patch`, skips `findInstanceByDate`).
+- **I3 — Duration silently reset to 1hr on every reschedule.** Archive's `addOneHour` flattened 30-min standups + 90-min strategy sessions. Fix: FE computes `originalDurationMinutes` from `meeting.end_date - meeting.date`, passes to backend as `duration_minutes`. Backend uses it; falls back to 60 only if absent. Dialog UI now shows "Duration preserved at X min" + "Times shown in Pacific (Vistamar HQ)" caption.
+
+Build still passes (36s, no size regression). One trade-off accepted from review's I1: kept hardcoded `America/Los_Angeles` since all V1 users are PT — added the explicit caption instead of `Intl.DateTimeFormat().resolvedOptions().timeZone` detection (3-line punt).
+
 ## Useful Repo State
 
 - Branch `main` clean, up-to-date with `origin/dev` at `6a067ba`.

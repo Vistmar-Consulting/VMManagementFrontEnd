@@ -20,9 +20,13 @@ function toLocalIso(date, time) {
   return `${date}T${t}`;
 }
 
-function addOneHour(localIso) {
+// Add N minutes to a local ISO without a timezone suffix. Treats the input
+// as UTC for the arithmetic, then strips the trailing Z — wall-clock
+// semantics ride on the `timeZone` field that travels separately with the
+// start/end objects in the Google + Graph payloads.
+function addMinutes(localIso, minutes) {
   const d = new Date(`${localIso}Z`);
-  d.setUTCHours(d.getUTCHours() + 1);
+  d.setUTCMinutes(d.getUTCMinutes() + minutes);
   return d.toISOString().slice(0, 19);
 }
 
@@ -32,7 +36,7 @@ export default async function handler(req, res) {
   if (!requireAuth(req, res)) return;
 
   try {
-    const { org_id, event_id, mode, original_date, new_date, new_time, timezone } = req.body;
+    const { org_id, event_id, mode, original_date, new_date, new_time, timezone, duration_minutes } = req.body;
 
     if (!org_id || !event_id || !mode || !new_date || !new_time) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -43,7 +47,14 @@ export default async function handler(req, res) {
 
     const tz = timezone || "America/Los_Angeles";
     const newStartDateTime = toLocalIso(new_date, new_time);
-    const newEndDateTime = addOneHour(newStartDateTime);
+    // Preserve the meeting's original duration. Archive used to hardcode 60
+    // (addOneHour), silently flattening 30-min standups + 90-min strategy
+    // sessions to 1hr. FE now derives durationMinutes from the meeting's
+    // start/end and forwards it. Falls back to 60 only if the caller omits.
+    const durMin = Number.isFinite(duration_minutes) && duration_minutes > 0
+      ? duration_minutes
+      : 60;
+    const newEndDateTime = addMinutes(newStartDateTime, durMin);
 
     const m365EventId = await getM365EventId(event_id);
     if (!m365EventId) {

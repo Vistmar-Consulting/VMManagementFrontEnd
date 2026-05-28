@@ -8,12 +8,13 @@
 
 import { cancelEvent as graphCancel } from "./_lib/graph-events.js";
 import { cancelEvent as googleCancel, getM365EventId } from "./_lib/google-calendar.js";
-import { requireAuth } from "./_lib/auth.js";
+import { requireAuth, requireV2_2Enabled } from "./_lib/auth.js";
 import { applyCors } from "./_lib/cors.js";
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
   if (req.method !== "DELETE") return res.status(405).json({ error: "Method not allowed" });
+  if (!requireV2_2Enabled(req, res)) return;
   if (!requireAuth(req, res)) return;
 
   try {

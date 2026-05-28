@@ -105,7 +105,8 @@ V2 kickoff session opened 2026-05-27 evening. See `dev/HANDOFF_2026-05-27_MEETIN
 
 ### V2.1 → V2.2+ tightening
 
-- **Backend auth upgrade** — `api/meetings/_lib/auth.js` is presence-only (matches Console). Upgrade: verify Firebase ID token via `firebase-admin` (add dep, init Admin SDK in api/, parse `X-User-Token` as ID token, check `email.endsWith('@vistamarconsulting.com')`). Roughly 30 lines. Do before any cancel/delete endpoint ships in V2.2 (delete + bad auth = potential damage).
+- **Backend auth upgrade — gating BOTH the dormant endpoints AND the V2.1-live endpoints** — `api/meetings/_lib/auth.js` is presence-only (matches Console). Upgrade: verify Firebase ID token via `firebase-admin` (add dep, init Admin SDK in api/, parse `X-User-Token` as ID token, check `email.endsWith('@vistamarconsulting.com')` AND `users/{uid}.active == true`). Roughly 30 lines. **Do BEFORE setting `MEETINGS_V2_2_ENABLED=true`** — the V2.2 endpoints (cancel, attendees, send-prep, send-schedule especially) are higher-blast-radius than reschedule.
+- **`MEETINGS_V2_2_ENABLED=true` env flag** — gates 6 dormant endpoints (create, cancel, rename, attendees, send-prep, send-schedule) behind `requireV2_2Enabled` check in `api/meetings/_lib/auth.js`. Until set, they 404. Flip when V2.2 ships AND the Firebase-ID-token auth upgrade above is done. Remove the `requireV2_2Enabled` calls + helper when V2.2 is stable.
 - **`agenda-email.js` user-facing string** — has "View full agenda in Console" link. Update when porting send-prep + send-schedule in V2.4.
 
 ## V3 / Far-Future

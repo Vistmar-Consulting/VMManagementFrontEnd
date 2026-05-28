@@ -25,7 +25,7 @@
 import { createEvent as graphCreateEvent } from "./_lib/graph-events.js";
 import { createEvent as googleCreateEvent, cadenceToRrule } from "./_lib/google-calendar.js";
 import { withSilentProxies } from "./_lib/attendee-helpers.js";
-import { requireAuth } from "./_lib/auth.js";
+import { requireAuth, requireV2_2Enabled } from "./_lib/auth.js";
 import { applyCors } from "./_lib/cors.js";
 
 function toLocalIso(date, time) {
@@ -43,6 +43,7 @@ function addOneHour(localIso) {
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (!requireV2_2Enabled(req, res)) return;
   if (!requireAuth(req, res)) return;
 
   try {
