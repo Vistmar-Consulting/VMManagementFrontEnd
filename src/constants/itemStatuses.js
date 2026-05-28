@@ -28,3 +28,18 @@ export const STATUS_LABEL = {
   [STATUS.DONE]: "Done",
   [STATUS.ARCHIVE]: "Archive",
 };
+
+// Full dropdown order for the status pill on the board + row. Includes the
+// statuses that aren't board columns (AI Gen, Pending, Archive) so users can
+// move items in and out of those parking lots without leaving the row.
+// AI Gen sits first because it's the triage starting point — items suggested
+// by Fireflies / agenda automations land here for a human to confirm.
+export const STATUS_OPTIONS = [
+  { id: 8, name: "AI Gen",      color: "#00bcd4" },
+  { id: 1, name: "Assigned",    color: "#7b61ff" },
+  { id: 2, name: "In Progress", color: "#2196f3" },
+  { id: 6, name: "Pending",     color: "#f5a623" },
+  { id: 4, name: "Review",      color: "#9c6ade" },
+  { id: 5, name: "Done",        color: "#4caf50" },
+  { id: 7, name: "Archive",     color: "#9e9e9e" },
+];

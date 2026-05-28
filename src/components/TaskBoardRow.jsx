@@ -39,21 +39,9 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 
 import MemberAvatar from "./MemberAvatar.jsx";
 import { PRIORITY_LIST } from "../constants/itemPriorities.js";
+import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 import { tsToDate } from "../utils/firestoreTime.js";
-
-const STATUS_OPTIONS = [
-  // AI Gen sits at the top — these items are AI-suggested (e.g., from a
-  // Fireflies meeting transcript) and waiting for a human to confirm them
-  // into the real workflow. Placing it first makes triage natural.
-  { id: 8, name: "AI Gen",      color: "#00bcd4" },
-  { id: 1, name: "Assigned",    color: "#7b61ff" },
-  { id: 2, name: "In Progress", color: "#2196f3" },
-  { id: 6, name: "Pending",     color: "#f5a623" },
-  { id: 4, name: "Review",      color: "#9c6ade" },
-  { id: 5, name: "Done",        color: "#4caf50" },
-  { id: 7, name: "Archive",     color: "#9e9e9e" },
-];
 
 const STATUS_BY_ID = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id, s]));
 const PRIORITY_BY_ID = Object.fromEntries(PRIORITY_LIST.map((p) => [p.id, p]));

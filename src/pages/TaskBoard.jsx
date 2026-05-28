@@ -63,19 +63,8 @@ import { useCollection } from "../hooks/useCollection.js";
 import { useCollectionGroup } from "../hooks/useCollectionGroup.js";
 import { useItems } from "../hooks/useItems.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
+import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { tsToDate } from "../utils/firestoreTime.js";
-
-const STATUSES = [
-  // AI Gen first — items AI-suggested from upcoming Fireflies / agenda
-  // pipelines, awaiting human confirmation. See TaskBoardRow STATUS_OPTIONS.
-  { id: 8, name: "AI Gen",      color: "#00bcd4" },
-  { id: 1, name: "Assigned",    color: "#7b61ff" },
-  { id: 2, name: "In Progress", color: "#2196f3" },
-  { id: 6, name: "Pending",     color: "#f5a623" },
-  { id: 4, name: "Review",      color: "#9c6ade" },
-  { id: 5, name: "Done",        color: "#4caf50" },
-  { id: 7, name: "Archive",     color: "#9e9e9e" },
-];
 
 const DONE = 5;
 const ARCHIVE = 7;
@@ -593,7 +582,7 @@ export default function TaskBoard() {
 
   // Filter chip values for column popovers
   const priorityFilterValues = PRIORITY_LIST.map((p) => ({ value: p.id, label: p.label, color: p.color }));
-  const statusFilterValues = STATUSES.map((s) => ({ value: s.id, label: s.name, color: s.color }));
+  const statusFilterValues = STATUS_OPTIONS.map((s) => ({ value: s.id, label: s.name, color: s.color }));
   const assigneeFilterValues = users.filter((u) => u.active !== false).map((u) => ({
     value: u.id,
     label: u.displayName || u.email,
