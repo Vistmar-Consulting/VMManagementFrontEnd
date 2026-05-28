@@ -3,6 +3,26 @@
 // (event_id, series_id, title, date, end_date, type, teams_url, attendees,
 // m365EventId, org_id) rather than Console's normalized PascalCase mirror.
 
+// Silent-proxy filter. Mirror of api/meetings/_lib/attendee-helpers.js. These
+// two addresses are ALWAYS on Vistamar meetings (organizer + Fireflies bot)
+// but MUST NOT appear in any FE attendee surface — avatars, popover lists,
+// nothing. Per docs/MEETING_AGENDAS_PAGE_REFERENCE.md §7. Re-defined here
+// instead of imported because Vite bundles src/ separately from api/.
+const HOST_PROXY_EMAIL = "meetings@vistamarconsulting.com";
+const FIREFLIES_GUEST_EMAIL = "seo@vistamarconsulting.com";
+const SILENT_PROXY_EMAILS = new Set([HOST_PROXY_EMAIL, FIREFLIES_GUEST_EMAIL]);
+
+export function isSilentProxy(email) {
+  if (typeof email !== "string" || !email) return false;
+  return SILENT_PROXY_EMAILS.has(email.toLowerCase());
+}
+
+// Convenience: filter an attendee array down to display-visible attendees.
+export function visibleAttendees(attendees) {
+  if (!Array.isArray(attendees)) return [];
+  return attendees.filter((a) => !isSilentProxy(a?.email));
+}
+
 // Group recurring-meeting INSTANCES into series by title. Same-title meetings
 // always belong to the same series (e.g., "Ops Sync" on Wed + Fri = one card
 // surfaced as "2x/Week"). Returns array of:

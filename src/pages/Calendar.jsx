@@ -16,6 +16,7 @@ import {
   Box,
   Chip,
   CircularProgress,
+  Collapse,
   Divider,
   IconButton,
   Popover,
@@ -47,7 +48,7 @@ import {
 
 import { useCollection } from "../hooks/useCollection.js";
 import { listMeetings } from "../lib/meetingsApi.js";
-import { groupRecurringMeetings, detectCadence } from "../lib/meetingHelpers.js";
+import { groupRecurringMeetings, detectCadence, visibleAttendees } from "../lib/meetingHelpers.js";
 import MemberAvatar from "../components/MemberAvatar.jsx";
 import RescheduleDialog from "../components/RescheduleDialog.jsx";
 
@@ -86,9 +87,10 @@ function GroupHeader({ color, label }) {
 }
 
 function AttendeeAvatars({ attendees, userByEmail, max = 5 }) {
-  if (!attendees?.length) return null;
-  const visible = attendees.slice(0, max);
-  const overflow = attendees.length - visible.length;
+  const display = visibleAttendees(attendees);
+  if (!display.length) return null;
+  const visible = display.slice(0, max);
+  const overflow = display.length - visible.length;
   return (
     <Box sx={{ display: "flex" }}>
       {visible.map((a, i) => {
@@ -114,6 +116,7 @@ function AttendeeAvatars({ attendees, userByEmail, max = 5 }) {
 function RecurringCard({ series, userByEmail, onClick }) {
   const cadenceLabel = detectCadence(series.instanceCount);
   const nextDt = series.nextDate ? parseISO(series.nextDate) : null;
+  const displayAttendees = visibleAttendees(series.attendees);
 
   return (
     <Box
@@ -150,9 +153,11 @@ function RecurringCard({ series, userByEmail, onClick }) {
           {nextDt ? `Next: ${format(nextDt, "MMM d 'at' h:mm a")}` : "No upcoming instances"}
         </Typography>
 
-        <Box sx={{ display: "flex", alignItems: "center", mt: "auto", pt: 1.5, borderTop: `1px solid ${t.cream}` }}>
-          <AttendeeAvatars attendees={series.attendees} userByEmail={userByEmail} />
-        </Box>
+        {displayAttendees.length > 0 && (
+          <Box sx={{ display: "flex", alignItems: "center", mt: "auto", pt: 1.5, borderTop: `1px solid ${t.cream}` }}>
+            <AttendeeAvatars attendees={series.attendees} userByEmail={userByEmail} />
+          </Box>
+        )}
       </Box>
     </Box>
   );
@@ -160,6 +165,7 @@ function RecurringCard({ series, userByEmail, onClick }) {
 
 function AdHocCard({ meeting, userByEmail, onClick }) {
   const dt = meeting.date ? parseISO(meeting.date) : null;
+  const displayAttendees = visibleAttendees(meeting.attendees);
   return (
     <Box
       onClick={onClick}
@@ -196,7 +202,7 @@ function AdHocCard({ meeting, userByEmail, onClick }) {
           </Typography>
         )}
 
-        {meeting.attendees?.length > 0 && (
+        {displayAttendees.length > 0 && (
           <Box sx={{ display: "flex", alignItems: "center", mt: "auto", pt: 1.5, borderTop: `1px solid ${t.cream}` }}>
             <AttendeeAvatars attendees={meeting.attendees} userByEmail={userByEmail} />
           </Box>
@@ -216,6 +222,7 @@ export default function Calendar() {
   const [popoverAnchor, setPopoverAnchor] = useState(null);
   const [popoverMeeting, setPopoverMeeting] = useState(null);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [pastExpanded, setPastExpanded] = useState(false);
 
   // Single broad query: visible-month window EXTENDED forward 90 days so
   // the Recurring + Ad-Hoc card sections always have upcoming data. The
@@ -247,12 +254,20 @@ export default function Calendar() {
   // Recurring series — derived from filtered list
   const recurringSeries = useMemo(() => groupRecurringMeetings(filtered), [filtered]);
 
-  // Ad-hoc upcoming = single (non-recurring) meetings with date >= now
-  const adHocUpcoming = useMemo(() => {
+  // Upcoming = non-recurring meetings with date >= now (asc by date)
+  const upcomingMeetings = useMemo(() => {
     const now = new Date();
     return filtered
       .filter((m) => m.type !== "recurring" && m.date && new Date(m.date) >= now)
       .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [filtered]);
+
+  // Past = non-recurring meetings with date < now (reverse chronological)
+  const pastMeetings = useMemo(() => {
+    const now = new Date();
+    return filtered
+      .filter((m) => m.type !== "recurring" && m.date && new Date(m.date) < now)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [filtered]);
 
   // Calendar grid: index by YYYY-MM-DD for fast cell lookup
@@ -310,7 +325,7 @@ export default function Calendar() {
       {/* Page header */}
       <Box sx={{ mb: 3 }}>
         <Typography sx={{ fontFamily: t.serif, fontSize: 28, fontWeight: 400, color: t.ink }}>
-          Meetings
+          Meeting Agendas
         </Typography>
       </Box>
 
@@ -365,10 +380,10 @@ export default function Calendar() {
         )}
       </Box>
 
-      {/* ═══ AD HOC MEETINGS ═══ */}
-      <GroupHeader color={t.purple} label="Ad Hoc Meetings" />
+      {/* ═══ UPCOMING MEETINGS ═══ */}
+      <GroupHeader color={t.purple} label="Upcoming Meetings" />
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 2, mb: 3.5, ml: "11px" }}>
-        {adHocUpcoming.map((m) => (
+        {upcomingMeetings.map((m) => (
           <AdHocCard
             key={m.event_id}
             meeting={m}
@@ -376,12 +391,59 @@ export default function Calendar() {
             onClick={(e) => openCardPopover(e, m)}
           />
         ))}
-        {adHocUpcoming.length === 0 && !meetingsQuery.isLoading && (
+        {upcomingMeetings.length === 0 && !meetingsQuery.isLoading && (
           <Typography sx={{ fontSize: 12, color: t.ink3, fontStyle: "italic", py: 2 }}>
             No upcoming ad-hoc meetings.
           </Typography>
         )}
       </Box>
+
+      {/* ═══ PAST MEETINGS (collapsible) ═══ */}
+      <Box
+        onClick={() => setPastExpanded(!pastExpanded)}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          cursor: "pointer",
+          py: 1,
+          mb: pastExpanded ? 1.5 : 2.5,
+        }}
+      >
+        <Box sx={{ width: 3, height: 18, borderRadius: 1, background: "#9e9e9e", flexShrink: 0 }} />
+        <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: "#9e9e9e" }}>
+          Past Meetings
+        </Typography>
+        <Typography sx={{ fontSize: 10, color: t.cream3 }}>
+          {pastExpanded ? "▼" : "▶"} {pastMeetings.length} meeting{pastMeetings.length !== 1 ? "s" : ""}
+        </Typography>
+      </Box>
+      <Collapse in={pastExpanded}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: 2,
+            mb: 3.5,
+            ml: "11px",
+            opacity: 0.7,
+          }}
+        >
+          {pastMeetings.map((m) => (
+            <AdHocCard
+              key={m.event_id}
+              meeting={m}
+              userByEmail={userByEmail}
+              onClick={(e) => openCardPopover(e, m)}
+            />
+          ))}
+          {pastMeetings.length === 0 && (
+            <Typography sx={{ fontSize: 12, color: t.ink3, fontStyle: "italic", py: 2 }}>
+              No past ad-hoc meetings in window.
+            </Typography>
+          )}
+        </Box>
+      </Collapse>
 
       {/* ═══ CALENDAR ═══ */}
       <Box sx={{ mt: 4 }}>
@@ -626,29 +688,33 @@ export default function Calendar() {
                 </>
               )}
 
-              {m.attendees?.length > 0 && (
-                <>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, mb: 1 }}>
-                    <People sx={{ fontSize: 16, color: t.ink3 }} />
-                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: t.ink }}>
-                      {m.attendees.length} attendee{m.attendees.length !== 1 ? "s" : ""}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.8, maxHeight: 180, overflowY: "auto", mb: 1.5 }}>
-                    {m.attendees.map((a, idx) => {
-                      const userRecord = a.email ? userByEmail[a.email.toLowerCase()] : null;
-                      const userForAvatar = userRecord || { displayName: a.name || a.email, email: a.email };
-                      return (
-                        <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <MemberAvatar user={userForAvatar} size={24} border={false} tooltip={false} />
-                          <Typography sx={{ fontSize: 13, color: t.ink }}>{a.name || a.email}</Typography>
-                        </Box>
-                      );
-                    })}
-                  </Box>
-                  <Divider sx={{ my: 1.5 }} />
-                </>
-              )}
+              {(() => {
+                const displayAttendees = visibleAttendees(m.attendees);
+                if (!displayAttendees.length) return null;
+                return (
+                  <>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, mb: 1 }}>
+                      <People sx={{ fontSize: 16, color: t.ink3 }} />
+                      <Typography sx={{ fontSize: 13, fontWeight: 600, color: t.ink }}>
+                        {displayAttendees.length} attendee{displayAttendees.length !== 1 ? "s" : ""}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.8, maxHeight: 180, overflowY: "auto", mb: 1.5 }}>
+                      {displayAttendees.map((a, idx) => {
+                        const userRecord = a.email ? userByEmail[a.email.toLowerCase()] : null;
+                        const userForAvatar = userRecord || { displayName: a.name || a.email, email: a.email };
+                        return (
+                          <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <MemberAvatar user={userForAvatar} size={24} border={false} tooltip={false} />
+                            <Typography sx={{ fontSize: 13, color: t.ink }}>{a.name || a.email}</Typography>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                    <Divider sx={{ my: 1.5 }} />
+                  </>
+                );
+              })()}
 
               {/* V2.1 primary action — Reschedule. V2.3 will add "Open Agenda"
                   alongside this once agenda detail pages exist. */}
