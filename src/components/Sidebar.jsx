@@ -12,8 +12,6 @@ import {
 } from "@mui/material";
 import {
   Building2,
-  ChevronDown,
-  ChevronRight,
   LayoutDashboard,
   Settings,
   SquareKanban,
@@ -133,7 +131,6 @@ export default function Sidebar({ isAdmin }) {
             primary="Settings"
             primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
           />
-          {settingsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </ListItemButton>
 
         <Collapse in={settingsOpen} timeout="auto" unmountOnExit>
