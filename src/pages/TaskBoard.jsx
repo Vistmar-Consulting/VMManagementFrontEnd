@@ -65,6 +65,9 @@ import { useItems } from "../hooks/useItems.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 
 const STATUSES = [
+  // AI Gen first — items AI-suggested from upcoming Fireflies / agenda
+  // pipelines, awaiting human confirmation. See TaskBoardRow STATUS_OPTIONS.
+  { id: 8, name: "AI Gen",      color: "#00bcd4" },
   { id: 1, name: "Assigned",    color: "#7b61ff" },
   { id: 2, name: "In Progress", color: "#2196f3" },
   { id: 6, name: "Pending",     color: "#f5a623" },

@@ -242,9 +242,37 @@ Items are NOT from live `pm.Items` SQL — they are the Console-era **mock seed*
 - Localhost: full table renders against seeded data, scorecards show real counts (Active 17, Completed 9, etc.), org chips populated.
 - Production (vm-management-front-end.vercel.app): every fix above pushed via `npx vercel deploy --prod`. Most recent deploy ID `dpl_kxj921bmj` confirmed Ready. Andy visually verified after each deploy.
 
-## Deferred
+## Slice 6 — Iterative Project Board polish + auth rebuild + V2 prep (2026-05-27 long arc)
 
-(track newly discovered items here; existing items live in `dev/DEFERRED.md`)
+Single long session covering many small iterations on the Monday-style board, plus a full auth rebuild and prep for the V2 Meeting Scheduler kickoff. See `dev/HANDOFF_2026-05-27_MEETING_SCHEDULER_KICKOFF.md` for the full picture; this is the in-line log.
+
+Sequenced changes (each its own commit unless noted):
+
+- **Delete confirm dialog** — clicking Delete in row action menu now opens a confirm dialog (was deleting immediately). Cascades subtask delete.
+- **Due date interaction** — dropped the calendar icon next to the date; the date text itself opens the picker.
+- **Category + Tag CRUD** — wired the column-header popover icons: hover any value → edit (name + color) + delete (with item-count cascade warning); "+ Add New" creates a new doc. Refactored categories/tags from per-org subcollections to top-level shared collections per Andy.
+- **Free-form color picker** — replaced fixed swatch grid in the cat/tag dialogs with `react-colorful` HSV picker + hex input + curated Tailwind-inspired preset row. Same palette for both.
+- **Category cell rendering** — dropped chip+border+caret in favor of Linear-style colored-dot + plain text; column widened from 10% → 12% by stealing from Updated. Long names now wrap clean at word boundaries instead of truncating with ellipsis.
+- **Tags cell** — same Linear-style; multiple tags stack vertically as dot+text rows instead of summarizing as "N tags".
+- **Sequential I-N / SI-N item numbers** — added per-org counters (`nextItemNumber`, `nextSubitemNumber`) on org docs; `handleAddItem` + `handleAddSubitem` rewritten as `runTransaction` for atomicity; portSeed extended to assign + initialize counters. Re-ran portSeed against live Firestore.
+- **Avatar unification** — `MemberAvatar` rewritten on MUI Avatar (was SVG); first-name + last-name initials, near-black text on user's avatarColor pastel; AppTopBar + Profile + assignee dropdown all converged on this one component.
+- **Notes modal (`TaskBoardModal.jsx`)** — full comments dialog: list with avatar/name/relative-time, author-only edit (inline) + delete (with confirm), Enter-to-save textarea. Backed by `items/{id}/comments` subcollection (denormalized `itemId` field on every comment doc so a single `collectionGroup("comments")` subscription drives the per-row badge count). Send button relabeled Save per Andy ("not really sending").
+- **Files modal (`TaskBoardFilesModal.jsx`)** — URL link attachments (SharePoint / Drive / web), same shape as Notes. Each link clickable to open in new tab. File uploads deferred to Blaze.
+- **Expand-all toggle** — chevron in leftmost column header expands/collapses every parent at once. State lifted from TaskBoardRow → TaskBoard.
+- **Filter cascade to subitems** — when a filter (column/scorecard/search) matches a subitem, the parent surfaces + auto-expands; siblings that don't match are hidden. Fixes TDZ bug introduced first attempt (subitemsByParent declared after topLevel referenced it).
+- **Standalone search bar** — pulled out of the Item column header popover; lives below the org chips. Searches title + description on both items and subtasks.
+- **Org chip order** — renamed Vistamar Consulting → Vistamar; added sortOrder field to every org doc (1 = vistamar, 2 = unio, 3 = bryn-mawr, 4 = golden-vision, 5 = id-care); chip render sorts by it. portSeed extended to stamp sortOrder.
+- **"Due This Wk" scorecard** — corrected from rolling 7-day window to current business week (this week's Monday 00:00 → Friday 23:59:59 local).
+- **Auth rebuild** — three-step deploy fix chain (vercel.json SPA rewrite → env-var newline strip → signInWithPopup → signInWithRedirect) eventually failed on Andy's prod browser after a sign-out → sign-in cycle (page hung blank). Rebuilt entirely on Google Identity Services (GIS): ID-token + `signInWithCredential`, no popup/redirect roundtrips. AuthContext gained a domain enforcement guard (email must end in @vistamarconsulting.com or sign-out immediately with surfaced error). One-time GCP console step: Authorized JavaScript origins on OAuth client `206947368406-...`. Second bug caught + fixed: SignIn page initially navigated via `if (user) return <Navigate />` which violated React's Rules of Hooks (early return before useEffect skipped the GIS-init hook on re-render → React invariant → blank page); replaced with imperative `useNavigate()` in a useEffect.
+- **Sidebar restructure** — Members nav link removed (route + stub file stay), Organizations + Profile nested under Settings as a click-to-expand group; default collapsed; chevron + child icons dropped per Andy.
+- **AI Gen status (id 8, cyan)** added at top of status dropdown — placeholder for V3 AI-suggested-items feature (Fireflies meeting transcript → suggested PM items → human confirms into Assigned).
+
+State at session close:
+- Production live at https://vm-management-front-end.vercel.app
+- All 5 team members can sign in (Andy + Scot + Bill + Hugo + Cedric) via Google account chooser
+- 4 client orgs + Vistamar internal seeded; 44 mock items live
+- Working tree clean after session-close commit
+- HANDOFF doc `dev/HANDOFF_2026-05-27_MEETING_SCHEDULER_KICKOFF.md` ready for the next session
 
 ## Reviews
 

@@ -42,6 +42,10 @@ import { PRIORITY_LIST } from "../constants/itemPriorities.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 
 const STATUS_OPTIONS = [
+  // AI Gen sits at the top — these items are AI-suggested (e.g., from a
+  // Fireflies meeting transcript) and waiting for a human to confirm them
+  // into the real workflow. Placing it first makes triage natural.
+  { id: 8, name: "AI Gen",      color: "#00bcd4" },
   { id: 1, name: "Assigned",    color: "#7b61ff" },
   { id: 2, name: "In Progress", color: "#2196f3" },
   { id: 6, name: "Pending",     color: "#f5a623" },
