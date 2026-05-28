@@ -16,7 +16,7 @@
 // blockers, no COOP issues, no redirect-state IndexedDB flakiness.
 
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
 
@@ -34,14 +34,20 @@ export default function SignIn() {
   const [gsiReady, setGsiReady] = useState(false);
   const { user, loading: authLoading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // If the user is already signed in (or just completed sign-in via GIS),
-  // bounce them to wherever they were trying to go (set by ProtectedRoute's
-  // redirect when they hit a protected route signed-out) or /dashboard.
-  if (!authLoading && user) {
-    const to = location.state?.from || "/dashboard";
-    return <Navigate to={to} replace />;
-  }
+  // Bounce to /dashboard (or the original target a ProtectedRoute sent
+  // them away from) the moment auth completes. Implemented as an effect
+  // — NOT an early `return <Navigate />` — so the GIS-init effect below
+  // is still in the same hook order every render. Conditional early
+  // returns before later hooks violate React's Rules of Hooks and crash
+  // to a blank page on the re-render after sign-in.
+  useEffect(() => {
+    if (!authLoading && user) {
+      const to = location.state?.from || "/dashboard";
+      navigate(to, { replace: true });
+    }
+  }, [authLoading, user, location.state, navigate]);
 
   useEffect(() => {
     let cancelled = false;
