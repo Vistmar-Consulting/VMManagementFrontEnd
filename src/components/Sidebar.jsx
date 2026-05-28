@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Box,
@@ -57,13 +57,8 @@ export default function Sidebar({ isAdmin }) {
   const isOnSettingsChild = visibleSettingsChildren.some(
     (c) => c.to === location.pathname,
   );
-  const [settingsOpen, setSettingsOpen] = useState(isOnSettingsChild);
-
-  // Auto-expand if the user navigates to a child route via URL (e.g.,
-  // pastes a /profile link or follows an internal link).
-  useEffect(() => {
-    if (isOnSettingsChild) setSettingsOpen(true);
-  }, [isOnSettingsChild]);
+  // Always default to collapsed; user clicks to expand.
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <Box
