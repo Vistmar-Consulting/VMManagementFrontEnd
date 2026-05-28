@@ -11,11 +11,9 @@ import {
   Typography,
 } from "@mui/material";
 import {
-  Building2,
   LayoutDashboard,
   Settings,
   SquareKanban,
-  UserCircle,
 } from "lucide-react";
 
 // Top-level routes. Members route removed from sidebar 2026-05-27 — page
@@ -28,9 +26,10 @@ const TOP_LEVEL = [
 
 // Settings is now a parent group, not a navigable route itself. Clicking
 // it toggles its child list; Organizations + Profile each navigate.
+// Children render without icons — nested under a parent that has its own.
 const SETTINGS_CHILDREN = [
-  { to: "/organizations", label: "Organizations", icon: Building2, requireAdmin: true },
-  { to: "/profile", label: "Profile", icon: UserCircle },
+  { to: "/organizations", label: "Organizations", requireAdmin: true },
+  { to: "/profile", label: "Profile" },
 ];
 
 const navItemSx = (theme) => ({
@@ -135,19 +134,16 @@ export default function Sidebar({ isAdmin }) {
 
         <Collapse in={settingsOpen} timeout="auto" unmountOnExit>
           <List disablePadding>
-            {visibleSettingsChildren.map(({ to, label, icon: Icon }) => (
+            {visibleSettingsChildren.map(({ to, label }) => (
               <ListItemButton
                 key={to}
                 component={NavLink}
                 to={to}
                 sx={(theme) => ({
                   ...navItemSx(theme),
-                  pl: 6,
+                  pl: 9,
                 })}
               >
-                <ListItemIcon sx={{ minWidth: 28, color: "inherit" }}>
-                  <Icon size={15} strokeWidth={2} />
-                </ListItemIcon>
                 <ListItemText
                   primary={label}
                   primaryTypographyProps={{ fontSize: 13, fontWeight: 500 }}
