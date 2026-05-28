@@ -20,7 +20,7 @@
 
 import { collection, doc, documentId, getDocs, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
-import { resolveOrgSlug } from "./orgMapping.js";
+import { resolveOrgFromAttendees, resolveOrgSlug } from "./orgMapping.js";
 
 // Stable seriesId for a meeting. For recurring events the Google series_id
 // is the canonical key; for ad-hoc / single events the event_id stands in.
@@ -82,12 +82,17 @@ function agendaPayload(meeting, orgSlug, seriesId) {
 // (post-create) field has drifted. Identity fields (Graph/Google IDs) are
 // covered by the create path; reconciliation only touches them at first
 // auto-bind.
+//
+// organizationId is in the drift check so existing docs auto-resolve when
+// the heuristic learns a new domain → slug mapping, or when the user assigns
+// via the hero chip and the next page load re-runs reconciliation.
 function isDriftedSeries(payload, existing) {
   if (!existing) return false;
   return (
     existing.title !== payload.title
     || existing.organizerEmail !== payload.organizerEmail
     || existing.consoleOrgId !== payload.consoleOrgId
+    || existing.organizationId !== payload.organizationId
   );
 }
 
@@ -176,7 +181,19 @@ export async function reconcileMeetingsToFirestore({ meetings, orgs, uid }) {
     const seriesId = seriesIdFor(m);
     if (!seriesId) continue;
     const agendaId = agendaIdFor(m);
-    const orgSlug = resolveOrgSlug(m.org_id, orgLookup);
+
+    // Two-step org resolution. First the numeric Console-era orgId from
+    // extendedProperties.private.orgId (works for meetings@-organized events).
+    // Fallback: attendee email domain heuristic (handles client-organized
+    // and team-member-organized meetings where the orgId property isn't set).
+    // The existing doc's org is PRESERVED if both heuristics fail — never
+    // wipe a previously-assigned org just because a refetch failed to resolve.
+    let orgSlug = resolveOrgSlug(m.org_id, orgLookup);
+    if (orgSlug == null) orgSlug = resolveOrgFromAttendees(m.attendees);
+    if (orgSlug == null) {
+      const existing = existingSeriesById.get(seriesId);
+      if (existing?.organizationId) orgSlug = existing.organizationId;
+    }
     if (orgSlug == null) unassigned++;
 
     const seriesPayload = calendarSeriesPayload(m, orgSlug);

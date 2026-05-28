@@ -196,23 +196,28 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
         )}
       </Box>
 
-      {/* Organization chip — shows the assigned org name with accentColor
-          when set, or an amber "Unassigned" badge when null. Click to open
-          the picker. Without an assignment the embedded MiniProjectBoard
-          renders nothing even when categories are set. */}
-      <Box sx={{ display: "flex", justifyContent: "center", mt: 1.5 }}>
+      {/* Organization row — distinct from the attendee chips below. Label +
+          chip layout so it's obvious what to click. Without an assigned org
+          the embedded MiniProjectBoard renders nothing even when categories
+          are set, so this control needs to be discoverable. */}
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mt: 2 }}>
+        <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.ink3 }}>
+          Organization
+        </Typography>
         <Chip
           onClick={() => setOrgPickerOpen(true)}
           size="small"
-          label={seriesOrgId ? orgName : "Unassigned · click to assign"}
+          label={seriesOrgId ? orgName : "Unassigned — click to assign"}
           sx={{
             bgcolor: seriesOrgId ? (orgAccent || "primary.main") : "rgba(239,108,0,0.12)",
             color: seriesOrgId ? "#fff" : "#ef6c00",
             fontWeight: 600,
-            fontSize: 11,
+            fontSize: 12,
+            height: 26,
+            px: 0.5,
             cursor: "pointer",
-            border: seriesOrgId ? "none" : "1px dashed #ef6c00",
-            "&:hover": { opacity: 0.85 },
+            border: seriesOrgId ? "none" : "1.5px dashed #ef6c00",
+            "&:hover": { opacity: 0.85, boxShadow: "0 2px 6px rgba(0,0,0,0.08)" },
           }}
         />
       </Box>

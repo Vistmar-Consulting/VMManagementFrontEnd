@@ -1,3 +1,50 @@
+// Fallback domain-based resolver. When the Graph event has no numeric
+// orgId (Tate's/Cedric's calendars, client-organized meetings), look at
+// attendee email domains and resolve from there. Returns the matching slug
+// or null.
+//
+// Rules:
+//   1. If ≥1 attendee email matches a known CLIENT domain → that client's slug.
+//   2. Else if EVERY non-silent-proxy attendee is @vistamarconsulting.com → vistamar.
+//   3. Else null (truly unassigned).
+//
+// Client domains hardcoded for V2.2.2g. Migrate to organizations/{slug}.emailDomains
+// field once an admin tool exists to manage them.
+const CLIENT_DOMAINS = {
+  "uniohp.com": "unio",
+  "brynmawrdermatology.com": "bryn-mawr",
+  "totalvisionllc.com": "golden-vision",
+  "goldenvisioneye.com": "golden-vision",
+  "idcare.com": "id-care",
+};
+const SILENT_PROXIES = new Set([
+  "meetings@vistamarconsulting.com",
+  "seo@vistamarconsulting.com",
+]);
+
+export function resolveOrgFromAttendees(attendees) {
+  if (!Array.isArray(attendees) || attendees.length === 0) return null;
+  const realAttendees = attendees.filter(
+    (a) => a?.email && !SILENT_PROXIES.has(a.email.toLowerCase())
+  );
+  if (realAttendees.length === 0) return null;
+
+  // Rule 1 — client domain wins.
+  for (const a of realAttendees) {
+    const email = a.email.toLowerCase();
+    const at = email.lastIndexOf("@");
+    if (at < 0) continue;
+    const domain = email.slice(at + 1);
+    if (CLIENT_DOMAINS[domain]) return CLIENT_DOMAINS[domain];
+  }
+
+  // Rule 2 — internal-only fallback. Every real attendee must be VM.
+  const allVm = realAttendees.every((a) => a.email.toLowerCase().endsWith("@vistamarconsulting.com"));
+  if (allVm) return "vistamar";
+
+  return null;
+}
+
 // Resolves a Graph/Google event's numeric Console-era `extendedProperties.private.orgId`
 // to a Management slug org id.
 //

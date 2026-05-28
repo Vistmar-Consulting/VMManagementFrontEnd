@@ -323,13 +323,36 @@ export default function Calendar() {
     return map;
   }, [orgs]);
 
+  // Firestore calendar_series → organizationId lookup. Authoritative source
+  // for org assignment (auto-resolved via attendee domain in reconciliation,
+  // or hand-assigned via the agenda detail hero chip). The Calendar list
+  // consults this first so series with `org_id: null` from the API still
+  // surface under their assigned org chip.
+  const seriesOrgLookup = useMemo(() => {
+    const map = {};
+    for (const s of calendarSeriesDocs || []) {
+      if (s.organizationId) map[s.id] = s.organizationId;
+    }
+    return map;
+  }, [calendarSeriesDocs]);
+
+  // For each API meeting, resolve its slug org id in this order:
+  //   1. Firestore calendar_series.organizationId (canonical post-reconcile).
+  //   2. Numeric Console-era org_id → consoleOrgLookup (legacy fallback).
+  // The seriesId of an API meeting is m.series_id for recurring, m.event_id
+  // for ad-hoc (matches reconciliation's seriesIdFor() helper).
+  const orgSlugFor = (m) => {
+    const seriesId = m.series_id || m.event_id;
+    if (seriesId && seriesOrgLookup[seriesId]) return seriesOrgLookup[seriesId];
+    if (m.org_id != null) return consoleOrgLookup[String(m.org_id)] || null;
+    return null;
+  };
+
   const filtered = useMemo(() => {
     if (orgFilter === "all") return meetings;
-    return meetings.filter((m) => {
-      const slug = m.org_id != null ? consoleOrgLookup[String(m.org_id)] : null;
-      return slug === orgFilter;
-    });
-  }, [meetings, orgFilter, consoleOrgLookup]);
+    return meetings.filter((m) => orgSlugFor(m) === orgFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetings, orgFilter, consoleOrgLookup, seriesOrgLookup]);
 
   // Recurring series — derived from filtered list
   const recurringSeries = useMemo(() => groupRecurringMeetings(filtered), [filtered]);
