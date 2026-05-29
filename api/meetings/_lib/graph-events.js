@@ -354,9 +354,19 @@ export async function cancelEvent({ eventId, mode, date }) {
     }
     return;
   }
-  // Series mode: full delete. Graph fans out cancel .ics to all attendees.
-  const res = await graphFetch(`/calendar/events/${eventId}`, { method: "DELETE" });
-  if (!res.ok && res.status !== 404) {
+  // Series / one-time mode: use the /cancel action. Graph's DELETE
+  // /calendar/events/{id} is SILENT by default in app-only context — it
+  // removes the event from meetings@'s calendar and the attendees' mirrors
+  // but does NOT send a cancellation .ics. POST /cancel is the canonical
+  // cancel action that fans the cancellation invite to every attendee from
+  // Outlook. Same root cause as the createEvent Prefer-header fix.
+  // Confirmed on 2026-05-28: one-time meeting cancel removed both
+  // calendars but delivered no email.
+  const res = await graphFetch(`/calendar/events/${eventId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ Comment: "" }),
+  });
+  if (!res.ok && res.status !== 202 && res.status !== 404) {
     throw new Error(`graph-events.cancelEvent (series) failed: ${res.status} ${await res.text()}`);
   }
 }
