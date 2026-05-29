@@ -22,6 +22,7 @@
 
 import { google } from "googleapis";
 import { getGoogleCredentials } from "./keyvault.js";
+import { dedupeEventsAcrossSubjects } from "./dedupe-events.js";
 
 const CALENDAR_ID = "primary"; // primary calendar of whichever subject is impersonated
 const IMPERSONATE = "meetings@vistamarconsulting.com";
@@ -263,37 +264,16 @@ export async function listEventsAcrossSubjects({ subjects, orgId, start, end }) 
   const results = await Promise.allSettled(
     subjects.map((subject) => listEvents({ orgId, start, end, subject }))
   );
-  const seenByKey = new Map();
-  const fallbackOrder = new Map();
-  let order = 0;
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
+  const perSubjectResults = results.map((r, i) => {
     if (r.status !== "fulfilled") {
       console.error(`google-calendar.listEventsAcrossSubjects: subject ${subjects[i]} failed`, r.reason?.message || r.reason);
-      continue;
+      return [];
     }
-    for (const ev of r.value) {
-      // Prefer the iCalUID; fall back to series_id then event_id if not present.
-      const key = ev.iCalUID || ev.series_id || ev.event_id;
-      if (!key) continue;
-      const incomingIsOrganizer = ev.organizer_email && subjects[i] && ev.organizer_email.toLowerCase() === subjects[i].toLowerCase();
-      const existing = seenByKey.get(key);
-      // Replace existing only if this subject is the organizer's calendar — that
-      // gives us the canonical copy with the cleanest extendedProperties and
-      // up-to-date attendee responses.
-      if (!existing || incomingIsOrganizer) {
-        seenByKey.set(key, ev);
-        if (!fallbackOrder.has(key)) {
-          fallbackOrder.set(key, order++);
-        }
-      }
-    }
-  }
-  return Array.from(seenByKey.values()).sort((a, b) => {
-    const ad = a.date ? new Date(a.date).getTime() : 0;
-    const bd = b.date ? new Date(b.date).getTime() : 0;
-    return ad - bd;
+    return r.value;
   });
+  // Dedup logic extracted to dedupe-events.js (unit-tested). Keys on
+  // iCalUID+instance-start so recurring instances aren't collapsed into one.
+  return dedupeEventsAcrossSubjects(perSubjectResults, subjects);
 }
 
 async function findInstanceByDate(cal, eventId, date) {
