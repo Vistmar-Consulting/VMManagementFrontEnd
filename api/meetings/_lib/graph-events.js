@@ -154,12 +154,31 @@ export async function createEvent({
     extendedProps.push({ id: SOURCE_AGENDA_PROP, value: String(agendaId) });
   }
 
+  // Graph POST /calendar/events is INHERENTLY SILENT in app-only context.
+  // Microsoft does not deliver meeting requests for events created via
+  // application permissions, regardless of the Prefer header — that's a
+  // documented platform behavior, not a bug we can header our way out of.
+  // PATCH operations (rescheduleEvent, updateAttendees) DO honor the
+  // Prefer header and fan the .ics correctly. So the working trick is the
+  // two-step create:
+  //   1. POST the event WITHOUT attendees (silent — nobody to notify yet).
+  //   2. PATCH the event to ADD the attendees with the Prefer header.
+  // The PATCH path delivers .ics invites in app-only context.
+  //
+  // Console's old code that "worked" was creating events while the user
+  // was signed in via delegated auth in a different flow; we're now
+  // fully app-only on a service mailbox, and the two-step pattern is the
+  // only way to fan invites from app-only.
+  //
+  // Confirmed on 2026-05-28: zero invites delivered from meetings@ since
+  // April 29 when the codebase moved to fully app-only. Two-step create
+  // is the fix.
   const body = {
     subject: title,
     body: buildBody(description),
     start: { dateTime: startDateTime, timeZone: timezone },
     end: { dateTime: endDateTime, timeZone: timezone },
-    attendees: buildAttendees(attendees),
+    attendees: [],
     isOnlineMeeting: true,
     onlineMeetingProvider: "teamsForBusiness",
     singleValueExtendedProperties: extendedProps,
@@ -167,18 +186,9 @@ export async function createEvent({
   const recurrence = rruleToGraphRecurrence(rrule, startDate);
   if (recurrence) body.recurrence = recurrence;
 
-  // Graph POST /calendar/events is SILENT by default in app-only context — it
-  // creates the event and mints the Teams meeting but does NOT fan .ics
-  // invites to attendees unless the Prefer header is set. Without this, the
-  // event lands in meetings@'s Outlook + the Google mirror (so it shows up
-  // on attendee calendars by virtue of being added as an attendee), but no
-  // .ics email ever reaches their inbox. Same fix the rescheduleEvent +
-  // updateAttendees paths already use. Confirmed on 2026-05-28: created
-  // event for adeemer@ — landed in calendar, no email — root cause was this
-  // missing header.
+  // Step 1 — create with no attendees so no silent-create surprise.
   const res = await graphFetch("/calendar/events", {
     method: "POST",
-    headers: { Prefer: 'outlook.send-notifications="true"' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -186,6 +196,21 @@ export async function createEvent({
     throw new Error(`graph-events.createEvent failed: ${res.status} ${text}`);
   }
   const ev = await res.json();
+
+  // Step 2 — PATCH to add attendees so Graph fans the meeting request
+  // via the path that DOES notify in app-only. Only fires when there are
+  // attendees to invite (callers occasionally create with empty arrays).
+  if (attendees.length > 0) {
+    const patchRes = await graphFetch(`/calendar/events/${ev.id}`, {
+      method: "PATCH",
+      headers: { Prefer: 'outlook.send-notifications="true"' },
+      body: JSON.stringify({ attendees: buildAttendees(attendees) }),
+    });
+    if (!patchRes.ok) {
+      const text = await patchRes.text();
+      throw new Error(`graph-events.createEvent attendee PATCH failed: ${patchRes.status} ${text}`);
+    }
+  }
 
   // Fetch full onlineMeeting details by joinUrl so callers can construct the
   // full Google conferenceData shape (meetingCode + passcode + meetingId for
