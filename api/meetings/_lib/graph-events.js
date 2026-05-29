@@ -206,9 +206,16 @@ export async function createEvent({
       headers: { Prefer: 'outlook.send-notifications="true"' },
       body: JSON.stringify({ attendees: buildAttendees(attendees) }),
     });
+    const patchText = await patchRes.text();
+    // Diagnostic: log full PATCH response + Prefer-Applied header so we can
+    // tell from Vercel logs whether Microsoft actually honored the
+    // send-notifications hint. Microsoft echoes 'Preference-Applied' in the
+    // response when the Prefer header was accepted.
+    console.log("[graph-events.createEvent] PATCH status:", patchRes.status);
+    console.log("[graph-events.createEvent] PATCH Preference-Applied:", patchRes.headers.get("preference-applied"));
+    console.log("[graph-events.createEvent] PATCH response body:", patchText.slice(0, 800));
     if (!patchRes.ok) {
-      const text = await patchRes.text();
-      throw new Error(`graph-events.createEvent attendee PATCH failed: ${patchRes.status} ${text}`);
+      throw new Error(`graph-events.createEvent attendee PATCH failed: ${patchRes.status} ${patchText}`);
     }
   }
 
