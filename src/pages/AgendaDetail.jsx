@@ -1048,7 +1048,7 @@ const FOCUS_KEYS = [
   { key: "overdue", label: "Overdue", color: "#c62828" },
 ];
 
-function MeetingFocusPanel({ value, onChange }) {
+function MeetingFocusPanel({ counts, value, onChange }) {
   return (
     <Box sx={{ background: t.cream, borderRadius: 2, p: 2, mb: 2 }}>
       <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper, mb: 1 }}>
@@ -1057,35 +1057,36 @@ function MeetingFocusPanel({ value, onChange }) {
       <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
         {FOCUS_KEYS.map(({ key, label, color }) => {
           const active = value === key;
+          const count = counts?.[key] ?? 0;
+          const isZero = count === 0;
           return (
             <Box
               key={key}
-              onClick={() => onChange(active ? null : key)}
+              onClick={isZero ? undefined : () => onChange(active ? null : key)}
               sx={{
                 p: 1,
                 borderRadius: 1,
                 background: "white",
                 border: active ? `2px solid ${color}` : "1px solid transparent",
-                cursor: "pointer",
-                opacity: active ? 1 : 0.85,
+                cursor: isZero ? "default" : "pointer",
+                opacity: isZero ? 0.4 : active ? 1 : 0.85,
                 transition: "border-color 0.15s, opacity 0.15s",
-                "&:hover": { opacity: 1 },
+                "&:hover": isZero ? {} : { opacity: 1 },
               }}
             >
-              <Typography sx={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1.1 }}>—</Typography>
+              <Typography sx={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1.1 }}>
+                {isZero ? "—" : count}
+              </Typography>
               <Typography sx={{ fontSize: 10, color: t.ink3, mt: 0.3, textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</Typography>
             </Box>
           );
         })}
       </Box>
-      <Typography sx={{ fontSize: 10, color: t.ink3, mt: 1.2, opacity: 0.7 }}>
-        Counts populate when topic cards + Mini Project Board ship (V2.2.2d/e).
-      </Typography>
     </Box>
   );
 }
 
-function AttendeesPanel({ attendees, userByEmail, value, onChange, onManageGuests }) {
+function AttendeesPanel({ attendees, userByEmail, taskCounts, value, onChange, onManageGuests }) {
   const display = visibleAttendees(attendees);
   const [clients, vmTeam] = useMemo(() => {
     const c = [];
@@ -1102,11 +1103,12 @@ function AttendeesPanel({ attendees, userByEmail, value, onChange, onManageGuest
     const userRecord = a.email ? userByEmail[a.email.toLowerCase()] : null;
     const userForAvatar = userRecord || { displayName: a.name || a.email, email: a.email };
     const label = a.name || a.email;
-    const active = value === label;
+    const emailKey = a.email?.toLowerCase() || null;
+    const active = value === emailKey;
     return (
       <Box
         key={a.email || i}
-        onClick={() => onChange(active ? null : label)}
+        onClick={() => onChange(active ? null : emailKey)}
         sx={{
           display: "flex",
           alignItems: "center",
@@ -1125,7 +1127,9 @@ function AttendeesPanel({ attendees, userByEmail, value, onChange, onManageGuest
         <Typography sx={{ flex: 1, fontSize: 12, fontWeight: active ? 600 : 500, color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {label}
         </Typography>
-        <Typography sx={{ fontSize: 10, color: t.ink3, ml: 0.5 }}>—</Typography>
+        <Typography sx={{ fontSize: 10, color: t.ink3, ml: 0.5, fontWeight: 600 }}>
+          {(taskCounts?.[a.email?.toLowerCase()] ?? 0) || "—"}
+        </Typography>
       </Box>
     );
   };
@@ -1284,6 +1288,7 @@ function AgendaTopicCard({
   organizationId,
   items,
   users,
+  userByEmail,
   categories,
   tags,
   focusFilter,
@@ -1295,6 +1300,10 @@ function AgendaTopicCard({
 }) {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(false);
+  // V2.2.2e.2: when a sidebar filter (Meeting Focus or Attendees) is active,
+  // overrides `expanded` based on whether this card has matching items.
+  // Null = no override (user's manual choice wins).
+  const [filterOverride, setFilterOverride] = useState(null);
   const [menuEl, setMenuEl] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState(topic.name || "");
@@ -1322,9 +1331,48 @@ function AgendaTopicCard({
     });
   }, [items, organizationId, topic.categoryIds, topic.tagIds]);
 
+  // V2.2.2e.2 filter coupling. Decide whether this card has any items that
+  // match the active page-level filter (Meeting Focus from sidebar or
+  // Attendees from sidebar). Used to auto-expand/collapse on filter change.
+  const hasMatchingForFilter = useMemo(() => {
+    if (!focusFilter && !attendeeFilter) return null;
+    const now = new Date();
+    let attendeeUid = null;
+    if (attendeeFilter && userByEmail) {
+      const u = userByEmail[attendeeFilter.toLowerCase?.() || ""];
+      if (u) attendeeUid = u.id;
+    }
+    for (const it of matchedItems) {
+      // attendeeFilter requires the item's assigneeIds to include the filter's uid.
+      if (attendeeFilter && attendeeUid && !(Array.isArray(it.assigneeIds) && it.assigneeIds.includes(attendeeUid))) {
+        continue;
+      }
+      if (!focusFilter) return true;
+      if (focusFilter === "done" && it.statusId === 5) return true;
+      if (focusFilter === "review" && it.statusId === 4) return true;
+      if (focusFilter === "onHold" && it.onHold) return true;
+      if (focusFilter === "overdue" || focusFilter === "dueThisWeek") {
+        if (!it.dueDate || it.statusId === 5 || it.statusId === 7) continue;
+        const dd = it.dueDate?.toDate ? it.dueDate.toDate() : new Date(it.dueDate);
+        if (focusFilter === "overdue" && dd && dd < now) return true;
+        if (focusFilter === "dueThisWeek" && dd && (dd - now) / 86400000 <= 7) return true;
+      }
+    }
+    return false;
+  }, [matchedItems, focusFilter, attendeeFilter, userByEmail]);
+
+  useEffect(() => {
+    if (focusFilter || attendeeFilter) {
+      setFilterOverride(hasMatchingForFilter);
+    } else {
+      setFilterOverride(null);
+    }
+  }, [focusFilter, attendeeFilter, hasMatchingForFilter]);
+
+  const effectiveExpanded = filterOverride !== null ? filterOverride : expanded;
+
   // Real KPI counts. "Due This Wk" matches the existing TaskBoard
-  // Mon-Fri business-week logic loosely (within next 7 days, ignoring weekend
-  // refinement — full parity ships with the Meeting Focus sidebar in V2.2.2e.2).
+  // Mon-Fri business-week logic loosely (within next 7 days).
   const kpiCounts = useMemo(() => {
     const now = new Date();
     const counts = { assigned: 0, inProgress: 0, review: 0, onHold: 0, done: 0, overdue: 0, dueThisWeek: 0 };
@@ -1407,17 +1455,20 @@ function AgendaTopicCard({
           gap: 1,
           px: 1.5,
           py: 1.2,
-          borderBottom: expanded ? `1px solid ${t.cream2}` : "none",
+          borderBottom: effectiveExpanded ? `1px solid ${t.cream2}` : "none",
           cursor: "pointer",
         }}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          setExpanded((v) => !v);
+          setFilterOverride(null);
+        }}
       >
         <ExpandMore
           sx={{
             fontSize: 20,
             color: t.ink3,
             transition: "transform 0.15s",
-            transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
+            transform: effectiveExpanded ? "rotate(0deg)" : "rotate(-90deg)",
           }}
         />
         <Box
@@ -1476,7 +1527,7 @@ function AgendaTopicCard({
         </Menu>
       </Box>
 
-      {expanded && (
+      {effectiveExpanded && (
         <Box sx={{ p: 1.8 }}>
           <TopicKpiStrip
             counts={kpiCounts}
@@ -1606,6 +1657,74 @@ export default function AgendaDetail() {
   // organizationId for "+ New Item" — read from the calendar_series doc since
   // that's where reconciliation stamps the resolved Management slug.
   const organizationId = calendarSeries?.organizationId || agenda?.organizationId || null;
+
+  // V2.2.2e.2: aggregate matched items across every topic's category/tag
+  // filter, deduplicated. Drives the sidebar Meeting Focus + Attendees
+  // counts that were placeholder dashes through V2.2.2e.
+  const allMatchedItems = useMemo(() => {
+    if (!organizationId || !allItems || !topics) return [];
+    const orgScoped = allItems.filter(
+      (it) => it.organizationId === organizationId && !it.parentId
+    );
+    const seen = new Set();
+    const out = [];
+    for (const topic of topics) {
+      const catSet = new Set(topic.categoryIds || []);
+      const tagSet = new Set(topic.tagIds || []);
+      if (catSet.size === 0 && tagSet.size === 0) continue;
+      for (const it of orgScoped) {
+        if (seen.has(it.id)) continue;
+        const matchCat = it.categoryId && catSet.has(it.categoryId);
+        const matchTag = Array.isArray(it.tagIds) && it.tagIds.some((t) => tagSet.has(t));
+        if (matchCat || matchTag) {
+          seen.add(it.id);
+          out.push(it);
+        }
+      }
+    }
+    return out;
+  }, [allItems, organizationId, topics]);
+
+  // Meeting Focus sidebar counts. "Due This Wk" approximates with a
+  // 7-day-from-now window; full Mon-Fri parity ships when we centralize
+  // the helper.
+  const meetingFocusCounts = useMemo(() => {
+    const now = new Date();
+    const counts = { done: 0, review: 0, onHold: 0, overdue: 0, dueThisWeek: 0 };
+    for (const it of allMatchedItems) {
+      if (it.onHold) counts.onHold += 1;
+      if (it.statusId === 5) counts.done += 1;
+      if (it.statusId === 4) counts.review += 1;
+      if (it.dueDate && it.statusId !== 5 && it.statusId !== 7) {
+        const dd = it.dueDate?.toDate ? it.dueDate.toDate() : new Date(it.dueDate);
+        if (dd && dd < now) counts.overdue += 1;
+        else if (dd && (dd - now) / 86400000 <= 7) counts.dueThisWeek += 1;
+      }
+    }
+    return counts;
+  }, [allMatchedItems]);
+
+  // Per-attendee task counts. Resolves attendee.email → user.uid → matched
+  // items where uid ∈ assigneeIds. Unresolved emails (external attendees not
+  // in the users collection) get 0.
+  const attendeeTaskCounts = useMemo(() => {
+    const out = {};
+    for (const a of visibleAttendees(agenda?.attendees)) {
+      const key = a.email?.toLowerCase();
+      if (!key) continue;
+      const userRecord = userByEmail[key];
+      if (!userRecord) {
+        out[key] = 0;
+        continue;
+      }
+      let n = 0;
+      for (const it of allMatchedItems) {
+        if (Array.isArray(it.assigneeIds) && it.assigneeIds.includes(userRecord.id)) n += 1;
+      }
+      out[key] = n;
+    }
+    return out;
+  }, [allMatchedItems, agenda?.attendees, userByEmail]);
 
   if (agendaLoading) {
     return (
@@ -1759,6 +1878,7 @@ export default function AgendaDetail() {
                                 organizationId={organizationId}
                                 items={allItems}
                                 users={users}
+                                userByEmail={userByEmail}
                                 categories={categories}
                                 tags={tags}
                                 focusFilter={meetingFocusFilter}
@@ -1779,10 +1899,15 @@ export default function AgendaDetail() {
               <OpenFloorSection agendaId={agendaId} />
             </Box>
             <Box>
-              <MeetingFocusPanel value={meetingFocusFilter} onChange={setMeetingFocusFilter} />
+              <MeetingFocusPanel
+                counts={meetingFocusCounts}
+                value={meetingFocusFilter}
+                onChange={setMeetingFocusFilter}
+              />
               <AttendeesPanel
                 attendees={agenda.attendees}
                 userByEmail={userByEmail}
+                taskCounts={attendeeTaskCounts}
                 value={attendeeFilter}
                 onChange={setAttendeeFilter}
                 onManageGuests={() => setManageGuestsOpen(true)}

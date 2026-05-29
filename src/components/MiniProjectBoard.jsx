@@ -11,6 +11,7 @@
 // always collapsed by default.
 
 import { useMemo, useState } from "react";
+// (useState already imported above; this comment kept for diff clarity.)
 import {
   Box,
   Collapse,
@@ -104,9 +105,9 @@ export default function MiniProjectBoard({
 
   // Filter: scope to the agenda's organization FIRST so GV's biweekly never
   // shows Bryn Mawr's items, even if both orgs use the same category. Then
-  // apply the topic's category/tag filter on top. Agendas without an
-  // assigned organizationId render no items — they're a separate problem
-  // (V2.1.1 left 11 series unassigned; admin UI to assign comes V2.2.2f).
+  // apply the topic's category/tag filter on top. Only PARENT items are
+  // matched directly; subitems surface under their matched parent via
+  // `subitemsByParent` below.
   const matchedItems = useMemo(() => {
     if (!organizationId) return [];
     if (topicCatIds.length === 0 && topicTagIds.length === 0) return [];
@@ -114,12 +115,35 @@ export default function MiniProjectBoard({
     const tagSet = new Set(topicTagIds);
     return (items || []).filter((it) => {
       if (it.organizationId !== organizationId) return false;
-      if (it.parentId) return false; // subitems show under their parent (V2.2.2e+ work)
+      if (it.parentId) return false;
       if (it.categoryId && catSet.has(it.categoryId)) return true;
       if (Array.isArray(it.tagIds) && it.tagIds.some((t) => tagSet.has(t))) return true;
       return false;
     });
   }, [items, organizationId, topicCatIds, topicTagIds]);
+
+  // V2.2.2e.2: subitems by parentId. Built once across the full items list
+  // so each parent row gets its own child rows. Subitems inherit visibility
+  // from the parent — if the parent matches a topic's filter, ALL its
+  // subitems show under it (regardless of the subitem's own
+  // category/tag, since subitems often inherit context from the parent).
+  const subitemsByParent = useMemo(() => {
+    const map = {};
+    for (const it of items || []) {
+      if (!it.parentId) continue;
+      if (it.organizationId !== organizationId) continue;
+      if (!map[it.parentId]) map[it.parentId] = [];
+      map[it.parentId].push(it);
+    }
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) => (a.order || "").localeCompare(b.order || ""));
+    }
+    return map;
+  }, [items, organizationId]);
+
+  const [expandedSubitems, setExpandedSubitems] = useState({});
+  const setItemExpanded = (itemId, value) =>
+    setExpandedSubitems((s) => ({ ...s, [itemId]: value }));
 
   const grouped = useMemo(() => {
     const out = { active: [], completed: [], archive: [] };
@@ -150,6 +174,45 @@ export default function MiniProjectBoard({
     const batch = writeBatch(db);
     batch.delete(doc(db, "items", item.id));
     await batch.commit();
+  };
+
+  // Add subitem under a parent. Same per-parent SI counter pattern as
+  // TaskBoard.handleAddSubitem so SI-1, SI-2, ... stay unique within the
+  // parent. Auto-expands the parent so the new row is visible.
+  const handleAddSubitem = async (parentItem) => {
+    const newItemRef = doc(collection(db, "items"));
+    const parentRef = doc(db, "items", parentItem.id);
+    await runTransaction(db, async (tx) => {
+      const parentSnap = await tx.get(parentRef);
+      const next = parentSnap.data()?.nextSubitemNumber ?? 1;
+      tx.set(newItemRef, {
+        organizationId: parentItem.organizationId,
+        parentId: parentItem.id,
+        hasChildren: false,
+        type: "task",
+        title: "",
+        description: "",
+        statusId: 1,
+        priorityId: null,
+        categoryId: null,
+        tagIds: [],
+        onHold: false,
+        dueDate: null,
+        completedAt: null,
+        assigneeIds: [],
+        itemNumber: next,
+        createdBy: user?.uid || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        order: generateKeyBetween(null, null),
+      });
+      tx.update(parentRef, {
+        nextSubitemNumber: next + 1,
+        hasChildren: true,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    setItemExpanded(parentItem.id, true);
   };
 
   const handleAddItem = async () => {
@@ -237,22 +300,28 @@ export default function MiniProjectBoard({
                     No {label.toLowerCase()} items.
                   </Typography>
                 )}
-                {items.map((item) => (
-                  <TaskBoardRow
-                    key={item.id}
-                    item={item}
-                    users={users || []}
-                    categories={categories || []}
-                    tags={tags || []}
-                    onUpdate={handleUpdate}
-                    onRequestDelete={handleRequestDelete}
-                    onAddSubitem={undefined}  // V2.2.2e first ship: skip subitems
-                    onOpenComments={onOpenComments}
-                    onOpenFiles={onOpenFiles}
-                    getCommentCount={getCommentCount}
-                    getFileCount={getFileCount}
-                  />
-                ))}
+                {items.map((item) => {
+                  const subs = subitemsByParent[item.id] || [];
+                  return (
+                    <TaskBoardRow
+                      key={item.id}
+                      item={item}
+                      subitems={subs}
+                      expanded={!!expandedSubitems[item.id]}
+                      onSetExpanded={(v) => setItemExpanded(item.id, v)}
+                      users={users || []}
+                      categories={categories || []}
+                      tags={tags || []}
+                      onUpdate={handleUpdate}
+                      onRequestDelete={handleRequestDelete}
+                      onAddSubitem={handleAddSubitem}
+                      onOpenComments={onOpenComments}
+                      onOpenFiles={onOpenFiles}
+                      getCommentCount={getCommentCount}
+                      getFileCount={getFileCount}
+                    />
+                  );
+                })}
                 {key === "active" && (
                   <Box
                     onClick={handleAddItem}
