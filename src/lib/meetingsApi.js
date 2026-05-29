@@ -71,6 +71,21 @@ export function rescheduleMeeting({ orgId, eventId, mode, originalDate, newDate,
   });
 }
 
+// DELETE /api/meetings/cancel
+// mode: 'instance' | 'series'
+// For 'instance', date is required (YYYY-MM-DD of the specific occurrence).
+export function cancelMeeting({ orgId, eventId, mode, date }) {
+  return call("cancel", {
+    method: "DELETE",
+    body: {
+      org_id: orgId || "unspecified",
+      event_id: eventId,
+      mode,
+      date: date || null,
+    },
+  });
+}
+
 // POST /api/meetings/create
 // Mints a Graph event (canonical) + Google mirror, fans .ics invites to all
 // attendees from meetings@. For one-time meetings pass `date` + `time` and

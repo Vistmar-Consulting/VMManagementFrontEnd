@@ -38,12 +38,14 @@ import {
 
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
+import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
 import MemberAvatar from "../components/MemberAvatar.jsx";
 import MiniProjectBoard from "../components/MiniProjectBoard.jsx";
 import OrgAssignDialog from "../components/OrgAssignDialog.jsx";
 import RescheduleDialog from "../components/RescheduleDialog.jsx";
 import ScheduleCreateDialog from "../components/ScheduleCreateDialog.jsx";
+import SendInviteDialog from "../components/SendInviteDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
 import { format, parseISO } from "date-fns";
@@ -793,8 +795,27 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
   const [sendMenuEl, setSendMenuEl] = useState(null);
   const [busy, setBusy] = useState(null); // null | "concluding" | "sending-prep"
   const [feedback, setFeedback] = useState(null); // { kind: 'success' | 'error', msg: string }
+  const [sendInviteOpen, setSendInviteOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const isConcluded = agenda?.status === "concluded";
+  const isCancelled = agenda?.status === "cancelled";
+  const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
+
+  // Diff between current attendees and lastSentAttendees drives the
+  // "Send Meeting Invite" button's primary/secondary styling. Diff is
+  // computed on visible attendees only — silent proxies are always equal
+  // so they never trigger a phantom diff.
+  const inviteDiff = useMemo(() => {
+    const cur = visibleAttendees(agenda?.attendees);
+    const last = visibleAttendees(agenda?.lastSentAttendees);
+    const lastSet = new Set(last.map((a) => a.email?.toLowerCase()));
+    const curSet = new Set(cur.map((a) => a.email?.toLowerCase()));
+    let added = 0, removed = 0;
+    for (const e of curSet) if (!lastSet.has(e)) added += 1;
+    for (const e of lastSet) if (!curSet.has(e)) removed += 1;
+    return { added, removed, hasDiff: added + removed > 0 };
+  }, [agenda?.attendees, agenda?.lastSentAttendees]);
 
   const handleConclude = async () => {
     if (isConcluded) return;
@@ -918,24 +939,40 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
 
       <Box sx={{ flex: 1 }} />
 
-      <Tooltip title="Send Meeting Invite — ships in V2.2.2b.2 alongside the Schedule popover">
+      <Tooltip
+        title={
+          !isBound
+            ? "Schedule the meeting first — invites need a calendar event to attach to."
+            : inviteDiff.hasDiff
+              ? `${inviteDiff.added} to invite, ${inviteDiff.removed} to cancel — click to send.`
+              : "Attendees already match the last invite. Use Manage Guests to add or remove people."
+        }
+      >
         <span>
           <Box
             component="button"
-            disabled
+            onClick={() => isBound && inviteDiff.hasDiff && setSendInviteOpen(true)}
+            disabled={!isBound || !inviteDiff.hasDiff}
             sx={{
               px: 1.6,
               py: 0.8,
               borderRadius: 1,
-              border: `1px solid ${t.cream3}`,
-              background: "transparent",
-              color: t.ink3,
+              border: `1px solid ${inviteDiff.hasDiff && isBound ? t.copper : t.cream3}`,
+              background: inviteDiff.hasDiff && isBound ? t.copper : "transparent",
+              color: inviteDiff.hasDiff && isBound ? "#fff" : t.ink3,
               fontSize: 12,
-              fontWeight: 500,
-              cursor: "not-allowed",
+              fontWeight: inviteDiff.hasDiff && isBound ? 600 : 500,
+              cursor: inviteDiff.hasDiff && isBound ? "pointer" : "not-allowed",
+              transition: "background 0.15s, border-color 0.15s",
+              "&:hover": inviteDiff.hasDiff && isBound ? { background: "#a0612b", borderColor: "#a0612b" } : {},
             }}
           >
             Send Meeting Invite
+            {inviteDiff.hasDiff && isBound && (
+              <Box component="span" sx={{ ml: 0.6, fontSize: 10, opacity: 0.85 }}>
+                ({inviteDiff.added + inviteDiff.removed})
+              </Box>
+            )}
           </Box>
         </span>
       </Tooltip>
@@ -983,6 +1020,34 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
           {busy === "sending-schedule" ? "Sending…" : "Schedule notification"}
         </MenuItem>
       </Menu>
+
+      <Tooltip title={isCancelled ? "This meeting is cancelled." : "Cancel this meeting"}>
+        <span>
+          <Box
+            component="button"
+            onClick={() => setCancelOpen(true)}
+            disabled={isCancelled || isConcluded}
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.5,
+              px: 1.6,
+              py: 0.8,
+              borderRadius: 1,
+              border: `1px solid ${isCancelled || isConcluded ? "#cfcfcf" : "#c62828"}`,
+              background: isCancelled ? "#f4f4f4" : "transparent",
+              color: isCancelled || isConcluded ? "#9e9e9e" : "#c62828",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: isCancelled || isConcluded ? "not-allowed" : "pointer",
+              transition: "background 0.15s",
+              "&:hover": isCancelled || isConcluded ? {} : { background: "rgba(198,40,40,0.08)" },
+            }}
+          >
+            {isCancelled ? "Cancelled" : "Cancel meeting"}
+          </Box>
+        </span>
+      </Tooltip>
 
       <Tooltip title={isConcluded ? "This agenda is concluded." : "Conclude this agenda"}>
         <span>
@@ -1034,6 +1099,24 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
         >
           {feedback.msg}
         </Box>
+      )}
+
+      {sendInviteOpen && (
+        <SendInviteDialog
+          agenda={agenda}
+          agendaId={agendaId}
+          calendarSeries={calendarSeries}
+          onClose={() => setSendInviteOpen(false)}
+        />
+      )}
+
+      {cancelOpen && (
+        <CancelMeetingDialog
+          agenda={agenda}
+          agendaId={agendaId}
+          calendarSeries={calendarSeries}
+          onClose={() => setCancelOpen(false)}
+        />
       )}
     </Box>
   );

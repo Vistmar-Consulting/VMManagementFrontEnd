@@ -32,11 +32,11 @@ import { createMeeting } from "../lib/meetingsApi.js";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
 
 const FREQUENCY_OPTIONS = [
-  { id: "one-time", label: "One-time", enabled: true },
-  { id: "weekly", label: "Weekly", enabled: true },
-  { id: "biweekly", label: "Biweekly", enabled: true },
-  { id: "monthly", label: "Monthly", enabled: false },
-  { id: "quarterly", label: "Quarterly", enabled: false },
+  { id: "one-time", label: "One-time" },
+  { id: "weekly", label: "Weekly" },
+  { id: "biweekly", label: "Biweekly" },
+  { id: "monthly", label: "Monthly" },
+  { id: "quarterly", label: "Quarterly" },
 ];
 
 const WEEKDAYS = [
@@ -45,6 +45,14 @@ const WEEKDAYS = [
   { id: "wednesday", label: "Wed" },
   { id: "thursday", label: "Thu" },
   { id: "friday", label: "Fri" },
+];
+
+const ORDINALS = [
+  { id: "first", label: "1st" },
+  { id: "second", label: "2nd" },
+  { id: "third", label: "3rd" },
+  { id: "fourth", label: "4th" },
+  { id: "last", label: "Last" },
 ];
 
 function pad2(n) { return String(n).padStart(2, "0"); }
@@ -65,6 +73,7 @@ export default function ScheduleCreateDialog({ agenda, agendaId, calendarSeries,
 
   const [frequency, setFrequency] = useState("one-time");
   const [dayOfWeek, setDayOfWeek] = useState("tuesday");
+  const [ordinal, setOrdinal] = useState("second");  // 2nd-Tuesday default for monthly
   const [meetingDate, setMeetingDate] = useState(initialDate);
   const [meetingTime, setMeetingTime] = useState(set(initialDate, { hours: 11, minutes: 0, seconds: 0, milliseconds: 0 }));
   const [durationMinutes, setDurationMinutes] = useState(60);
@@ -72,6 +81,7 @@ export default function ScheduleCreateDialog({ agenda, agendaId, calendarSeries,
   const [error, setError] = useState(null);
 
   const isRecurring = frequency !== "one-time";
+  const needsOrdinal = frequency === "monthly" || frequency === "quarterly";
 
   const handleSave = async () => {
     setError(null);
@@ -93,7 +103,13 @@ export default function ScheduleCreateDialog({ agenda, agendaId, calendarSeries,
       const dateStr = format(meetingDate, "yyyy-MM-dd");
       const timeStr = `${pad2(meetingTime.getHours())}:${pad2(meetingTime.getMinutes())}`;
       const cadence = isRecurring
-        ? { frequency, day: dayOfWeek, startDate: dateStr, time: timeStr }
+        ? {
+            frequency,
+            day: dayOfWeek,
+            startDate: dateStr,
+            time: timeStr,
+            ...(needsOrdinal && { ordinal }),
+          }
         : null;
       const apiAttendees = visibleAttendees(agenda?.attendees).map((a) => ({
         email: a.email,
@@ -116,7 +132,10 @@ export default function ScheduleCreateDialog({ agenda, agendaId, calendarSeries,
       const meetingDatetime = new Date(meetingDate);
       meetingDatetime.setHours(meetingTime.getHours(), meetingTime.getMinutes(), 0, 0);
 
-      // 1. Mirror to agenda doc.
+      // 1. Mirror to agenda doc. The create endpoint already fanned invites
+      // to every attendee, so seed lastSentAttendees with the current set —
+      // the staged Send Meeting Invite button only surfaces when the
+      // attendee list drifts from this baseline.
       const seriesIdFromApi = result?.seriesId || result?.eventId;
       await updateDoc(doc(db, "agendas", agendaId), {
         graphEventId: result?.m365EventId || null,
@@ -126,6 +145,8 @@ export default function ScheduleCreateDialog({ agenda, agendaId, calendarSeries,
         calendarSeriesId: seriesIdFromApi,
         meetingDatetime,
         durationMinutes,
+        lastSentAttendees: agenda?.attendees || [],
+        lastInviteSentAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedByUid: user?.uid || null,
       });
@@ -183,21 +204,49 @@ export default function ScheduleCreateDialog({ agenda, agendaId, calendarSeries,
                 return (
                   <Chip
                     key={opt.id}
-                    label={opt.enabled ? opt.label : `${opt.label} · V2.2.2b.4`}
+                    label={opt.label}
                     size="small"
-                    onClick={opt.enabled ? () => setFrequency(opt.id) : undefined}
+                    onClick={() => setFrequency(opt.id)}
                     sx={{
                       bgcolor: active ? "#b87333" : "#f5f3ee",
-                      color: active ? "#fff" : opt.enabled ? "#3d3d5c" : "#aaa",
+                      color: active ? "#fff" : "#3d3d5c",
                       fontWeight: active ? 600 : 500,
-                      cursor: opt.enabled ? "pointer" : "not-allowed",
-                      opacity: opt.enabled ? 1 : 0.5,
+                      cursor: "pointer",
                     }}
                   />
                 );
               })}
             </Box>
           </Box>
+
+          {/* Ordinal picker for monthly/quarterly (e.g. "2nd Tuesday of every month") */}
+          {needsOrdinal && (
+            <Box>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#6b6b8a", mb: 0.8 }}>
+                Which week
+              </Typography>
+              <Box sx={{ display: "flex", gap: 0.5 }}>
+                {ORDINALS.map((o) => {
+                  const active = ordinal === o.id;
+                  return (
+                    <Chip
+                      key={o.id}
+                      label={o.label}
+                      size="small"
+                      onClick={() => setOrdinal(o.id)}
+                      sx={{
+                        bgcolor: active ? "#5e35b1" : "#f5f3ee",
+                        color: active ? "#fff" : "#3d3d5c",
+                        fontWeight: active ? 600 : 500,
+                        cursor: "pointer",
+                        minWidth: 48,
+                      }}
+                    />
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
 
           {/* Day of week (recurring only) */}
           {isRecurring && (

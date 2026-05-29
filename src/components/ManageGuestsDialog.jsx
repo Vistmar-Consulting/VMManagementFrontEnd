@@ -1,15 +1,11 @@
-// V2.2.2b.2 — Manage Guests dialog. Per docs/AGENDA_DETAIL_PAGE_REFERENCE.md §4.8.
+// V2.2.2b.4 — Manage Guests dialog (staged-invite refactor).
 //
-// Add/remove attendees on an agenda. On Save:
-//   1. Compute add/remove diff vs. the original agenda.attendees array.
-//   2. Call /api/meetings/attendees with the diff (Graph PATCH fans .ics to
-//      added/removed; Google mirror updates silently).
-//   3. Mirror to the agenda.attendees field in Firestore so the FE reflects
-//      the new state immediately.
-//
-// "Apply to" scope radio (future-only / all-incl-past) is shown only when the
-// series is recurring + bound. For ad-hoc / unbound, the scope is implicit
-// (the only event in question).
+// Edits agenda.attendees only. Does NOT call /api/meetings/attendees. The
+// actual Graph/Google attendee patch is staged behind a dedicated
+// "Send Meeting Invite" button in the Action Bar, which compares the current
+// agenda.attendees set against agenda.lastSentAttendees and fires only the
+// diff. This means edits are reversible until the user explicitly ships them
+// — no surprise .ics blasts when an admin is just cleaning up names.
 //
 // Silent proxies (meetings@, seo@) are never shown — they're stamped onto
 // every Graph event by attendee-helpers.withSilentProxies and stay invisible
@@ -23,16 +19,11 @@ import {
   Autocomplete,
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
-  FormControlLabel,
   IconButton,
-  Radio,
-  RadioGroup,
   Stack,
   TextField,
   Typography,
@@ -40,44 +31,17 @@ import {
 import { Close } from "@mui/icons-material";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
-import { auth, db } from "../firebase.js";
+import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
 import MemberAvatar from "./MemberAvatar.jsx";
 
-// ── Inline API call for attendees endpoint ─────────────────────────────
-// PUT /api/meetings/attendees
-// { org_id, event_id, add: [...], remove: [...], applyTo: "future" | "all" }
-
-async function patchAttendees({ orgId, eventId, add, remove, applyTo }) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-  const r = await fetch("/api/meetings/attendees", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({
-      org_id: orgId || "unspecified",
-      event_id: eventId,
-      add: add || [],
-      remove: remove || [],
-      applyTo: applyTo || "future",
-    }),
-  });
-  if (!r.ok) {
-    const d = await r.json().catch(() => ({ error: r.statusText }));
-    throw new Error(d.error || `HTTP ${r.status}`);
-  }
-  return r.json();
-}
-
 export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, users, onClose }) {
   const { user } = useAuth();
-  const isRecurring = !!calendarSeries?.recurrence;
   const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
 
   // Original attendee set — visible (proxies hidden). Stable reference for the
-  // diff computation.
+  // diff computation against lastSentAttendees.
   const originalVisible = useMemo(() => visibleAttendees(agenda?.attendees), [agenda?.attendees]);
   const originalRaw = agenda?.attendees || [];
 
@@ -86,7 +50,6 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
   const [internalPick, setInternalPick] = useState(null);
   const [externalEmail, setExternalEmail] = useState("");
   const [externalName, setExternalName] = useState("");
-  const [applyTo, setApplyTo] = useState("future");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -131,49 +94,13 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
     setError(null);
   };
 
-  // Compute the diff vs original on Save.
-  const computeDiff = () => {
-    const origByEmail = new Map(originalVisible.map((a) => [a.email?.toLowerCase(), a]));
-    const workingByEmail = new Map(working.map((a) => [a.email?.toLowerCase(), a]));
-    const add = [];
-    const remove = [];
-    for (const [email, a] of workingByEmail) {
-      if (!origByEmail.has(email)) add.push({ email: a.email, name: a.name || a.email });
-    }
-    for (const [email, a] of origByEmail) {
-      if (!workingByEmail.has(email)) remove.push({ email: a.email, name: a.name || a.email });
-    }
-    return { add, remove };
-  };
-
   const handleSave = async () => {
     setError(null);
     setBusy(true);
-    const { add, remove } = computeDiff();
-
-    if (add.length === 0 && remove.length === 0) {
-      setBusy(false);
-      onClose();
-      return;
-    }
-
     try {
-      // 1. Graph + Google attendee patch via callable.
-      if (isBound) {
-        const eventId =
-          calendarSeries?.googleSeriesEventId
-          || agenda?.googleEventId
-          || agendaId;
-        await patchAttendees({
-          orgId: agenda?.organizationId || calendarSeries?.organizationId || null,
-          eventId,
-          add,
-          remove,
-          applyTo: isRecurring ? applyTo : "future",
-        });
-      }
-      // 2. Mirror to Firestore agenda doc. Reconstruct the full array:
-      // working (visible) + any silent proxies that were already there.
+      // Reconstruct full attendee list = working (visible) + silent proxies
+      // from the original. Proxies never appear in the working list, so we
+      // splice them back in here.
       const proxiesFromOriginal = originalRaw.filter(
         (a) => !originalVisible.find((v) => v.email?.toLowerCase() === a.email?.toLowerCase())
       );
@@ -196,10 +123,10 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
       <DialogTitle sx={{ pb: 1 }}>
         Manage guests
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: 12 }}>
-          Add or remove attendees on this {isRecurring ? "recurring series" : "meeting"}.
+          Add or remove attendees. Changes save to the agenda only —
           {isBound
-            ? " Graph delivers updated invites; the Google Calendar mirror updates silently."
-            : " No calendar binding yet — changes save to the agenda only until V2.2.2b.3 wires the create flow."}
+            ? " click Send Meeting Invite in the Action Bar when you're ready to ship the diff to Outlook + Google."
+            : " no calendar event yet; schedule the meeting first to start sending invites."}
         </Typography>
       </DialogTitle>
       <DialogContent>
@@ -291,19 +218,6 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
               </Button>
             </Stack>
           </Box>
-
-          {/* Apply-to scope for recurring + bound series */}
-          {isRecurring && isBound && (
-            <FormControl>
-              <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#6b6b8a", mb: 0.5 }}>
-                Apply to
-              </Typography>
-              <RadioGroup row value={applyTo} onChange={(e) => setApplyTo(e.target.value)}>
-                <FormControlLabel value="future" control={<Radio size="small" />} label="Future meetings only" />
-                <FormControlLabel value="all" control={<Radio size="small" />} label="All instances (including past)" />
-              </RadioGroup>
-            </FormControl>
-          )}
 
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
