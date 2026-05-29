@@ -38,9 +38,11 @@ import {
 
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
+import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
 import MemberAvatar from "../components/MemberAvatar.jsx";
 import MiniProjectBoard from "../components/MiniProjectBoard.jsx";
 import OrgAssignDialog from "../components/OrgAssignDialog.jsx";
+import RescheduleDialog from "../components/RescheduleDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
 import { format, parseISO } from "date-fns";
@@ -60,7 +62,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { useCollection } from "../hooks/useCollection.js";
 import { useDoc } from "../hooks/useDoc.js";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
-import { sendMeetingPrep } from "../lib/meetingsApi.js";
+import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 
 // Design tokens (mirror of Calendar.jsx). V2.2.2 cleanup will hoist to a
 // shared module.
@@ -127,6 +129,35 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   const { user } = useAuth();
   const [titleDraft, setTitleDraft] = useState(agenda?.title || "");
   const [orgPickerOpen, setOrgPickerOpen] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+
+  // Build a "meeting" object in the same shape RescheduleDialog expects
+  // (originally consumed the Calendar popover's API rows). The dialog reads
+  // event_id / series_id / m365EventId / date / end_date / type / org_id and
+  // (V2.1.1) dual-writes the new meetingDatetime to the agenda doc after the
+  // API succeeds — `agenda` prop passes through for the Firestore write.
+  const rescheduleMeeting = useMemo(() => {
+    if (!agenda) return null;
+    const dt = agenda.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null;
+    const endDt = dt && agenda.durationMinutes
+      ? new Date(dt.getTime() + agenda.durationMinutes * 60000)
+      : null;
+    return {
+      event_id: agenda.googleEventId || null,
+      series_id: calendarSeries?.googleSeriesEventId || null,
+      m365EventId: agenda.graphEventId || calendarSeries?.graphEventId || null,
+      iCalUID: agenda.iCalUID || null,
+      date: dt ? dt.toISOString() : null,
+      end_date: endDt ? endDt.toISOString() : null,
+      type: calendarSeries?.recurrence ? "recurring" : "single",
+      title: agenda.title || calendarSeries?.title || "",
+      teams_url: agenda.teamsUrl || calendarSeries?.teamsUrl || null,
+      attendees: agenda.attendees || [],
+      org_id: agenda.organizationId || calendarSeries?.organizationId || "unspecified",
+    };
+  }, [agenda, calendarSeries]);
+
+  const canReschedule = !!(rescheduleMeeting?.m365EventId && rescheduleMeeting?.date);
 
   useEffect(() => {
     setTitleDraft(agenda?.title || "");
@@ -185,17 +216,39 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
         sx={{ maxWidth: 720, mx: "auto", display: "block" }}
       />
 
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mt: 1.5, color: t.ink3 }}>
-        <ScheduleIcon sx={{ fontSize: 16 }} />
-        <Typography sx={{ fontSize: 14, color: t.ink3 }}>
-          {meetingDt ? format(meetingDt, "EEEE, MMMM d 'at' h:mm a") : "Date not set"}
-        </Typography>
-        {recurrenceLabel && (
-          <Typography sx={{ fontSize: 12, color: t.ink3, opacity: 0.7, ml: 1 }}>
-            · {recurrenceLabel}
+      <Tooltip title={canReschedule ? "Click to reschedule" : "No calendar binding yet — scheduling lands in V2.2.2b.3"}>
+        <Box
+          onClick={canReschedule ? () => setRescheduleOpen(true) : undefined}
+          sx={{
+            display: "inline-flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 1,
+            mt: 1.5,
+            mx: "auto",
+            px: 1.5,
+            py: 0.5,
+            borderRadius: 1,
+            color: t.ink3,
+            cursor: canReschedule ? "pointer" : "default",
+            transition: "background 0.15s, border-color 0.15s",
+            border: "1px solid transparent",
+            "&:hover": canReschedule
+              ? { background: t.cream2, borderColor: t.cream3 }
+              : {},
+          }}
+        >
+          <ScheduleIcon sx={{ fontSize: 16 }} />
+          <Typography sx={{ fontSize: 14, color: t.ink3 }}>
+            {meetingDt ? format(meetingDt, "EEEE, MMMM d 'at' h:mm a") : "Date not set"}
           </Typography>
-        )}
-      </Box>
+          {recurrenceLabel && (
+            <Typography sx={{ fontSize: 12, color: t.ink3, opacity: 0.7, ml: 1 }}>
+              · {recurrenceLabel}
+            </Typography>
+          )}
+        </Box>
+      </Tooltip>
 
       {/* Organization row — distinct from the attendee chips below. Label +
           chip layout so it's obvious what to click. Without an assigned org
@@ -229,6 +282,15 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
           currentOrgId={seriesOrgId}
           orgs={orgs}
           onClose={() => setOrgPickerOpen(false)}
+        />
+      )}
+
+      {rescheduleOpen && rescheduleMeeting && (
+        <RescheduleDialog
+          meeting={rescheduleMeeting}
+          agenda={{ id: agendaId, ...agenda }}
+          onClose={() => setRescheduleOpen(false)}
+          onSuccess={() => setRescheduleOpen(false)}
         />
       )}
     </Box>
@@ -719,6 +781,36 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
     }
   };
 
+  const formattedDate = () => {
+    const dt = agenda?.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null;
+    return dt ? format(dt, "EEEE, MMMM d 'at' h:mm a") : "Date TBD";
+  };
+
+  const handleSendSchedule = async () => {
+    setSendMenuEl(null);
+    setBusy("sending-schedule");
+    try {
+      const result = await sendScheduleEmail({
+        title: agenda?.title || "(untitled)",
+        dateFormatted: formattedDate(),
+        teamsUrl: teamsUrl || null,
+        isReschedule: false,
+        attendees: visibleAttendees(agenda?.attendees).map((a) => ({
+          email: a.email,
+          name: a.name || a.email,
+        })),
+      });
+      setFeedback({
+        kind: result?.failed > 0 ? "error" : "success",
+        msg: `Schedule notification sent — ${result?.sent ?? 0} sent, ${result?.failed ?? 0} failed.`,
+      });
+    } catch (err) {
+      setFeedback({ kind: "error", msg: err.message || "Send Schedule notification failed." });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleSendPrep = async () => {
     setSendMenuEl(null);
     setBusy("sending-prep");
@@ -849,7 +941,13 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
         >
           {busy === "sending-prep" ? "Sending…" : "Meeting Prep email"}
         </MenuItem>
-        <MenuItem disabled sx={{ fontSize: 13 }}>Schedule notification · V2.2.2b.2</MenuItem>
+        <MenuItem
+          onClick={handleSendSchedule}
+          disabled={busy === "sending-schedule"}
+          sx={{ fontSize: 13 }}
+        >
+          {busy === "sending-schedule" ? "Sending…" : "Schedule notification"}
+        </MenuItem>
       </Menu>
 
       <Tooltip title={isConcluded ? "This agenda is concluded." : "Conclude this agenda"}>
@@ -953,7 +1051,7 @@ function MeetingFocusPanel({ value, onChange }) {
   );
 }
 
-function AttendeesPanel({ attendees, userByEmail, value, onChange }) {
+function AttendeesPanel({ attendees, userByEmail, value, onChange, onManageGuests }) {
   const display = visibleAttendees(attendees);
   const [clients, vmTeam] = useMemo(() => {
     const c = [];
@@ -1004,30 +1102,28 @@ function AttendeesPanel({ attendees, userByEmail, value, onChange }) {
         <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper }}>
           Attendees
         </Typography>
-        <Tooltip title="Manage Guests — ships in V2.2.2b">
-          <span>
-            <Box
-              component="button"
-              disabled
-              sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 0.4,
-                px: 0.8,
-                py: 0.3,
-                borderRadius: 1,
-                border: `1px dashed ${t.cream3}`,
-                background: "transparent",
-                color: t.ink3,
-                fontSize: 10,
-                fontWeight: 600,
-                cursor: "not-allowed",
-              }}
-            >
-              <PersonAdd sx={{ fontSize: 12 }} /> Manage
-            </Box>
-          </span>
-        </Tooltip>
+        <Box
+          component="button"
+          onClick={onManageGuests}
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 0.4,
+            px: 0.8,
+            py: 0.3,
+            borderRadius: 1,
+            border: `1px dashed ${t.cream3}`,
+            background: "transparent",
+            color: t.copper,
+            fontSize: 10,
+            fontWeight: 600,
+            cursor: "pointer",
+            transition: "background 0.15s, border-color 0.15s",
+            "&:hover": { background: t.copperFaint, borderColor: t.copper },
+          }}
+        >
+          <PersonAdd sx={{ fontSize: 12 }} /> Manage
+        </Box>
       </Box>
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.3 }}>
@@ -1414,6 +1510,10 @@ function AgendaTopicCard({
   );
 }
 
+// (ManageGuestsDialog opens from AttendeesPanel's "Manage" button; rendered
+// from the top-level AgendaDetail component so it has access to the agenda
+// + calendarSeries + users data hooks without prop drilling.)
+
 // ─── Main page ─────────────────────────────────────────────────────────
 
 export default function AgendaDetail() {
@@ -1426,6 +1526,7 @@ export default function AgendaDetail() {
   // V2.2.2d/e wire to the same context.
   const [meetingFocusFilter, setMeetingFocusFilter] = useState(null);
   const [attendeeFilter, setAttendeeFilter] = useState(null);
+  const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
 
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
     agendaId ? `agendas/${agendaId}` : null
@@ -1650,11 +1751,22 @@ export default function AgendaDetail() {
                 userByEmail={userByEmail}
                 value={attendeeFilter}
                 onChange={setAttendeeFilter}
+                onManageGuests={() => setManageGuestsOpen(true)}
               />
               <PreparedByPanel />
             </Box>
           </Box>
         </>
+      )}
+
+      {manageGuestsOpen && (
+        <ManageGuestsDialog
+          agenda={agenda}
+          agendaId={agendaId}
+          calendarSeries={calendarSeries}
+          users={users}
+          onClose={() => setManageGuestsOpen(false)}
+        />
       )}
     </Box>
   );
