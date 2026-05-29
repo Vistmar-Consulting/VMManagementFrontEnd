@@ -168,8 +168,18 @@ export async function createEvent({
   const recurrence = rruleToGraphRecurrence(rrule, startDate);
   if (recurrence) body.recurrence = recurrence;
 
+  // Graph POST /calendar/events is SILENT by default in app-only context — it
+  // creates the event and mints the Teams meeting but does NOT fan .ics
+  // invites to attendees unless the Prefer header is set. Without this, the
+  // event lands in meetings@'s Outlook + the Google mirror (so it shows up
+  // on attendee calendars by virtue of being added as an attendee), but no
+  // .ics email ever reaches their inbox. Same fix the rescheduleEvent +
+  // updateAttendees paths already use. Confirmed on 2026-05-28: created
+  // event for adeemer@ — landed in calendar, no email — root cause was this
+  // missing header.
   const res = await graphFetch("/calendar/events", {
     method: "POST",
+    headers: { Prefer: 'outlook.send-notifications="true"' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
