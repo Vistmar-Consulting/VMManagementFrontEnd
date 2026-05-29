@@ -71,6 +71,28 @@ export function rescheduleMeeting({ orgId, eventId, mode, originalDate, newDate,
   });
 }
 
+// POST /api/meetings/create
+// Mints a Graph event (canonical) + Google mirror, fans .ics invites to all
+// attendees from meetings@. For one-time meetings pass `date` + `time` and
+// `cadence: null`; for recurring pass `cadence: { frequency, day, startDate,
+// time, ordinal? }` and omit top-level date/time.
+// Response: { agenda_id, eventId, m365EventId, seriesId, teamsUrl, iCalUID }
+export function createMeeting({ orgId, title, agendaId, cadence, date, time, timezone, attendees }) {
+  return call("create", {
+    method: "POST",
+    body: {
+      agenda_id: agendaId || null,
+      org_id: orgId || "unspecified",
+      title,
+      cadence: cadence || null,
+      date: date || null,
+      time: time || null,
+      timezone: timezone || "America/Los_Angeles",
+      attendees: attendees || [],
+    },
+  });
+}
+
 // POST /api/meetings/send-prep
 // Sends the Meeting Prep email to every attendee. The endpoint walks the
 // attendees array and renders + sends a per-attendee HTML email via Postmark

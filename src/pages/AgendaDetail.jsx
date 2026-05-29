@@ -43,6 +43,7 @@ import MemberAvatar from "../components/MemberAvatar.jsx";
 import MiniProjectBoard from "../components/MiniProjectBoard.jsx";
 import OrgAssignDialog from "../components/OrgAssignDialog.jsx";
 import RescheduleDialog from "../components/RescheduleDialog.jsx";
+import ScheduleCreateDialog from "../components/ScheduleCreateDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
 import { format, parseISO } from "date-fns";
@@ -130,6 +131,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   const [titleDraft, setTitleDraft] = useState(agenda?.title || "");
   const [orgPickerOpen, setOrgPickerOpen] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [scheduleCreateOpen, setScheduleCreateOpen] = useState(false);
 
   // Build a "meeting" object in the same shape RescheduleDialog expects
   // (originally consumed the Calendar popover's API rows). The dialog reads
@@ -158,6 +160,9 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   }, [agenda, calendarSeries]);
 
   const canReschedule = !!(rescheduleMeeting?.m365EventId && rescheduleMeeting?.date);
+  // Unbound agenda — no Graph binding yet — clicking the schedule row should
+  // open the create flow instead of the reschedule flow.
+  const canScheduleCreate = !canReschedule;
 
   useEffect(() => {
     setTitleDraft(agenda?.title || "");
@@ -216,9 +221,15 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
         sx={{ maxWidth: 720, mx: "auto", display: "block" }}
       />
 
-      <Tooltip title={canReschedule ? "Click to reschedule" : "No calendar binding yet — scheduling lands in V2.2.2b.3"}>
+      <Tooltip title={canReschedule ? "Click to reschedule" : canScheduleCreate ? "Click to schedule this meeting" : ""}>
         <Box
-          onClick={canReschedule ? () => setRescheduleOpen(true) : undefined}
+          onClick={
+            canReschedule
+              ? () => setRescheduleOpen(true)
+              : canScheduleCreate
+                ? () => setScheduleCreateOpen(true)
+                : undefined
+          }
           sx={{
             display: "inline-flex",
             justifyContent: "center",
@@ -230,17 +241,25 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
             py: 0.5,
             borderRadius: 1,
             color: t.ink3,
-            cursor: canReschedule ? "pointer" : "default",
+            cursor: canReschedule || canScheduleCreate ? "pointer" : "default",
             transition: "background 0.15s, border-color 0.15s",
-            border: "1px solid transparent",
-            "&:hover": canReschedule
-              ? { background: t.cream2, borderColor: t.cream3 }
-              : {},
+            border: canScheduleCreate ? `1px dashed ${t.copper}` : "1px solid transparent",
+            background: canScheduleCreate ? t.copperFaint : "transparent",
+            "&:hover":
+              canReschedule
+                ? { background: t.cream2, borderColor: t.cream3 }
+                : canScheduleCreate
+                  ? { background: "rgba(184,115,51,0.15)", borderColor: t.copper }
+                  : {},
           }}
         >
-          <ScheduleIcon sx={{ fontSize: 16 }} />
-          <Typography sx={{ fontSize: 14, color: t.ink3 }}>
-            {meetingDt ? format(meetingDt, "EEEE, MMMM d 'at' h:mm a") : "Date not set"}
+          <ScheduleIcon sx={{ fontSize: 16, color: canScheduleCreate ? t.copper : "inherit" }} />
+          <Typography sx={{ fontSize: 14, color: canScheduleCreate ? t.copper : t.ink3, fontWeight: canScheduleCreate ? 600 : 400 }}>
+            {meetingDt
+              ? format(meetingDt, "EEEE, MMMM d 'at' h:mm a")
+              : canScheduleCreate
+                ? "Schedule this meeting"
+                : "Date not set"}
           </Typography>
           {recurrenceLabel && (
             <Typography sx={{ fontSize: 12, color: t.ink3, opacity: 0.7, ml: 1 }}>
