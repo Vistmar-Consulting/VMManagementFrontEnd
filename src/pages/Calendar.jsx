@@ -53,6 +53,7 @@ import { listMeetings } from "../lib/meetingsApi.js";
 import { groupRecurringMeetings, detectCadence, visibleAttendees } from "../lib/meetingHelpers.js";
 import { reconcileMeetingsToFirestore } from "../lib/reconcileMeetings.js";
 import MemberAvatar from "../components/MemberAvatar.jsx";
+import NewMeetingDialog from "../components/NewMeetingDialog.jsx";
 import RescheduleDialog from "../components/RescheduleDialog.jsx";
 
 // Design tokens — local to this page since Management's global palette
@@ -245,6 +246,7 @@ export default function Calendar() {
   const [popoverMeeting, setPopoverMeeting] = useState(null);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [pastExpanded, setPastExpanded] = useState(false);
+  const [newMeetingOpen, setNewMeetingOpen] = useState(false);
 
   // Single broad query: visible-month window EXTENDED forward 90 days so
   // the Recurring + Ad-Hoc card sections always have upcoming data. The
@@ -426,10 +428,33 @@ export default function Calendar() {
   return (
     <Box sx={{ py: 4, px: 3, maxWidth: 1200, mx: "auto" }}>
       {/* Page header */}
-      <Box sx={{ mb: 3 }}>
+      <Box sx={{ mb: 3, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Typography sx={{ fontFamily: t.serif, fontSize: 28, fontWeight: 400, color: t.ink }}>
           Meeting Agendas
         </Typography>
+        <Box
+          component="button"
+          onClick={() => setNewMeetingOpen(true)}
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 0.6,
+            px: 1.8,
+            py: 0.9,
+            borderRadius: 1,
+            border: `1px solid ${t.copper}`,
+            background: t.copper,
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            transition: "background 0.15s, border-color 0.15s",
+            "&:hover": { background: "#a0612b", borderColor: "#a0612b" },
+          }}
+        >
+          + New Meeting
+        </Box>
       </Box>
 
       {/* Org filter chips */}
@@ -899,6 +924,14 @@ export default function Calendar() {
             setRescheduleTarget(null);
             meetingsQuery.refetch();
           }}
+        />
+      )}
+
+      {newMeetingOpen && (
+        <NewMeetingDialog
+          orgs={orgs}
+          users={users}
+          onClose={() => setNewMeetingOpen(false)}
         />
       )}
     </Box>
