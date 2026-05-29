@@ -96,6 +96,18 @@ AI-driven Project Board updates (Fireflies + agendas → statusId 8 AI Gen items
 
 **Tasks:** #2 fireflies lib + tokens · #3 MeetingDetailModal · #4 PastMeetingsCard + wire · #5 mapping editor + fred@ filter · #6 Vite proxy + Vercel env · #7 management page (design first).
 
+### v0.2.3.i — Recurring cards collapsed to one instance (wrong Next date + order) ✅
+
+**Symptom (Andy):** recurring meeting cards not ordered by next-upcoming; weekly/biweekly "Next" dates wrong (VM - Weekly Business Dev → Aug 21).
+
+**Root cause (systematic-debugging, confirmed by code + live data + failing test):** `api/meetings/_lib/google-calendar.js` `listEventsAcrossSubjects` deduped events across the 3 impersonated calendars (meetings@, Tate, Cedric) keyed on `iCalUID || series_id || event_id`. Google gives every expanded instance of a recurring series the **same iCalUID**, so dedup collapsed all instances → 1 per series. The replace-if-organizer branch overwrote in chronological order → organizer-matched series kept their **last** in-window instance (Aug dates); non-organizer series kept their **first** (already-past) instance. Cards sorted by those wrong dates; cadence labels vanished (instanceCount → 1). Live prod cards confirmed: all "RECURRING" with no cadence, dates scattered Apr 29 / May 6 / Aug 6/18/21/24.
+
+**Fix:** dedup key now appends the instance start (`${base}::${ev.date}`) — same instance across calendars still dedupes; distinct occurrences stay separate. Extracted the dedup into pure, unit-tested `api/meetings/_lib/dedupe-events.js` (failing test pre-fix → passes after); dropped dead `fallbackOrder` tracking. Ordering + cadence labels fixed by the same change (groupRecurringMeetings already sorts by nextDate).
+
+**Commit `35c700c`** → origin/dev (API-only). First unit test in the repo (`__tests__/dedupe-events.test.js`, run via `npx vitest run`). **PROD-VERIFIED 2026-05-29:** cards now show cadence labels (WEEKLY/BIWEEKLY) + near-term next dates in chronological order (Jun 1/2/2/3/3…); VM - Weekly Business Dev → Jun 5 (was Aug 21), Vistamar Platform Dev → Jun 4 (was Aug 6).
+
+**Minor observation (not fixed):** detectCadence labeled "ID Care - Biweekly" as WEEKLY — it's a heuristic on instance count over the window; cosmetic, pre-existing, out of scope.
+
 ## Files Modified
 
 - `dev/sessions/v0_2_3_Andrew_MEETING_SCHEDULER_POLISH/context.md` — created (this file)
