@@ -217,6 +217,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
             e.currentTarget.blur();
           }
         }}
+        fullWidth
         variant="standard"
         placeholder="Untitled Meeting"
         InputProps={{ disableUnderline: true, sx: { fontFamily: t.serif, fontSize: { xs: 24, sm: 28 }, fontWeight: 500, color: t.ink, textAlign: "center" } }}
