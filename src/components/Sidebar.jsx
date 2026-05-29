@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import {
   CalendarDays,
+  Captions,
   LayoutDashboard,
   Settings,
   SquareKanban,
@@ -24,6 +25,7 @@ const TOP_LEVEL = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/board", label: "Task Board", icon: SquareKanban },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
+  { to: "/fireflies", label: "Fireflies", icon: Captions },
 ];
 
 // Settings is now a parent group, not a navigable route itself. Clicking

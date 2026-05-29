@@ -67,23 +67,8 @@ import { useCollection } from "../hooks/useCollection.js";
 import { useDoc } from "../hooks/useDoc.js";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
 import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
-
-// Design tokens (mirror of Calendar.jsx). V2.2.2 cleanup will hoist to a
-// shared module.
-const t = {
-  ink: "#1a1a2e",
-  ink2: "#3d3d5c",
-  ink3: "#6b6b8a",
-  cream: "#faf8f5",
-  cream2: "#f0ede8",
-  cream3: "#e8e4dd",
-  copper: "#b87333",
-  copperFaint: "rgba(184,115,51,0.08)",
-  purple: "#5e35b1",
-  blue: "#376fd0",
-  serif: "'Playfair Display', Georgia, serif",
-  sans: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-};
+import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
+import { t } from "../theme/tokens.js";
 
 const inputBase = {
   border: "none",
@@ -1965,6 +1950,9 @@ export default function AgendaDetail() {
           </DragDropContext>
           <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
           <OpenFloorSection agendaId={agendaId} />
+          {agenda?.firefliesTitles?.length > 0 && (
+            <PastMeetingsCard firefliesTitles={agenda.firefliesTitles} />
+          )}
         </Box>
       ) : (
         <>
@@ -2025,6 +2013,9 @@ export default function AgendaDetail() {
                 <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
               </Box>
               <OpenFloorSection agendaId={agendaId} />
+              {agenda?.firefliesTitles?.length > 0 && (
+                <PastMeetingsCard firefliesTitles={agenda.firefliesTitles} />
+              )}
             </Box>
             <Box>
               <MeetingFocusPanel

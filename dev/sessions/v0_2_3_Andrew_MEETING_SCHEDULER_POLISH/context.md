@@ -76,8 +76,52 @@ AI-driven Project Board updates (Fireflies + agendas → statusId 8 AI Gen items
 
 **Tangential observation (NOT fixed — flagging only):** `fred@fireflies.ai` renders as an attendee chip on the Unio agenda. Silent-proxy filter only strips `meetings@`/`seo@`; the Fireflies bot under `@fireflies.ai` isn't filtered. May be intentional or a gap — raise separately if it should be hidden.
 
+### v0.2.3.b–g — Fireflies Past Meetings + management page (V2.2) — IN PROGRESS
+
+**Plan:** `docs/plans/2026-05-29-fireflies-past-meetings-port.md` (read end-to-end; all 5 sanity questions verified against archive). **Note:** brief says add to closed `v0_2_0` session — overridden per Andy 2026-05-29 to use this active `v0.2.3` session.
+
+**Decisions (Andy-confirmed 2026-05-29):**
+- Lookup model: **Option 1** — `firefliesTitles: string[]` on the agenda doc (the array IS the historical-title→agenda lookup table; titles drifted over time, will be stable going forward).
+- Build the **Browse-recent-titles picker** (not skipped) — helps find historical aliases.
+- Theme: reuse existing copper/cream `t` palette (was NOT dropped; inline at `AgendaDetail.jsx:73`) — extract to `src/theme/tokens.js`.
+- Card placement: **below Open Floor, main column, BOTH Working + Overview views** per `AGENDA_DETAIL_PAGE_REFERENCE.md` §4.6/§5 — overrides brief's "right rail".
+- Hide card when zero mappings; same title may repeat across agendas; no org chip on card.
+- **Case-INSENSITIVE** title match (deviation from archive's `Set.has()`) — historical titles hand-entered.
+- **fred@fireflies.ai** added to the FE silent-proxy render filter (it currently renders as a chip — confirmed on Unio agenda). Rendering-layer only; never strip from data.
+- **NEW (Andy):** a Fireflies **management page under the Calendar nav tab** to view all Fireflies meetings + map them to agendas. Overrides brief's "no separate page" rule. DESIGN before building (task #7).
+
+**seo@ bot auto-invite/auto-join:** `withSilentProxies()` (api/meetings/_lib/attendee-helpers.js) already prepends seo@ to every created event. Auto-JOIN-under-seo@-not-Cedric's-ctucksherman@ is **Fireflies-workspace config** (not code) — separate investigation slice, not blocking the port.
+
+**Key validated 2026-05-29:** `VITE_FIREFLIES_KEY` in `.env.local`; curl probe returned real transcripts (Unio Weekly Marketing Meeting, Vistamar Platform Development updates, etc.). Still TODO: Vercel prod+preview envs.
+
+**Tasks:** #2 fireflies lib + tokens · #3 MeetingDetailModal · #4 PastMeetingsCard + wire · #5 mapping editor + fred@ filter · #6 Vite proxy + Vercel env · #7 management page (design first).
+
 ## Files Modified
 
 - `dev/sessions/v0_2_3_Andrew_MEETING_SCHEDULER_POLISH/context.md` — created (this file)
 - `dev/SESSION_INDEX.json` — V2 entry confirmed `closed`; this entry added `status: active`
 - `src/pages/AgendaDetail.jsx` — v0.2.3.a AgendaHero boundness-gate fix (lines ~165-180)
+- **v0.2.3.b–f Fireflies (in progress, NOT committed):**
+  - NEW `src/theme/tokens.js` — hoisted shared copper/cream `t` palette
+  - NEW `src/lib/fireflies.js` — firefliesQuery + 3 GraphQL queries + timestamp helpers (verbatim)
+  - NEW `src/components/firefliesStyled.js` — ShimmerBar + MiniPill (emotion styled)
+  - NEW `src/components/MeetingDetailModal.jsx` — ported verbatim (archive 2861-3468)
+  - NEW `src/components/PastMeetingsCard.jsx` — ported; case-insensitive title match; section chrome matches Open Floor
+  - `src/pages/AgendaDetail.jsx` — import `t` from tokens + PastMeetingsCard; mounted below Open Floor in BOTH views (guarded by firefliesTitles)
+  - `src/lib/meetingHelpers.js` — added `fred@fireflies.ai` to silent-proxy render filter
+  - `vite.config.js` — `/fireflies-api` dev proxy (always on; Vite auto-restarts)
+  - `.env.local` (gitignored) + `.env.example` — VITE_FIREFLIES_KEY
+  - **Verified:** build green; Fireflies plumbing works in-app via dev proxy (read-only probe returned real transcripts). **Not yet verified:** card rendering on an agenda (needs firefliesTitles via the real mapping UI — pending management-page design/approval; agent-initiated production Firestore write correctly blocked).
+  - **TODO:** Vercel prod+preview env var; production-preview verification; when V2.2 re-adds the agenda-update field denylist, `firefliesTitles` must be allowlisted.
+- **v0.2.3.g Fireflies management page (in progress, NOT committed):**
+  - NEW `src/pages/FirefliesMeetings.jsx` — title-centric: lists unique Fireflies recording titles (count + date range), maps each → agenda via inline Autocomplete (arrayUnion/arrayRemove on `agenda.firefliesTitles`), unmapped-only filter, search, load-more, row→MeetingDetailModal preview. Sole mapping UI (no per-agenda editor, Andy call).
+  - `src/routes.jsx` — `/fireflies` route
+  - `src/components/Sidebar.jsx` — "Fireflies" top-level tab (lucide Captions icon)
+  - **Decisions (Andy):** own top-level sidebar tab (not nested); title-centric; group by unique title; Fireflies page is the only mapping surface.
+  - **Verified:** build green; page renders 10 real unique titles w/ counts + date ranges; Map autocomplete opens + lists real agendas; load-more + search + unmapped filter render.
+  - **END-TO-END VERIFIED (2026-05-29):** Andy authorized mapping. Mapped the 9 unambiguous exact (single-doc) matches via direct Firestore arrayUnion write; confirmed PastMeetingsCard renders on the Unio agenda ("PAST MEETINGS · 10") and MeetingDetailModal opens with real Overview/Action Items/Topics/timestamps. Full loop works.
+
+**Fireflies title → agenda mappings (production data, 2026-05-29):**
+- MAPPED (9, exact single-doc): Vistamar Platform Development updates · Unio Weekly Marketing Meeting · VM Weekly Touch Base · Biweekly Marketing Updates · June Content Strategy · May Content · Andy + Cedric — Claude Code & SQL MCP Setup · ID Care – Marketing Committee · GV – Biweekly
+- LEFT FOR ANDY (ambiguous — duplicate agenda docs with same title [base + _R instance], or near-misses): GV-Vistamar Bi-Weekly Mtg (2 docs) · BMD Marketing (2 docs) · BMD - Biweekly (2 docs) · ID Care - Biweekly (2 docs) · ID Care – Biweekly (en-dash; agendas use hyphen) · VM - Business Dev (≈ "VM - Weekly Business Dev") · ID Care · Vistamar/Balance Marketing Weekly Update · Tate SOP Discusssion · MB Rotary Long-Term Planning Committee · Long-Range Planning Committee Mtg.
+- Side note surfaced: several agendas exist as duplicate base+`_R<instance>` docs (recurring artifact) — worth a cleanup pass; ambiguity is why those titles were left unmapped.

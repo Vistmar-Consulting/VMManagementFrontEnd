@@ -4,13 +4,19 @@
 // m365EventId, org_id) rather than Console's normalized PascalCase mirror.
 
 // Silent-proxy filter. Mirror of api/meetings/_lib/attendee-helpers.js. These
-// two addresses are ALWAYS on Vistamar meetings (organizer + Fireflies bot)
-// but MUST NOT appear in any FE attendee surface — avatars, popover lists,
-// nothing. Per docs/MEETING_AGENDAS_PAGE_REFERENCE.md §7. Re-defined here
-// instead of imported because Vite bundles src/ separately from api/.
+// addresses are ALWAYS on Vistamar meetings (organizer + Fireflies recording
+// proxies) but MUST NOT appear in any FE attendee surface — avatars, popover
+// lists, nothing. Per docs/MEETING_AGENDAS_PAGE_REFERENCE.md §7. Re-defined
+// here instead of imported because Vite bundles src/ separately from api/.
+//
+// fred@fireflies.ai is the Fireflies notetaker bot's own guest address (added
+// 2026-05-29 per Andy) — it gets auto-invited as a meeting guest and was
+// rendering as a chip. Filter at the rendering layer only; never strip it from
+// the stored attendee data (it's a legitimate guest that triggers the bot).
 const HOST_PROXY_EMAIL = "meetings@vistamarconsulting.com";
 const FIREFLIES_GUEST_EMAIL = "seo@vistamarconsulting.com";
-const SILENT_PROXY_EMAILS = new Set([HOST_PROXY_EMAIL, FIREFLIES_GUEST_EMAIL]);
+const FIREFLIES_BOT_EMAIL = "fred@fireflies.ai";
+const SILENT_PROXY_EMAILS = new Set([HOST_PROXY_EMAIL, FIREFLIES_GUEST_EMAIL, FIREFLIES_BOT_EMAIL]);
 
 export function isSilentProxy(email) {
   if (typeof email !== "string" || !email) return false;
