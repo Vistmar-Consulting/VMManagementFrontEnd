@@ -162,10 +162,20 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
     };
   }, [agenda, calendarSeries]);
 
-  const canReschedule = !!(rescheduleMeeting?.m365EventId && rescheduleMeeting?.date);
-  // Unbound agenda — no Graph binding yet — clicking the schedule row should
-  // open the create flow instead of the reschedule flow.
-  const canScheduleCreate = !canReschedule;
+  // Boundness uses the same canonical signal as the action bar, cancel, and
+  // manage-guests dialogs (agenda.graphEventId || calendarSeries.graphSeriesEventId).
+  // The Hero previously gated on calendarSeries.graphEventId — a field the
+  // create path never writes and reconcile only writes when an m365EventId is
+  // present (rare under the Google-primary architecture). That made bound
+  // recurring agendas fall through to the "schedule" (mint-new) flow, risking a
+  // duplicate calendar event on click. RescheduleDialog reschedules via
+  // series_id / event_id (Google ids), not m365EventId, so this is purely a
+  // boundness gate.
+  const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
+  const canReschedule = !!(isBound && rescheduleMeeting?.date);
+  // Only offer the create (mint-new-event) flow for genuinely unbound agendas —
+  // never for a bound one, or we'd mint a duplicate event.
+  const canScheduleCreate = !isBound;
 
   useEffect(() => {
     setTitleDraft(agenda?.title || "");

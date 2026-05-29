@@ -22,6 +22,17 @@
       "summary": "V2 Meeting Scheduler shipped end-to-end: Calendar page, AgendaDetail (Working + Overview), MiniProjectBoard, Send Meeting Invite (staged diff), Cancel meeting / Cancel agenda split, + New Meeting entry point. Architecture pivot 2026-05-29: Google fans .ics invites (sendUpdates:'all') because M365 meetings@ mailbox has no email send rights; Graph still mints calendar event + Teams binding silently. Verified end-to-end against production. 5 users on prod.",
       "folder": "dev/sessions/v0_2_0_Andrew_MEETING_SCHEDULER/",
       "status": "closed"
+    },
+    {
+      "session_id": "SES-20260529-Andrew-v0.2.3-meeting-scheduler-polish",
+      "developer": "Andrew",
+      "date": "2026-05-29",
+      "version_start": "v0.2.3",
+      "version_end": null,
+      "commit_start": "ff57a42",
+      "summary": "Continuation of Meeting Scheduler / Meeting Agenda work — small refinements and bug fixes. Carries forward live deferred items from the closed V2 session.",
+      "folder": "dev/sessions/v0_2_3_Andrew_MEETING_SCHEDULER_POLISH/",
+      "status": "active"
     }
   ]
 }
