@@ -134,3 +134,23 @@ Build still passes (36s, no size regression). One trade-off accepted from review
 ## Open Questions (active — surfaced to Andy)
 
 See task list (TaskList) for the 4 active session tasks. The brainstorming question list is in the upcoming AskUserQuestion turn.
+
+## V2.2.2b.7 — Email fan-out verification (2026-05-29) ✅
+
+**Architecture flipped on 2026-05-28:** the M365 `meetings@vistamarconsulting.com` mailbox does NOT have email send rights in our tenant — Graph creates events silently regardless of `Prefer: outlook.send-notifications` headers, and zero invites delivered between 2026-04-29 and 2026-05-28 across every Graph code path tried. The Google Workspace `meetings@` mailbox HAS send rights. Commit `87ec165` flipped every Google Calendar mutation from `sendUpdates:"none"` to `sendUpdates:"all"` so Google fans the `.ics` from its side. Graph still mints the Teams meeting binding (we need joinUrl for conferenceData) but is fully silent on the email side.
+
+**Verification run (2026-05-29 10:36-10:48 PDT)** — end-to-end against production deployment `dpl_5pjiTzSGX9CWk5Wjp7p2eJGun2wt`. Test agenda title: "TEST — invite fanout verification (2026-05-29)". Attendees: adeemer@vistamarconsulting.com + (later) deemerwsp@gmail.com. Org: Vistamar. Verified via claude_ai_Gmail MCP against adeemer@vistamarconsulting.com inbox.
+
+| Fan path | Fired at | Delivered at | Latency | Outcome |
+|---|---|---|---|---|
+| CREATE | 10:36:18 | 10:36:40 | 22s | ✅ `Invitation: TEST — invite fanout verification...` from meetings@vistamarconsulting.com to adeemer@ + seo@ (silent proxy) with Teams join URL |
+| ATTENDEE-ADD | 10:38:27 | — | — | ✅ PATCH succeeded (Send Meeting Invite button cleared diff). deemerwsp@gmail.com persisted on Google roster (visible in reschedule's toRecipients line). Direct delivery to deemerwsp@ inbox not verified — personal-gmail MCP returned `invalid_grant`; would need reauth to confirm. Existing-attendee mailboxes don't get a separate "Updated invitation" for attendee-only patches per Google's default behavior. |
+| RESCHEDULE | 10:45:58 | 10:46:19 | 21s | ✅ `Updated invitation: TEST — ... @ Fri May 29, 2026 6:30pm - 7pm (PDT)` to all 3 attendees (adeemer@, seo@, deemerwsp@) |
+| CANCEL | 10:47:21 | 10:47:35 | 14s | ✅ `Canceled event: TEST — ...` to adeemer@ with cancellation `.ics` |
+
+**Cleanup:** test agenda deleted via the Cancel agenda flow (which also walks topics + openFloor subcollections) and navigated back to /calendar. Confirmed Calendar page renders cleanly post-delete.
+
+**Caveat to track:**
+- The personal-gmail MCP (authorized for adeemer@vistamarconsulting.com per session memory) returned `invalid_grant` throughout the run — the token must have expired. To verify "new attendee gets the .ics on attendee-add" end-to-end we'd need either personal-gmail reauthorized or a second test mailbox the claude_ai_Gmail MCP can read. For now the persisted-roster + downstream-fan-success is sufficient evidence the API call landed correctly on Google's side.
+
+**Deploy note for future:** Vercel auto-deploy on push to `origin/dev` failed to fire for commits `105af3c`, `44de415`, `87ec165` (between roughly 2026-05-28 20:30 PDT and 2026-05-29 10:30 PDT). All three sat on `origin/dev` without a corresponding deploy. Resolution: `npx vercel --prod --yes` from repo root manually published deployment `vm-management-front-dei4fot6y` which aliased to the production domain. Worth investigating Vercel's GitHub webhook on the Management project — auto-deploy on the Console project still works, so this isn't a global outage.

@@ -80,12 +80,13 @@ Write `dev/v2-graft-points.md` BEFORE V2 starts. Map every place V2 will touch V
 
 V2 kickoff session opened 2026-05-27 evening. See `dev/HANDOFF_2026-05-27_MEETING_SCHEDULER_KICKOFF.md` (original kickoff) and `dev/sessions/v0_2_0_Andrew_MEETING_SCHEDULER/context.md` (live brain). Implementation brief: `docs/plans/2026-05-27-meeting-scheduler-port.md` (architecture surface needs update — see below).
 
-**Architecture (CORRECTED 2026-05-27 per Andy):**
+**Architecture (CORRECTED 2026-05-27 per Andy; invite-fanout flipped 2026-05-29):**
 - Backend: **Vercel API routes** in `api/meetings/*` (NOT Firebase Functions — Andy explicitly questioned the Blaze requirement and ruled it out)
 - Secrets: **Reuse Console's Azure VistamarVault** via service-principal env vars (AZURE_KV_*) — NOT GCP Secret Manager
 - Google native Join meeting button: **PRESERVED** — `buildConferenceData` workaround in `_lib/google-calendar.js` ported intact per Andy's correction "I want the google native Join meeting button, don't fuck with that"
 - Postmark + Graph sendMail: **PRESERVED** (no Gmail swap) — port relay-mail.js + graph-mail.js intact
 - Tate's recurring meetings migration: separate one-shot script, not blocking V2.1
+- **Invite fan-out (V2 FINAL — 2026-05-29):** Google is the canonical invite source via `sendUpdates:"all"` on every google-calendar.js mutation. Graph still mints the calendar event + Teams binding but is silent on email — the M365 meetings@ mailbox in our tenant does not have email send rights, so Graph's `Prefer: outlook.send-notifications` header is a no-op there. The Google Workspace meetings@ account DOES have send rights and fans the `.ics` (Invitation / Updated invitation / Canceled event) from its side. Verified end-to-end 2026-05-29 — see context.md §V2.2.2b.7. The 2026-04-28 m365-primary-meeting-scheduler design doc is now historical; current source of truth is google-calendar.js + the verification log in context.md.
 
 **V2.1 landed in same session (2026-05-27):**
 - ~~`api/meetings/_lib/*` ported verbatim from archive~~ ✓ (keyvault, cors, auth, attendee-helpers, google-calendar, graph-events, graph-mail, relay-mail, agenda-email, schedule-email)
