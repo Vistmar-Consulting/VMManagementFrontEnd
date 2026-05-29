@@ -168,7 +168,12 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
     setTitleDraft(agenda?.title || "");
   }, [agenda?.title]);
 
-  const seriesOrgId = calendarSeries?.organizationId || null;
+  // Read precedence: calendar_series (canonical for bound agendas) →
+  // agenda doc (covers unbound agendas where the user assigned an org
+  // before scheduling). The picker still writes to calendar_series for
+  // bound agendas, but for unbound it writes to agenda (no series doc
+  // exists yet — ScheduleCreateDialog mints it on first save).
+  const seriesOrgId = calendarSeries?.organizationId || agenda?.organizationId || null;
   const seriesId = calendarSeries?.id || agenda?.calendarSeriesId || agendaId;
   const orgName = useMemo(() => {
     if (!seriesOrgId) return null;
@@ -310,6 +315,16 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
           agenda={{ id: agendaId, ...agenda }}
           onClose={() => setRescheduleOpen(false)}
           onSuccess={() => setRescheduleOpen(false)}
+        />
+      )}
+
+      {scheduleCreateOpen && (
+        <ScheduleCreateDialog
+          agenda={agenda}
+          agendaId={agendaId}
+          calendarSeries={calendarSeries}
+          orgs={orgs}
+          onClose={() => setScheduleCreateOpen(false)}
         />
       )}
     </Box>
