@@ -15,6 +15,7 @@ import { useMemo, useState } from "react";
 import {
   Alert,
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
@@ -39,6 +40,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
   const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
 
   const [mode, setMode] = useState(isRecurring ? "instance" : "series");
+  const [notify, setNotify] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -69,6 +71,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
           eventId,
           mode,
           date: dateStr,
+          notify,
         });
       }
 
@@ -110,7 +113,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
         Cancel meeting
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: 12 }}>
           {isBound
-            ? "Graph fans the cancellation invite to every attendee from meetings@'s Outlook; the Google Calendar mirror is removed silently. The agenda itself stays — you can reschedule it for a new time or cancel the agenda separately."
+            ? "Cancels the calendar event. With “Notify attendees” on, Google emails a cancellation to every attendee and removes it from their calendars; off removes it silently (use for cleanup, e.g. a duplicate series). The agenda itself stays — reschedule it or cancel the agenda separately."
             : "This agenda isn't bound to a calendar event yet — nothing to cancel here. Use Cancel agenda instead if you want to remove the agenda."}
         </Typography>
       </DialogTitle>
@@ -134,6 +137,17 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
                 />
               </RadioGroup>
             </FormControl>
+          )}
+
+          {isBound && (
+            <FormControlLabel
+              control={<Checkbox size="small" checked={notify} onChange={(e) => setNotify(e.target.checked)} />}
+              label={
+                <Typography sx={{ fontSize: 13 }}>
+                  Notify attendees (send cancellation)
+                </Typography>
+              }
+            />
           )}
 
           {error && <Alert severity="error">{error}</Alert>}

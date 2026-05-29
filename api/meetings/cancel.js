@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   if (!(await requireAuth(req, res))) return;
 
   try {
-    const { org_id, event_id, mode, date } = req.body;
+    const { org_id, event_id, mode, date, notify } = req.body;
 
     if (!org_id || !event_id || !mode) {
       return res.status(400).json({ error: "Missing required fields: org_id, event_id, mode" });
@@ -33,8 +33,11 @@ export default async function handler(req, res) {
       });
     }
 
+    // Graph cancel is silent in our tenant (meetings@ has no send rights).
+    // Google is the invite-fan path: sendUpdates "all" emails a cancellation
+    // to every attendee; "none" removes the event silently (notify === false).
     await graphCancel({ eventId: m365EventId, mode, date });
-    await googleCancel({ eventId: event_id, mode, date });
+    await googleCancel({ eventId: event_id, mode, date, sendUpdates: notify === false ? "none" : "all" });
 
     return res.status(200).json({ success: true });
   } catch (err) {
