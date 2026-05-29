@@ -86,6 +86,24 @@ export function cancelMeeting({ orgId, eventId, mode, date }) {
   });
 }
 
+// PUT /api/meetings/attendees
+// Patches the attendee list on a bound Graph + Google event. add/remove
+// are arrays of { email, name }. applyTo is "future" | "all" — only
+// meaningful for recurring series. Graph fans .ics invites to added
+// attendees and cancellations to removed; Google mirror updates silently.
+export function patchAttendees({ orgId, eventId, add, remove, applyTo }) {
+  return call("attendees", {
+    method: "PUT",
+    body: {
+      org_id: orgId || "unspecified",
+      event_id: eventId,
+      add: add || [],
+      remove: remove || [],
+      applyTo: applyTo || "future",
+    },
+  });
+}
+
 // POST /api/meetings/create
 // Mints a Graph event (canonical) + Google mirror, fans .ics invites to all
 // attendees from meetings@. For one-time meetings pass `date` + `time` and

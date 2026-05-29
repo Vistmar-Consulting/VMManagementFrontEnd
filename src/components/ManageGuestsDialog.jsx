@@ -105,11 +105,22 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
         (a) => !originalVisible.find((v) => v.email?.toLowerCase() === a.email?.toLowerCase())
       );
       const merged = [...working, ...proxiesFromOriginal];
-      await updateDoc(doc(db, "agendas", agendaId), {
+
+      const patch = {
         attendees: merged,
         updatedAt: serverTimestamp(),
         updatedByUid: user?.uid || null,
-      });
+      };
+      // Legacy agendas (reconciled in before V2.2.2b.4) have no
+      // lastSentAttendees. Seed the baseline with the ORIGINAL attendee set
+      // (pre-edit) so the post-save diff equals exactly what the user just
+      // changed — not "every attendee is new." Without this, the first
+      // Send Meeting Invite click would re-fan invites to everyone.
+      if (agenda?.lastSentAttendees === undefined) {
+        patch.lastSentAttendees = originalRaw;
+      }
+
+      await updateDoc(doc(db, "agendas", agendaId), patch);
       onClose();
     } catch (err) {
       setError(err.message || "Save failed");
@@ -123,10 +134,9 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
       <DialogTitle sx={{ pb: 1 }}>
         Manage guests
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: 12 }}>
-          Add or remove attendees. Changes save to the agenda only —
           {isBound
-            ? " click Send Meeting Invite in the Action Bar when you're ready to ship the diff to Outlook + Google."
-            : " no calendar event yet; schedule the meeting first to start sending invites."}
+            ? "Add or remove attendees. Changes save to the agenda — click Send Meeting Invite in the Action Bar to ship the diff to Outlook + Google."
+            : "Add or remove attendees. No calendar event yet; schedule the meeting first to start sending invites."}
         </Typography>
       </DialogTitle>
       <DialogContent>

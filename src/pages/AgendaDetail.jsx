@@ -806,7 +806,18 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
   // "Send Meeting Invite" button's primary/secondary styling. Diff is
   // computed on visible attendees only — silent proxies are always equal
   // so they never trigger a phantom diff.
+  //
+  // Legacy agendas (reconciled in before V2.2.2b.4) have no
+  // lastSentAttendees field. Treating undefined as [] would mark every
+  // existing attendee as "to invite" and re-fan an .ics blast on first
+  // click — explicitly against the staged-invite contract. Gate the diff
+  // on lastSentAttendees being present; until the user makes the first
+  // edit (which now seeds it via ScheduleCreate or the Send action), the
+  // button stays cold.
   const inviteDiff = useMemo(() => {
+    if (agenda?.lastSentAttendees === undefined) {
+      return { added: 0, removed: 0, hasDiff: false, missingBaseline: true };
+    }
     const cur = visibleAttendees(agenda?.attendees);
     const last = visibleAttendees(agenda?.lastSentAttendees);
     const lastSet = new Set(last.map((a) => a.email?.toLowerCase()));
@@ -814,7 +825,7 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
     let added = 0, removed = 0;
     for (const e of curSet) if (!lastSet.has(e)) added += 1;
     for (const e of lastSet) if (!curSet.has(e)) removed += 1;
-    return { added, removed, hasDiff: added + removed > 0 };
+    return { added, removed, hasDiff: added + removed > 0, missingBaseline: false };
   }, [agenda?.attendees, agenda?.lastSentAttendees]);
 
   const handleConclude = async () => {
@@ -943,9 +954,11 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
         title={
           !isBound
             ? "Schedule the meeting first — invites need a calendar event to attach to."
-            : inviteDiff.hasDiff
-              ? `${inviteDiff.added} to invite, ${inviteDiff.removed} to cancel — click to send.`
-              : "Attendees already match the last invite. Use Manage Guests to add or remove people."
+            : inviteDiff.missingBaseline
+              ? "Legacy meeting — Graph already has the canonical attendee list. Edit guests via Manage Guests to start tracking changes."
+              : inviteDiff.hasDiff
+                ? `${inviteDiff.added} to invite, ${inviteDiff.removed} to cancel — click to send.`
+                : "Attendees already match the last invite. Use Manage Guests to add or remove people."
         }
       >
         <span>

@@ -28,40 +28,21 @@ import {
 } from "@mui/material";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
-import { auth, db } from "../firebase.js";
+import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
-
-// ── Inline API call ─────────────────────────────────────────────────────
-// PUT /api/meetings/attendees — same payload as the Console version.
-
-async function patchAttendees({ orgId, eventId, add, remove, applyTo }) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-  const r = await fetch("/api/meetings/attendees", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({
-      org_id: orgId || "unspecified",
-      event_id: eventId,
-      add: add || [],
-      remove: remove || [],
-      applyTo: applyTo || "future",
-    }),
-  });
-  if (!r.ok) {
-    const d = await r.json().catch(() => ({ error: r.statusText }));
-    throw new Error(d.error || `HTTP ${r.status}`);
-  }
-  return r.json();
-}
+import { patchAttendees } from "../lib/meetingsApi.js";
 
 export default function SendInviteDialog({ agenda, agendaId, calendarSeries, onClose }) {
   const { user } = useAuth();
   const isRecurring = !!calendarSeries?.recurrence;
 
-  const currentVisible = useMemo(() => visibleAttendees(agenda?.attendees), [agenda?.attendees]);
+  // Snapshot the attendee set on mount. Any concurrent edit in another tab
+  // would mutate agenda.attendees underneath us, so we lock the "current"
+  // view at render time and use the same value for both the diff display
+  // and the lastSentAttendees write — they can never diverge.
+  const snapshotAttendees = useMemo(() => agenda?.attendees || [], [agenda?.attendees]);
+  const currentVisible = useMemo(() => visibleAttendees(snapshotAttendees), [snapshotAttendees]);
   const lastSent = useMemo(() => visibleAttendees(agenda?.lastSentAttendees), [agenda?.lastSentAttendees]);
 
   const { add, remove } = useMemo(() => {
@@ -90,10 +71,16 @@ export default function SendInviteDialog({ agenda, agendaId, calendarSeries, onC
     }
     setBusy(true);
     try {
+      // Google's events.instances() rejects per-instance IDs — recurring
+      // patches need the series master. Bail loudly rather than silently
+      // sending the agenda doc id (never a valid Google event ID).
       const eventId =
         calendarSeries?.googleSeriesEventId
         || agenda?.googleEventId
-        || agendaId;
+        || null;
+      if (!eventId) {
+        throw new Error("No Google event binding on this agenda — cannot send invites.");
+      }
       await patchAttendees({
         orgId: agenda?.organizationId || calendarSeries?.organizationId || null,
         eventId,
@@ -101,8 +88,11 @@ export default function SendInviteDialog({ agenda, agendaId, calendarSeries, onC
         remove,
         applyTo: isRecurring ? applyTo : "future",
       });
+      // Use the snapshot, NOT a fresh read of agenda.attendees — another
+      // tab may have mutated it mid-flight, and we only want to baseline
+      // what we just PATCHed to Graph.
       await updateDoc(doc(db, "agendas", agendaId), {
-        lastSentAttendees: agenda?.attendees || [],
+        lastSentAttendees: snapshotAttendees,
         lastInviteSentAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedByUid: user?.uid || null,

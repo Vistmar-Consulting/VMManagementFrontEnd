@@ -46,12 +46,6 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
 
   const handleCancel = async () => {
     setError(null);
-    if (!window.confirm(
-      isBound
-        ? "Cancel this meeting? Attendees get a cancellation .ics from Outlook."
-        : "Cancel this agenda? Status flips to 'cancelled' (no calendar event to remove)."
-    )) return;
-
     setBusy(true);
     try {
       if (isBound) {
@@ -60,10 +54,18 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
         const dateStr = mode === "instance" && meetingDt
           ? format(meetingDt, "yyyy-MM-dd")
           : null;
+        // Google's events.instances() rejects per-instance IDs — it needs
+        // the series master. For one-time + bound, googleEventId is the
+        // same as the series id. Bail with a clear error if we have neither
+        // rather than sending the agenda doc id (which is never a valid
+        // Google event ID).
         const eventId =
           calendarSeries?.googleSeriesEventId
           || agenda?.googleEventId
-          || agendaId;
+          || null;
+        if (!eventId) {
+          throw new Error("No Google event binding on this agenda — cannot cancel via API.");
+        }
         await cancelMeeting({
           orgId: agenda?.organizationId || calendarSeries?.organizationId || null,
           eventId,
