@@ -154,31 +154,19 @@ export async function createEvent({
     extendedProps.push({ id: SOURCE_AGENDA_PROP, value: String(agendaId) });
   }
 
-  // Graph POST /calendar/events is INHERENTLY SILENT in app-only context.
-  // Microsoft does not deliver meeting requests for events created via
-  // application permissions, regardless of the Prefer header — that's a
-  // documented platform behavior, not a bug we can header our way out of.
-  // PATCH operations (rescheduleEvent, updateAttendees) DO honor the
-  // Prefer header and fan the .ics correctly. So the working trick is the
-  // two-step create:
-  //   1. POST the event WITHOUT attendees (silent — nobody to notify yet).
-  //   2. PATCH the event to ADD the attendees with the Prefer header.
-  // The PATCH path delivers .ics invites in app-only context.
-  //
-  // Console's old code that "worked" was creating events while the user
-  // was signed in via delegated auth in a different flow; we're now
-  // fully app-only on a service mailbox, and the two-step pattern is the
-  // only way to fan invites from app-only.
-  //
-  // Confirmed on 2026-05-28: zero invites delivered from meetings@ since
-  // April 29 when the codebase moved to fully app-only. Two-step create
-  // is the fix.
+  // Graph creates the event silently — the M365 meetings@ mailbox doesn't
+  // have send rights in our tenant, so any Prefer header is a no-op and the
+  // .ics fan-out path is dead on this side. Invites are fanned from the
+  // Google mirror (google-calendar.js, sendUpdates:"all") instead, which
+  // DOES have send rights on its meetings@ Workspace mailbox. Graph still
+  // mints the Teams meeting binding here so the Google event can embed the
+  // proper Teams joinUrl + conferenceData.
   const body = {
     subject: title,
     body: buildBody(description),
     start: { dateTime: startDateTime, timeZone: timezone },
     end: { dateTime: endDateTime, timeZone: timezone },
-    attendees: [],
+    attendees: buildAttendees(attendees),
     isOnlineMeeting: true,
     onlineMeetingProvider: "teamsForBusiness",
     singleValueExtendedProperties: extendedProps,
@@ -186,7 +174,6 @@ export async function createEvent({
   const recurrence = rruleToGraphRecurrence(rrule, startDate);
   if (recurrence) body.recurrence = recurrence;
 
-  // Step 1 — create with no attendees so no silent-create surprise.
   const res = await graphFetch("/calendar/events", {
     method: "POST",
     body: JSON.stringify(body),
@@ -196,28 +183,6 @@ export async function createEvent({
     throw new Error(`graph-events.createEvent failed: ${res.status} ${text}`);
   }
   const ev = await res.json();
-
-  // Step 2 — PATCH to add attendees so Graph fans the meeting request
-  // via the path that DOES notify in app-only. Only fires when there are
-  // attendees to invite (callers occasionally create with empty arrays).
-  if (attendees.length > 0) {
-    const patchRes = await graphFetch(`/calendar/events/${ev.id}`, {
-      method: "PATCH",
-      headers: { Prefer: 'outlook.send-notifications="true"' },
-      body: JSON.stringify({ attendees: buildAttendees(attendees) }),
-    });
-    const patchText = await patchRes.text();
-    // Diagnostic: log full PATCH response + Prefer-Applied header so we can
-    // tell from Vercel logs whether Microsoft actually honored the
-    // send-notifications hint. Microsoft echoes 'Preference-Applied' in the
-    // response when the Prefer header was accepted.
-    console.log("[graph-events.createEvent] PATCH status:", patchRes.status);
-    console.log("[graph-events.createEvent] PATCH Preference-Applied:", patchRes.headers.get("preference-applied"));
-    console.log("[graph-events.createEvent] PATCH response body:", patchText.slice(0, 800));
-    if (!patchRes.ok) {
-      throw new Error(`graph-events.createEvent attendee PATCH failed: ${patchRes.status} ${patchText}`);
-    }
-  }
 
   // Fetch full onlineMeeting details by joinUrl so callers can construct the
   // full Google conferenceData shape (meetingCode + passcode + meetingId for

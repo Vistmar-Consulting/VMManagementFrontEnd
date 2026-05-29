@@ -1,10 +1,17 @@
 // api/meetings/_lib/google-calendar.js
 //
-// Google Calendar client for the Meetings API. WRITE-MIRROR ROLE — Microsoft
-// Graph (graph-events.js) is the canonical write path; this module is called
-// after every Graph mutation to keep meetings@'s Google primary calendar in
-// sync for Console reads and visual access. Every mutation uses
-// sendUpdates="none" because Graph already fanned out the .ics natively.
+// Google Calendar client for the Meetings API. WRITE-MIRROR ROLE for
+// reads/event-state, INVITE-FANNER for emails. Microsoft Graph
+// (graph-events.js) is the canonical event/Teams binding write path; this
+// module mirrors every Graph mutation onto meetings@'s Google primary
+// calendar AND fans .ics invites from the Google side via sendUpdates="all".
+//
+// Why Google fans instead of Graph: the M365 meetings@ mailbox does not have
+// send rights in our tenant, so Graph's notification headers are no-ops —
+// events create silently and zero .ics ever leaves Outlook. The Google
+// meetings@ Workspace mailbox HAS send rights, so flipping the fan-out to
+// the Google side is the only working path. Confirmed 2026-05-28: zero
+// meetings@ invite delivery since April 29 across all Graph paths.
 //
 // OrgId scoping uses extendedProperties.private.orgId.
 // Cross-stack binding to Graph events uses extendedProperties.private.m365EventId.
@@ -185,7 +192,7 @@ export async function createEvent({
 
   const res = await cal.events.insert({
     calendarId: CALENDAR_ID,
-    sendUpdates: "none",
+    sendUpdates: "all",
     conferenceDataVersion: conferenceData ? 1 : 0,
     requestBody,
   });
@@ -320,7 +327,7 @@ export async function rescheduleEvent({
     await cal.events.patch({
       calendarId: CALENDAR_ID,
       eventId: inst.id,
-      sendUpdates: "none",
+      sendUpdates: "all",
       requestBody,
     });
     return;
@@ -328,7 +335,7 @@ export async function rescheduleEvent({
   await cal.events.patch({
     calendarId: CALENDAR_ID,
     eventId,
-    sendUpdates: "none",
+    sendUpdates: "all",
     requestBody,
   });
 }
@@ -363,14 +370,15 @@ export async function updateAttendees({ eventId, add = [], remove = [] }) {
   await cal.events.patch({
     calendarId: CALENDAR_ID,
     eventId,
-    sendUpdates: "none",
+    sendUpdates: "all",
     requestBody: { attendees },
   });
 }
 
-export async function cancelEvent({ eventId, mode, date, sendUpdates = "none" }) {
-  // sendUpdates default is "none" (mirror role). Migration scripts that need
-  // Google to fan out cancellations (one-time ID Care repair) pass "all".
+export async function cancelEvent({ eventId, mode, date, sendUpdates = "all" }) {
+  // Default sendUpdates="all" — Google is now the invite-fan source since
+  // the M365 meetings@ mailbox can't send. Callers can pass "none" to
+  // explicitly suppress (e.g. backfill scripts that don't want to spam).
   const cal = await getCalendar();
   if (mode === "instance") {
     const inst = await findInstanceByDate(cal, eventId, date);
@@ -412,7 +420,7 @@ export async function renameEvent({ eventId, title }) {
   await cal.events.patch({
     calendarId: CALENDAR_ID,
     eventId,
-    sendUpdates: "none",
+    sendUpdates: "all",
     requestBody: { summary: title },
   });
 }
