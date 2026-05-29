@@ -1,5 +1,9 @@
 # Session: SES-20260512-Andrew-v0.1.0-bootstrap
 
+> **Archive note (2026-05-29):** This is a closed-session context.md kept for historical reference. Inline mentions of `dev/HANDOFF_*.md` and `dev/DEFERRED*.md` files below point to files that were retired 2026-05-29 (replaced by inline Deferred / Session-close sections within each session's `context.md`). Content of the retired files was either rolled into the active session's context.md or accepted as no-longer-relevant scaffolding.
+
+
+
 - **Session ID:** SES-20260512-Andrew-v0.1.0-bootstrap
 - **Developer:** Andrew
 - **Date:** 2026-05-12

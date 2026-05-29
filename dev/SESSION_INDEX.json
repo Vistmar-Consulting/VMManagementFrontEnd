@@ -9,26 +9,19 @@
       "commit_start": "671b469248f6fe33889f0b701e1b45f96d460a37",
       "summary": "V1 bootstrap → Project Board port → background code-review cleanup. Shipped to prod; 5 users signed in.",
       "folder": "dev/sessions/v0_1_0_Andrew_V1_BOOTSTRAP/",
-      "status": "completed",
-      "closed_handoffs": [
-        "dev/HANDOFF_2026-05-12_V1_BOOTSTRAP.md",
-        "dev/HANDOFF_2026-05-27_PROJECT_BOARD_PORT.md",
-        "dev/HANDOFF_2026-05-27_BACKGROUND_CLEANUP.md"
-      ]
+      "status": "completed"
     },
     {
       "session_id": "SES-20260527-Andrew-v0.2.0-meeting-scheduler",
       "developer": "Andrew",
       "date": "2026-05-27",
       "version_start": "v0.2.0",
-      "version_end": null,
+      "version_end": "v0.2.2b.7",
+      "date_closed": "2026-05-29",
       "commit_start": "6a067ba991f3432a6f0ee192c4b768098465c1f2",
-      "summary": "V2 kickoff — Meeting Scheduler + Meeting Agendas. Port Console's meetings flow onto Firebase Functions + Firestore. Graph-canonical + Google-mirror dual-write.",
+      "summary": "V2 Meeting Scheduler shipped end-to-end: Calendar page, AgendaDetail (Working + Overview), MiniProjectBoard, Send Meeting Invite (staged diff), Cancel meeting / Cancel agenda split, + New Meeting entry point. Architecture pivot 2026-05-29: Google fans .ics invites (sendUpdates:'all') because M365 meetings@ mailbox has no email send rights; Graph still mints calendar event + Teams binding silently. Verified end-to-end against production. 5 users on prod.",
       "folder": "dev/sessions/v0_2_0_Andrew_MEETING_SCHEDULER/",
-      "status": "active",
-      "open_handoffs": [
-        "dev/HANDOFF_2026-05-27_MEETING_SCHEDULER_KICKOFF.md"
-      ]
+      "status": "closed"
     }
   ]
 }

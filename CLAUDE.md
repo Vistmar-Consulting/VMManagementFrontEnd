@@ -75,11 +75,18 @@ See spec section 5. Single role gate: signed-in `@vistamarconsulting.com` + `use
 
 ## Session Context — THE BRAIN
 
-Every session has `dev/sessions/{folder}/context.md`. **Most important file you maintain.**
+Every session has `dev/sessions/{folder}/context.md`. **Single source of truth for session state — no separate HANDOFF or DEFERRED files.**
 
-Check `dev/SESSION_INDEX.json` at session start. If active session exists, read its `context.md` and maintain it.
+Check `dev/SESSION_INDEX.json` at session start. If active session exists, read its `context.md` and maintain it. If no active session, infer task from developer's first message and start one via `/new-session`.
 
-If no active session, infer task from developer's first message and start one via `/new-session`.
+`context.md` owns:
+- Live state (what's shipped, what's in flight, what's blocked)
+- **Deferred items** — anything not done this session that needs to survive into the next. Maintained as a running tracker inside the file (e.g. a "## Deferred" section), updated as items are added or closed.
+- Session close summary written at the end of the session (in-place, not as a separate file)
+
+When a session closes and a new one starts, the next session's `context.md` carries forward whatever deferred items are still live. The old session's `context.md` stays in its folder as an archive.
+
+**Do not create** `dev/HANDOFF_*.md`, `dev/DEFERRED.md`, or `dev/DEFERRED_PLAYBOOK.md`. These were a prior convention; retired 2026-05-29 because they redundantly captured what `context.md` already tracks.
 
 ## Push Workflow
 
