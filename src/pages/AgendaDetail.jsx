@@ -38,6 +38,7 @@ import {
 
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
+import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
 import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
 import MemberAvatar from "../components/MemberAvatar.jsx";
@@ -796,10 +797,10 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
   const [busy, setBusy] = useState(null); // null | "concluding" | "sending-prep"
   const [feedback, setFeedback] = useState(null); // { kind: 'success' | 'error', msg: string }
   const [sendInviteOpen, setSendInviteOpen] = useState(false);
-  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelMeetingOpen, setCancelMeetingOpen] = useState(false);
+  const [cancelAgendaOpen, setCancelAgendaOpen] = useState(false);
 
   const isConcluded = agenda?.status === "concluded";
-  const isCancelled = agenda?.status === "cancelled";
   const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
 
   // Diff between current attendees and lastSentAttendees drives the
@@ -1034,12 +1035,25 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
         </MenuItem>
       </Menu>
 
-      <Tooltip title={isCancelled ? "This meeting is cancelled." : "Cancel this meeting"}>
+      {/* V2.2.2b.6 — two-stage cancel. The single red slot morphs:
+            isBound  → "Cancel meeting" (cancels Graph + Google event,
+                       clears binding, agenda stays accessible)
+            !isBound → "Cancel agenda" (hard-deletes the agenda doc +
+                       subcollections, navigates back to /calendar) */}
+      <Tooltip
+        title={
+          isConcluded
+            ? "This agenda is concluded."
+            : isBound
+              ? "Cancel the calendar event. The agenda stays here so you can reschedule or delete it separately."
+              : "Permanently delete this agenda and return to the Calendar."
+        }
+      >
         <span>
           <Box
             component="button"
-            onClick={() => setCancelOpen(true)}
-            disabled={isCancelled || isConcluded}
+            onClick={() => isBound ? setCancelMeetingOpen(true) : setCancelAgendaOpen(true)}
+            disabled={isConcluded}
             sx={{
               display: "inline-flex",
               alignItems: "center",
@@ -1047,17 +1061,17 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
               px: 1.6,
               py: 0.8,
               borderRadius: 1,
-              border: `1px solid ${isCancelled || isConcluded ? "#cfcfcf" : "#c62828"}`,
-              background: isCancelled ? "#f4f4f4" : "transparent",
-              color: isCancelled || isConcluded ? "#9e9e9e" : "#c62828",
+              border: `1px solid ${isConcluded ? "#cfcfcf" : "#c62828"}`,
+              background: "transparent",
+              color: isConcluded ? "#9e9e9e" : "#c62828",
               fontSize: 12,
               fontWeight: 600,
-              cursor: isCancelled || isConcluded ? "not-allowed" : "pointer",
+              cursor: isConcluded ? "not-allowed" : "pointer",
               transition: "background 0.15s",
-              "&:hover": isCancelled || isConcluded ? {} : { background: "rgba(198,40,40,0.08)" },
+              "&:hover": isConcluded ? {} : { background: "rgba(198,40,40,0.08)" },
             }}
           >
-            {isCancelled ? "Cancelled" : "Cancel meeting"}
+            {isBound ? "Cancel meeting" : "Cancel agenda"}
           </Box>
         </span>
       </Tooltip>
@@ -1123,12 +1137,20 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
         />
       )}
 
-      {cancelOpen && (
+      {cancelMeetingOpen && (
         <CancelMeetingDialog
           agenda={agenda}
           agendaId={agendaId}
           calendarSeries={calendarSeries}
-          onClose={() => setCancelOpen(false)}
+          onClose={() => setCancelMeetingOpen(false)}
+        />
+      )}
+
+      {cancelAgendaOpen && (
+        <CancelAgendaDialog
+          agendaId={agendaId}
+          agendaTitle={agenda?.title}
+          onClose={() => setCancelAgendaOpen(false)}
         />
       )}
     </Box>

@@ -20,7 +20,6 @@
 // Spec: docs/specs/2026-04-28-m365-primary-meeting-scheduler-design.md
 
 import { getTeamsCredentials } from "./keyvault.js";
-import { isVmEmail } from "./attendee-helpers.js";
 
 const ORG_ID_PROP = "String {c4e6a6c0-47d0-4f0a-b915-1a1e0a1b2c3d} Name OrgId";
 const SOURCE_AGENDA_PROP = "String {c4e6a6c0-47d0-4f0a-b915-1a1e0a1b2c3d} Name SourceAgendaId";
@@ -282,8 +281,11 @@ export async function rescheduleEvent({
 // ── RENAME ──
 
 export async function renameEvent({ eventId, title }) {
+  // Always notify on title change — attendees need to know what was renamed
+  // before they show up. Same Prefer header pattern as create/reschedule/cancel.
   const res = await graphFetch(`/calendar/events/${eventId}`, {
     method: "PATCH",
+    headers: { Prefer: 'outlook.send-notifications="true"' },
     body: JSON.stringify({ subject: title }),
   });
   if (!res.ok) {
@@ -319,18 +321,15 @@ export async function updateAttendees({ eventId, add = [], remove = [] }) {
     }
   }
 
-  // Dual-system notification policy: VM team lives on Google primarily, so the
-  // M365 mirror should be silent backfill for VM-only churn. External attendees
-  // need real .ics delivery (Graph PATCH default is silent — that's the BMD bug).
-  // Rule: notify when anything external is added or removed; stay silent for
-  // VM-only churn.
-  const externalAdd = add.some((a) => !isVmEmail(a.email));
-  const externalRemove = removeEmails.some((e) => !isVmEmail(e));
-  const notify = externalAdd || externalRemove;
-
+  // Always notify on attendee changes — V2 policy is "emails happen whenever
+  // scheduling is done." Console's old "silent for VM-only churn" policy was a
+  // mirror-era artifact (Google was canonical, M365 was per-user backfill); in
+  // V2 the M365 event on meetings@'s calendar IS canonical, so every change
+  // needs to ship as an .ics so attendees can see the update in Outlook /
+  // Gmail without having to refresh a calendar tab.
   const res = await graphFetch(`/calendar/events/${eventId}`, {
     method: "PATCH",
-    headers: notify ? { Prefer: 'outlook.send-notifications="true"' } : {},
+    headers: { Prefer: 'outlook.send-notifications="true"' },
     body: JSON.stringify({ attendees }),
   });
   if (!res.ok) {

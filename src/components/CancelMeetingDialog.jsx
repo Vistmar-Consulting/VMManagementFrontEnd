@@ -1,12 +1,15 @@
-// V2.2.2b.4 — Cancel meeting dialog.
+// V2.2.2b.6 — Cancel meeting dialog (stage 1 of two-stage cancel flow).
 //
-// Opens from the Action Bar's Cancel button. For recurring meetings the
-// user picks a scope (this instance / all future / entire series); for
-// one-time meetings the scope is implicit. For BOUND agendas we POST to
-// /api/meetings/cancel which delegates to graph.cancelEvent + google
-// mirror cancel — Graph fans .ics cancellations to every attendee from
-// Outlook. For unbound agendas we just flip the agenda doc status to
-// 'cancelled' (no calendar event to delete).
+// Cancels just the calendar event. The agenda doc stays accessible — topics,
+// notes, talking points, attendee list, prepared-by all remain visible. The
+// meeting binding fields (graphEventId, googleEventId, teamsUrl, etc.) are
+// cleared so isBound flips to false on the Action Bar, which morphs the
+// red button from "Cancel meeting" to "Cancel agenda" (stage 2).
+//
+// For recurring meetings the user picks scope (instance vs series); for
+// one-time it's implicit. The /api/meetings/cancel endpoint delegates to
+// graph.cancelEvent which uses POST /cancel and fans cancellation .ics
+// invites to every attendee from meetings@'s Outlook.
 
 import { useMemo, useState } from "react";
 import {
@@ -49,16 +52,11 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
     setBusy(true);
     try {
       if (isBound) {
-        // For instance mode, the API needs the specific occurrence's date
-        // (YYYY-MM-DD) so it can target the right exception.
         const dateStr = mode === "instance" && meetingDt
           ? format(meetingDt, "yyyy-MM-dd")
           : null;
-        // Google's events.instances() rejects per-instance IDs — it needs
-        // the series master. For one-time + bound, googleEventId is the
-        // same as the series id. Bail with a clear error if we have neither
-        // rather than sending the agenda doc id (which is never a valid
-        // Google event ID).
+        // Google's events.instances() rejects per-instance IDs — recurring
+        // patches need the series master. Bail loudly if both are missing.
         const eventId =
           calendarSeries?.googleSeriesEventId
           || agenda?.googleEventId
@@ -73,14 +71,23 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
           date: dateStr,
         });
       }
+
+      // Clear the meeting binding so isBound flips to false and the Action
+      // Bar morphs the red button to "Cancel agenda". The agenda doc itself
+      // stays accessible — meetingCancelledAt records when this happened.
       await updateDoc(doc(db, "agendas", agendaId), {
-        status: "cancelled",
-        cancelledAt: serverTimestamp(),
+        graphEventId: null,
+        googleEventId: null,
+        iCalUID: null,
+        teamsUrl: null,
+        calendarSeriesId: null,
+        meetingCancelledAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedByUid: user?.uid || null,
       });
-      // If cancelling the whole series, mark the series doc too so Calendar
-      // page filters can hide it.
+
+      // For series-scope cancel, mark the calendar_series doc too so the
+      // Calendar page can filter out the cancelled series.
       if (mode === "series" && calendarSeries?.id) {
         await updateDoc(doc(db, "calendar_series", calendarSeries.id), {
           status: "cancelled",
@@ -88,6 +95,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
           updatedByUid: user?.uid || null,
         });
       }
+
       onClose();
     } catch (err) {
       setError(err.message || "Cancel failed");
@@ -102,8 +110,8 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
         Cancel meeting
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: 12 }}>
           {isBound
-            ? "Graph fans the cancellation invite to every attendee from meetings@'s Outlook; the Google Calendar mirror is removed silently."
-            : "This agenda isn't bound to a calendar event yet — only the agenda doc status will change."}
+            ? "Graph fans the cancellation invite to every attendee from meetings@'s Outlook; the Google Calendar mirror is removed silently. The agenda itself stays — you can reschedule it for a new time or cancel the agenda separately."
+            : "This agenda isn't bound to a calendar event yet — nothing to cancel here. Use Cancel agenda instead if you want to remove the agenda."}
         </Typography>
       </DialogTitle>
       <DialogContent>
@@ -137,7 +145,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
           variant="contained"
           color="error"
           onClick={handleCancel}
-          disabled={busy}
+          disabled={busy || !isBound}
         >
           {busy ? "Cancelling…" : "Cancel meeting"}
         </Button>
