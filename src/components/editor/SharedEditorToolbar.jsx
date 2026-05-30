@@ -6,13 +6,9 @@ import { t } from "../../theme/tokens.js";
 
 // The single Word-style toolbar at the top of the Overview agenda card. Acts on
 // whichever shared-mode body is currently focused (via the focus context);
-// renders disabled buttons until a body is focused.
-//
-// NOTE: `position: sticky` is currently INERT — the app shell (SignedInLayout)
-// lets the window scroll while <main> carries overflow:auto, which scopes the
-// sticky to a non-scrolling element. It will start sticking automatically once
-// the shell makes <main> the scroll container. Keeping non-sticky for now was a
-// deliberate call (avoids an app-wide layout change); revisit later.
+// renders disabled buttons until a body is focused. Sticks to the top of the
+// viewport as the agenda scrolls — the SignedInLayout shell sets <main>
+// overflow:visible so the window is the scroll container and this sticky engages.
 export default function SharedEditorToolbar() {
   const focus = useEditorFocus();
   // Guard against a stale reference if the focused body was just unmounted
