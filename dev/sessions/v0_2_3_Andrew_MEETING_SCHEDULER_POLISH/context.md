@@ -175,3 +175,28 @@ Whole agenda → Word-like document: topic title (structured) + one rich **HTML 
 - MAPPED (9, exact single-doc): Vistamar Platform Development updates · Unio Weekly Marketing Meeting · VM Weekly Touch Base · Biweekly Marketing Updates · June Content Strategy · May Content · Andy + Cedric — Claude Code & SQL MCP Setup · ID Care – Marketing Committee · GV – Biweekly
 - LEFT FOR ANDY (ambiguous — duplicate agenda docs with same title [base + _R instance], or near-misses): GV-Vistamar Bi-Weekly Mtg (2 docs) · BMD Marketing (2 docs) · BMD - Biweekly (2 docs) · ID Care - Biweekly (2 docs) · ID Care – Biweekly (en-dash; agendas use hyphen) · VM - Business Dev (≈ "VM - Weekly Business Dev") · ID Care · Vistamar/Balance Marketing Weekly Update · Tate SOP Discusssion · MB Rotary Long-Term Planning Committee · Long-Range Planning Committee Mtg.
 - Side note surfaced: several agendas exist as duplicate base+`_R<instance>` docs (recurring artifact) — worth a cleanup pass; ambiguity is why those titles were left unmapped.
+
+## Session close — 2026-05-29
+
+**What shipped this session (all on local `main`; meeting fixes pushed to `origin/dev` + prod-verified):**
+
+| Area | Commits | Status |
+|---|---|---|
+| v0.2.3.a AgendaHero reschedule/schedule boundness gate fix | `bd42b7e` | shipped + prod-verified (15/33 agendas were affected) |
+| Fireflies Past Meetings card + MeetingDetailModal + `/fireflies` management page + fred@ filter + Vite proxy | `0e14ef6`, `d8dc5f9` | shipped + prod-verified; `VITE_FIREFLIES_KEY` in Vercel Production; 9 title→agenda mappings written |
+| Hero title clip fix (`fullWidth`) | `f223e84` | shipped + prod-verified |
+| Recurring-card dedup bug (iCalUID collapsed instances → wrong Next dates + order) | `35c700c`, `ca95481` | shipped + prod-verified; first repo unit test (`dedupe-events.test.js`) |
+| Silent-cancel "Notify attendees" toggle + deleted duplicate ID Care - Biweekly series (B `ldkg1…`) silently | `fe24bf4`, `e502aa0` | shipped; B fully removed (Google+Graph+Firestore), keeper A intact, card now reads BIWEEKLY |
+| Agenda rich-text editor — brainstorm → spec → plan | `6461aa8`, `4736831`, `bf2c647`, `cbe9eb7` | spec + Phase-1 plan written, both peer-reviewed + approved |
+| Agenda rich-text editor — Phase 1 Tasks 1–4 (foundation) | `e23ec63`, `0b543b2`, `69264c5`, `6e03d4d` (+cleanup) | deps + tested HTML utils + RichBodyView + TipTap v3 editor — build green; **NOT pushed** (not user-visible until wired in) |
+
+**Carry-forward Deferred (live — next session inherits):**
+- **Agenda rich-text editor Phase 1, Tasks 5–8 + docx population** — see the `v0.2.4 — Agenda rich-text editor (Phase 1)` section above; resume from `docs/superpowers/plans/2026-05-29-agenda-richtext-editor-phase1.md` Task 5. Includes the **placeholder known-issue** (register TipTap Placeholder extension during T6/T7) and the **`docs/Existing_Agendas/*.docx` → HTML population** via mammoth.
+- **Fireflies:** finish mapping the ambiguous/duplicate-doc titles (list above) on `/fireflies`; clean up duplicate base+`_R` agenda docs; Vercel **preview** env var for VITE_FIREFLIES_KEY (prod is set); re-authorize `personal-gmail` MCP; delete migrated `talkingPoints`/`notes`/`openFloor` subcollections after the editor migration is stable.
+- **Carried from V2:** reconcile the 2026-05-20 V2 design spec (SUPERSEDED header); rewrite the 2026-05-27 Vercel/Azure plan; `agenda-email.js` "View full agenda in Console" string; detectCadence could read the real recurrence rule instead of guessing (minor).
+- **seo@/Fireflies bot auto-join investigation** — ensure the notetaker that joins is the seo@-workspace one, not Cedric's personal Fireflies (Fireflies-dashboard config; withSilentProxies already auto-invites seo@). Separate investigation.
+- **Future phases:** rich-text Phase 2 (Liveblocks/Yjs live collab), Phase 3 (Conclude→archival snapshot + Word/PDF export + formatted-HTML email), Phase 4 (AI next-agenda generation) — all designed-for in the spec.
+
+**Entry points for next session:** resume the rich-text editor Phase 1 at Task 5 (migration util) → T6/T7 (wire into both views, browser-verify, fix placeholder) → T8 (migration, needs Andy OK) → docx population. The plan is the authoritative task list; this section + the v0.2.4 section above hold the live state.
+
+Status: **closed.** Next session creates its own `dev/sessions/{folder}/context.md` and pulls live items from the Carry-forward Deferred above.
