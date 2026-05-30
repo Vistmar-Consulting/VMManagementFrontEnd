@@ -81,16 +81,20 @@ export default function RichBodyEditor({
     },
   });
 
-  // On unmount: flush any pending debounced save
+  // On unmount: flush a pending debounced save — but ONLY if one is actually
+  // pending (the user edited since the last save). Flushing unconditionally
+  // would write the editor's HTML on mere view/unmount, polluting untouched
+  // bodies with "<p></p>", emitting spurious updatedAt/updatedByUid, and
+  // (truthy "<p></p>") making the idempotent body migration skip real content.
   useEffect(() => {
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
-      }
-      // editor may already be destroyed by TipTap's own cleanup — guard it
-      if (editor && !editor.isDestroyed) {
-        onChangeHtmlRef.current(editor.getHTML());
+        // editor may already be destroyed by TipTap's own cleanup — guard it
+        if (editor && !editor.isDestroyed) {
+          onChangeHtmlRef.current(editor.getHTML());
+        }
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
