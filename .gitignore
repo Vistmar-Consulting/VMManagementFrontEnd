@@ -15,3 +15,7 @@ firebase-debug.log
 .superpowers/
 .playwright-mcp/
 .vercel
+
+# Client agenda source files (real client docs — kept out of the repo; used
+# locally as input for agenda population). Includes Word ~$ lock files.
+docs/Existing_Agendas/
