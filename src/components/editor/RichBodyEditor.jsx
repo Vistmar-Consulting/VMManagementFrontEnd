@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { Placeholder } from "@tiptap/extensions";
 import Box from "@mui/material/Box";
 import { t } from "../../theme/tokens.js";
 import { sanitizeHtml } from "../../lib/agendaHtml.js";
@@ -62,6 +63,11 @@ export default function RichBodyEditor({
         // Lists are bundled (BulletList, OrderedList, ListItem, ListKeymap)
         // No extra configuration needed — defaults are fine.
       }),
+
+      // Placeholder is NOT bundled in StarterKit v3 — register it from
+      // @tiptap/extensions. Emits data-placeholder attr + is-editor-empty class
+      // on the empty first node, which the CSS rule below targets.
+      Placeholder.configure({ placeholder }),
     ],
 
     content: sanitizeHtml(valueHtml) || "",
@@ -148,18 +154,11 @@ export default function RichBodyEditor({
             textDecoration: "underline",
           },
 
-          // Placeholder — CSS-only approach (no Placeholder extension needed)
-          "&.is-editor-empty:first-child::before, &:empty::before": {
-            content: `"${placeholder}"`,
-            color: t.ink3,
-            pointerEvents: "none",
-            float: "left",
-            height: 0,
-          },
-
-          // Placeholder when first child paragraph is empty
-          "& p.is-empty:first-child::before": {
-            content: `attr(data-placeholder)`,
+          // Placeholder — emitted by the Placeholder extension as a
+          // data-placeholder attr + is-editor-empty class on the empty first
+          // paragraph.
+          "& p.is-editor-empty:first-child::before": {
+            content: "attr(data-placeholder)",
             color: t.ink3,
             pointerEvents: "none",
             float: "left",

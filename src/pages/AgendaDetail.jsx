@@ -68,6 +68,7 @@ import { useDoc } from "../hooks/useDoc.js";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
 import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
+import RichBodyEditor from "../components/editor/RichBodyEditor.jsx";
 import { t } from "../theme/tokens.js";
 
 const inputBase = {
@@ -455,7 +456,6 @@ function AddBullet({ topicId, agendaId, lastSortOrder, subcollection, accent, pl
 function OverviewTopic({ topic, agendaId }) {
   const { user } = useAuth();
   const [name, setName] = useState(topic.name || "");
-  const [focusOnNext, setFocusOnNext] = useState(null);
 
   useEffect(() => setName(topic.name || ""), [topic.name]);
 
@@ -467,28 +467,6 @@ function OverviewTopic({ topic, agendaId }) {
       updatedAt: serverTimestamp(),
       updatedByUid: user?.uid || null,
     });
-  };
-
-  // Sort the talking points client-side.
-  const constraints = useMemo(() => [orderBy("sortOrder", "asc")], []);
-  const { data: pointsRaw } = useCollection(`agendas/${agendaId}/topics/${topic.id}/talkingPoints`, constraints);
-  const points = pointsRaw || [];
-  const lastSort = points.length ? points[points.length - 1].sortOrder ?? 0 : 0;
-
-  // Enter-insert: when user hits Enter on a row, insert a new bullet with
-  // sortOrder = current + 0.5 and focus it on next render.
-  const insertAfter = async (currentSort) => {
-    const newDoc = await addDoc(
-      collection(db, "agendas", agendaId, "topics", topic.id, "talkingPoints"),
-      {
-        text: "",
-        sortOrder: (currentSort ?? 0) + 0.5,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdByUid: user?.uid || null,
-      }
-    );
-    setFocusOnNext(newDoc.id);
   };
 
   return (
@@ -517,28 +495,17 @@ function OverviewTopic({ topic, agendaId }) {
           mb: 0.8,
         }}
       />
-      <Box sx={{ pl: 1 }}>
-        {points.map((p) => (
-          <BulletRow
-            key={p.id}
-            topicId={topic.id}
-            agendaId={agendaId}
-            point={p}
-            subcollection="talkingPoints"
-            accent={t.copper}
-            onAfterEnter={insertAfter}
-            autoFocus={focusOnNext === p.id}
-          />
-        ))}
-        <AddBullet
-          topicId={topic.id}
-          agendaId={agendaId}
-          lastSortOrder={lastSort}
-          subcollection="talkingPoints"
-          accent={t.copper}
-          placeholder="+ Add a talking point…"
-        />
-      </Box>
+      <RichBodyEditor
+        valueHtml={topic.bodyHtml || ""}
+        placeholder="Add talking points…"
+        onChangeHtml={(html) =>
+          updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
+            bodyHtml: html,
+            updatedAt: serverTimestamp(),
+            updatedByUid: user?.uid || null,
+          })
+        }
+      />
     </Box>
   );
 }
@@ -608,70 +575,8 @@ function TopicNotesSection({ topic, agendaId }) {
 
 // ─── Open Floor ────────────────────────────────────────────────────────
 
-function OpenFloorRow({ agendaId, item }) {
-  const [value, setValue] = useState(item.text || "");
-  useEffect(() => setValue(item.text || ""), [item.text]);
-
-  const ref = doc(db, "agendas", agendaId, "openFloor", item.id);
-  const handleBlur = async () => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      await deleteDoc(ref).catch(() => {});
-      return;
-    }
-    if (trimmed === item.text) return;
-    await updateDoc(ref, { text: trimmed, updatedAt: serverTimestamp() });
-  };
-
-  return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.4, "&:hover .row-x": { opacity: 1 } }}>
-      <Box sx={{ width: 5, height: 5, borderRadius: "50%", background: t.copper, flexShrink: 0 }} />
-      <Box
-        component="input"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            e.currentTarget.blur();
-          }
-        }}
-        placeholder="…"
-        sx={{ ...inputBase, fontSize: 13, py: "2px", color: t.ink }}
-      />
-      <IconButton
-        size="small"
-        className="row-x"
-        onClick={() => deleteDoc(ref).catch(() => {})}
-        sx={{ opacity: 0, transition: "opacity 0.15s", color: t.ink3, p: 0.3 }}
-        aria-label="Delete open-floor item"
-      >
-        <Close sx={{ fontSize: 14 }} />
-      </IconButton>
-    </Box>
-  );
-}
-
-function OpenFloorSection({ agendaId }) {
+function OpenFloorSection({ agendaId, agenda }) {
   const { user } = useAuth();
-  const constraints = useMemo(() => [orderBy("sortOrder", "asc")], []);
-  const { data: items } = useCollection(`agendas/${agendaId}/openFloor`, constraints);
-  const lastSort = items?.length ? items[items.length - 1].sortOrder ?? 0 : 0;
-
-  const [draft, setDraft] = useState("");
-  const submit = async () => {
-    const trimmed = draft.trim();
-    if (!trimmed) return;
-    setDraft("");
-    await addDoc(collection(db, "agendas", agendaId, "openFloor"), {
-      text: trimmed,
-      sortOrder: lastSort + 1,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdByUid: user?.uid || null,
-    });
-  };
 
   return (
     <Box sx={{ mt: 4 }}>
@@ -681,33 +586,17 @@ function OpenFloorSection({ agendaId }) {
           Open Floor
         </Typography>
       </Box>
-      <Box sx={{ pl: 1 }}>
-        {(items || []).map((it) => (
-          <OpenFloorRow key={it.id} agendaId={agendaId} item={it} />
-        ))}
-        <Box
-          component="input"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={submit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder="+ Add item"
-          sx={{
-            ...inputBase,
-            fontSize: 12,
-            py: "4px",
-            color: t.ink3,
-            borderBottom: "1px dashed transparent",
-            "&:focus": { borderBottomColor: t.copper, color: t.ink },
-            ml: 1.5,
-          }}
-        />
-      </Box>
+      <RichBodyEditor
+        valueHtml={agenda?.openFloorHtml || ""}
+        placeholder="Add open-floor items…"
+        onChangeHtml={(html) =>
+          updateDoc(doc(db, "agendas", agendaId), {
+            openFloorHtml: html,
+            updatedAt: serverTimestamp(),
+            updatedByUid: user?.uid || null,
+          })
+        }
+      />
     </Box>
   );
 }
@@ -1950,7 +1839,7 @@ export default function AgendaDetail() {
             </Droppable>
           </DragDropContext>
           <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
-          <OpenFloorSection agendaId={agendaId} />
+          <OpenFloorSection agendaId={agendaId} agenda={agenda} />
           {agenda?.firefliesTitles?.length > 0 && (
             <PastMeetingsCard firefliesTitles={agenda.firefliesTitles} />
           )}
@@ -2013,7 +1902,7 @@ export default function AgendaDetail() {
               <Box sx={{ mt: 2 }}>
                 <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
               </Box>
-              <OpenFloorSection agendaId={agendaId} />
+              <OpenFloorSection agendaId={agendaId} agenda={agenda} />
               {agenda?.firefliesTitles?.length > 0 && (
                 <PastMeetingsCard firefliesTitles={agenda.firefliesTitles} />
               )}
