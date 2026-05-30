@@ -45,6 +45,7 @@ import {
   isSameMonth,
   isToday,
   isBefore,
+  startOfDay,
 } from "date-fns";
 
 import { useCollection } from "../hooks/useCollection.js";
@@ -253,7 +254,11 @@ export default function Calendar() {
   // calendar grid (current month) is a subset; cards filter ahead.
   const queryWindow = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentMonth));
-    const today = new Date();
+    // Day-aligned so the window (and thus the React Query key below) is STABLE
+    // across navigations within the same day. Using `new Date()` here carried
+    // the current time-of-day, making the key unique every mount → no cache
+    // reuse → a full 5–10s refetch on every visit to the Calendar.
+    const today = startOfDay(new Date());
     const futureEnd = addDays(today, 90);
     const monthGridEnd = endOfWeek(endOfMonth(currentMonth));
     const end = futureEnd > monthGridEnd ? futureEnd : monthGridEnd;
@@ -263,6 +268,10 @@ export default function Calendar() {
   const meetingsQuery = useQuery({
     queryKey: ["meetings-list", queryWindow.start, queryWindow.end],
     queryFn: () => listMeetings({ start: queryWindow.start, end: queryWindow.end }),
+    // Meetings change rarely and mutations (reschedule/cancel/create) call
+    // refetch() explicitly, so keep the result fresh for 5 min — re-navigating
+    // to the Calendar within that window is an instant cache hit, no refetch.
+    staleTime: 5 * 60_000,
   });
   const meetings = meetingsQuery.data?.meetings || [];
 
