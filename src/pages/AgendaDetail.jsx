@@ -71,6 +71,9 @@ import { visibleAttendees } from "../lib/meetingHelpers.js";
 import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
 import RichBodyEditor from "../components/editor/RichBodyEditor.jsx";
+import { EditorFocusProvider } from "../components/editor/editorFocus.jsx";
+import SharedEditorToolbar from "../components/editor/SharedEditorToolbar.jsx";
+import { GripVertical } from "lucide-react";
 import { t } from "../theme/tokens.js";
 
 const inputBase = {
@@ -85,6 +88,18 @@ const inputBase = {
   color: "inherit",
   transition: "border-color 0.12s",
   "&:focus": { borderBottomColor: t.copper },
+};
+
+// Shared visual for every Overview section title — topic headings (editable),
+// Pre-Brief, and Open Floor (static) all use this so they look identical.
+const sectionTitleSx = {
+  fontFamily: t.serif,
+  fontSize: 15,
+  fontWeight: 700,
+  color: t.ink,
+  borderBottom: `1.5px solid ${t.copper}`,
+  py: "2px",
+  mb: "6px", // ~6pt gap between the title and its first line of body text
 };
 
 // ─── Hero ──────────────────────────────────────────────────────────────
@@ -205,11 +220,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
     : null;
 
   return (
-    <Box sx={{ position: "relative", py: 5, px: 4, textAlign: "center" }}>
-      <Box sx={{ position: "absolute", top: 24, right: 32 }}>
-        <ViewToggle value={viewMode} onChange={setViewMode} />
-      </Box>
-
+    <Box sx={{ py: 5, px: 4, textAlign: "center" }}>
       <TextField
         value={titleDraft}
         onChange={(e) => setTitleDraft(e.target.value)}
@@ -268,7 +279,9 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
                 ? "Schedule this meeting"
                 : "Date not set"}
           </Typography>
-          {recurrenceLabel && (
+          {/* Recurrence label hidden in the Overview (the title denotes it);
+              kept in the Working view. */}
+          {viewMode !== "overview" && recurrenceLabel && (
             <Typography sx={{ fontSize: 12, color: t.ink3, opacity: 0.7, ml: 1 }}>
               · {recurrenceLabel}
             </Typography>
@@ -276,31 +289,39 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
         </Box>
       </Tooltip>
 
-      {/* Organization row — distinct from the attendee chips below. Label +
-          chip layout so it's obvious what to click. Without an assigned org
-          the embedded MiniProjectBoard renders nothing even when categories
-          are set, so this control needs to be discoverable. */}
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mt: 2 }}>
-        <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.ink3 }}>
-          Organization
-        </Typography>
-        <Chip
-          onClick={() => setOrgPickerOpen(true)}
-          size="small"
-          label={seriesOrgId ? orgName : "Unassigned — click to assign"}
-          sx={{
-            bgcolor: seriesOrgId ? (orgAccent || "primary.main") : "rgba(239,108,0,0.12)",
-            color: seriesOrgId ? "#fff" : "#ef6c00",
-            fontWeight: 600,
-            fontSize: 12,
-            height: 26,
-            px: 0.5,
-            cursor: "pointer",
-            border: seriesOrgId ? "none" : "1.5px dashed #ef6c00",
-            "&:hover": { opacity: 0.85, boxShadow: "0 2px 6px rgba(0,0,0,0.08)" },
-          }}
-        />
+      {/* View toggle sits under the schedule — title → schedule → toggle forms a
+          centered column of the meeting's interactive controls. */}
+      <Box sx={{ display: "flex", justifyContent: "center", mt: 1.5 }}>
+        <ViewToggle value={viewMode} onChange={setViewMode} />
       </Box>
+
+      {/* Organization row — hidden in the Overview (the title denotes the org;
+          keep the document clean). Kept in the Working view because this Chip is
+          also the only control to assign/change the agenda's organization, which
+          the embedded MiniProjectBoard depends on. */}
+      {viewMode !== "overview" && (
+        <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mt: 2 }}>
+          <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.ink3 }}>
+            Organization
+          </Typography>
+          <Chip
+            onClick={() => setOrgPickerOpen(true)}
+            size="small"
+            label={seriesOrgId ? orgName : "Unassigned — click to assign"}
+            sx={{
+              bgcolor: seriesOrgId ? (orgAccent || "primary.main") : "rgba(239,108,0,0.12)",
+              color: seriesOrgId ? "#fff" : "#ef6c00",
+              fontWeight: 600,
+              fontSize: 12,
+              height: 26,
+              px: 0.5,
+              cursor: "pointer",
+              border: seriesOrgId ? "none" : "1.5px dashed #ef6c00",
+              "&:hover": { opacity: 0.85, boxShadow: "0 2px 6px rgba(0,0,0,0.08)" },
+            }}
+          />
+        </Box>
+      )}
 
       {orgPickerOpen && seriesId && (
         <OrgAssignDialog
@@ -335,7 +356,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
 
 // ─── Overview topic ────────────────────────────────────────────────────
 
-function OverviewTopic({ topic, agendaId }) {
+function OverviewTopic({ topic, agendaId, dragHandleProps }) {
   const { user } = useAuth();
   const [name, setName] = useState(topic.name || "");
 
@@ -352,7 +373,28 @@ function OverviewTopic({ topic, agendaId }) {
   };
 
   return (
-    <Box sx={{ mb: 3 }}>
+    <Box sx={{ position: "relative", mb: 2.5 }}>
+      {/* Drag handle — only the grip drags, so the heading + body stay freely
+          editable. Lives in the left gutter, revealed on row hover. */}
+      <Box
+        {...dragHandleProps}
+        className="topic-grip"
+        sx={{
+          position: "absolute",
+          left: "-22px",
+          top: "3px",
+          display: "flex",
+          alignItems: "center",
+          color: t.ink3,
+          opacity: 0,
+          transition: "opacity 0.12s",
+          cursor: "grab",
+          "&:active": { cursor: "grabbing" },
+        }}
+        aria-label="Drag to reorder topic"
+      >
+        <GripVertical size={16} />
+      </Box>
       <Box
         component="input"
         value={name}
@@ -365,24 +407,40 @@ function OverviewTopic({ topic, agendaId }) {
           }
         }}
         placeholder="New Topic"
-        sx={{
-          ...inputBase,
-          fontFamily: t.serif,
-          fontSize: 15,
-          fontWeight: 700,
-          color: t.ink,
-          borderBottom: `1.5px solid ${t.copper}`,
-          "&:focus": { borderBottomColor: t.copper },
-          py: "2px",
-          mb: 0.8,
-        }}
+        sx={{ ...inputBase, ...sectionTitleSx }}
       />
       <RichBodyEditor
+        mode="shared"
         valueHtml={topic.bodyHtml || ""}
         placeholder="Add talking points…"
         onChangeHtml={(html) =>
           updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
             bodyHtml: html,
+            updatedAt: serverTimestamp(),
+            updatedByUid: user?.uid || null,
+          })
+        }
+      />
+    </Box>
+  );
+}
+
+// ─── Pre-Brief (top of the Overview card) ──────────────────────────────
+// Quick pre-brief of the meeting — used in-meeting to agree on what to cover.
+// Mirrors Open Floor: one rich body on agenda.preBriefHtml.
+
+function PreBriefSection({ agendaId, agenda }) {
+  const { user } = useAuth();
+  return (
+    <Box sx={{ mb: 2.5 }}>
+      <Typography sx={sectionTitleSx}>Pre-Brief</Typography>
+      <RichBodyEditor
+        mode="shared"
+        valueHtml={agenda?.preBriefHtml || ""}
+        placeholder="Add a pre-brief…"
+        onChangeHtml={(html) =>
+          updateDoc(doc(db, "agendas", agendaId), {
+            preBriefHtml: html,
             updatedAt: serverTimestamp(),
             updatedByUid: user?.uid || null,
           })
@@ -398,14 +456,10 @@ function OpenFloorSection({ agendaId, agenda }) {
   const { user } = useAuth();
 
   return (
-    <Box sx={{ mt: 4 }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-        <Box sx={{ width: 3, height: 16, borderRadius: 0.5, background: t.copper }} />
-        <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper }}>
-          Open Floor
-        </Typography>
-      </Box>
+    <Box sx={{ mt: 2.5 }}>
+      <Typography sx={sectionTitleSx}>Open Floor</Typography>
       <RichBodyEditor
+        mode="shared"
         valueHtml={agenda?.openFloorHtml || ""}
         placeholder="Add open-floor items…"
         onChangeHtml={(html) =>
@@ -421,31 +475,6 @@ function OpenFloorSection({ agendaId, agenda }) {
 }
 
 // ─── Attendee chip strip (read-only in Overview) ───────────────────────
-
-function AttendeeChipStrip({ attendees }) {
-  const display = visibleAttendees(attendees);
-  if (!display.length) {
-    return <Typography sx={{ fontSize: 12, color: t.ink3, fontStyle: "italic", mb: 2 }}>No attendees yet.</Typography>;
-  }
-  return (
-    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.8, mb: 2 }}>
-      {display.map((a, i) => (
-        <Chip
-          key={a.email || i}
-          label={a.name || a.email}
-          size="small"
-          sx={{
-            background: t.cream2,
-            border: `1px solid ${t.cream3}`,
-            fontSize: 11,
-            color: t.ink2,
-            "& .MuiChip-label": { px: 1.2 },
-          }}
-        />
-      ))}
-    </Box>
-  );
-}
 
 // ─── Add Topic button ──────────────────────────────────────────────────
 
@@ -1588,35 +1617,55 @@ export default function AgendaDetail() {
 
       {viewMode === "overview" ? (
         <Box sx={{ px: 4 }}>
-          <AttendeeChipStrip attendees={agenda.attendees} />
-          <DragDropContext onDragEnd={handleTopicDragEnd}>
-            <Droppable droppableId="overview-topics">
-              {(droppableProvided) => (
-                <Box ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
-                  {(topics || []).map((topic, idx) => (
-                    <Draggable key={topic.id} draggableId={topic.id} index={idx}>
-                      {(dragProvided, snapshot) => (
-                        <Box
-                          ref={dragProvided.innerRef}
-                          {...dragProvided.draggableProps}
-                          {...dragProvided.dragHandleProps}
-                          sx={{
-                            background: snapshot.isDragging ? "rgba(184,115,51,0.04)" : "transparent",
-                            borderRadius: 1,
-                          }}
-                        >
-                          <OverviewTopic topic={topic} agendaId={agendaId} />
-                        </Box>
-                      )}
-                    </Draggable>
-                  ))}
-                  {droppableProvided.placeholder}
-                </Box>
-              )}
-            </Droppable>
-          </DragDropContext>
-          <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
-          <OpenFloorSection agendaId={agendaId} agenda={agenda} />
+          {/* The whole agenda reads as one document: a single white card with a
+              sticky shared toolbar that acts on whichever body is focused. */}
+          <EditorFocusProvider>
+            <Box
+              sx={{
+                background: "#fff",
+                border: `1px solid ${t.cream3}`,
+                borderRadius: "10px",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+              }}
+            >
+              <SharedEditorToolbar />
+              <Box sx={{ px: 4, pt: 2, pb: 3 }}>
+                <PreBriefSection agendaId={agendaId} agenda={agenda} />
+                <DragDropContext onDragEnd={handleTopicDragEnd}>
+                  <Droppable droppableId="overview-topics">
+                    {(droppableProvided) => (
+                      <Box ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+                        {(topics || []).map((topic, idx) => (
+                          <Draggable key={topic.id} draggableId={topic.id} index={idx}>
+                            {(dragProvided, snapshot) => (
+                              <Box
+                                ref={dragProvided.innerRef}
+                                {...dragProvided.draggableProps}
+                                sx={{
+                                  background: snapshot.isDragging ? "rgba(184,115,51,0.04)" : "transparent",
+                                  borderRadius: 1,
+                                  "&:hover .topic-grip": { opacity: 0.55 },
+                                }}
+                              >
+                                <OverviewTopic
+                                  topic={topic}
+                                  agendaId={agendaId}
+                                  dragHandleProps={dragProvided.dragHandleProps}
+                                />
+                              </Box>
+                            )}
+                          </Draggable>
+                        ))}
+                        {droppableProvided.placeholder}
+                      </Box>
+                    )}
+                  </Droppable>
+                </DragDropContext>
+                <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
+                <OpenFloorSection agendaId={agendaId} agenda={agenda} />
+              </Box>
+            </Box>
+          </EditorFocusProvider>
           {agenda?.firefliesTitles?.length > 0 && (
             <PastMeetingsCard firefliesTitles={agenda.firefliesTitles} />
           )}

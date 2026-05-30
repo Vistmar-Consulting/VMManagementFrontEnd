@@ -11,9 +11,10 @@ export default function RichBodyView({ html, sx }) {
       sx={{
         fontSize: 13,
         color: t.ink2,
-        lineHeight: 1.6,
+        lineHeight: 1.15,
         "& ul, & ol": { pl: 3, m: 0 },
         "& li": { mb: 0.3 },
+        "& li p": { m: 0 },
         "& a": { color: t.copper },
         "& u": { textDecoration: "underline" },
         ...sx,

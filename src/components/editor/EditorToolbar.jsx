@@ -1,3 +1,4 @@
+import { useEffect, useReducer } from "react";
 import IconButton from "@mui/material/IconButton";
 import Toolbar from "@mui/material/Toolbar";
 import FormatBold from "@mui/icons-material/FormatBold";
@@ -16,14 +17,33 @@ import { t } from "../../theme/tokens.js";
  * indent (sink list item), outdent (lift list item), link (cmd+K).
  *
  * Props:
- *   editor   — TipTap Editor instance (may be null on first render)
+ *   editor   — TipTap Editor instance, or null. In shared-toolbar mode this is
+ *              the currently-focused body's editor (null until one is focused);
+ *              when null the buttons render disabled rather than hiding.
  *   onLink   — callback to open the link prompt (shared with cmd+K handler)
  */
 export default function EditorToolbar({ editor, onLink }) {
-  if (!editor) return null;
+  // Re-render on the editor's selection/transaction changes so active-states
+  // stay in sync. Required when this toolbar is rendered OUTSIDE the editor's
+  // own component (shared-toolbar mode) — there it won't otherwise re-render
+  // when the cursor moves inside the editor. Harmless (no-op extra) inline.
+  const [, force] = useReducer((x) => x + 1, 0);
+  useEffect(() => {
+    if (!editor) return undefined;
+    const update = () => force();
+    editor.on("transaction", update);
+    editor.on("focus", update);
+    editor.on("blur", update);
+    return () => {
+      editor.off("transaction", update);
+      editor.off("focus", update);
+      editor.off("blur", update);
+    };
+  }, [editor]);
 
+  const disabled = !editor;
   const active = (name, attrs) =>
-    editor.isActive(name, attrs)
+    !disabled && editor.isActive(name, attrs)
       ? { backgroundColor: t.copperFaint, color: t.copper }
       : { color: t.ink3 };
 
@@ -31,13 +51,15 @@ export default function EditorToolbar({ editor, onLink }) {
     <IconButton
       size="small"
       title={title}
+      disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClickFn}
       sx={{
         p: "4px",
         borderRadius: "4px",
         ...active(isActiveName, isActiveAttrs),
-        "&:hover": { backgroundColor: t.copperFaint, color: t.copper },
+        "&:hover": disabled ? {} : { backgroundColor: t.copperFaint, color: t.copper },
+        "&.Mui-disabled": { color: t.cream3 },
       }}
     >
       {icon}
