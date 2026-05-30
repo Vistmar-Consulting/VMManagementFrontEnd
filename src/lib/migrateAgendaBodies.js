@@ -4,6 +4,10 @@
 // fields topic.bodyHtml / agenda.openFloorHtml. Idempotent: skips a topic/
 // agenda that already has a non-empty body field. Old subcollections are left
 // in place (reversible); a later cleanup pass deletes them.
+//
+// Intentionally writes ONLY the body field — no updatedAt/updatedByUid — so a
+// bulk backfill doesn't stamp every doc as freshly "edited by null" (unlike the
+// live editor writes, which always set both).
 import { collection, doc, getDocs, orderBy, query, updateDoc } from "firebase/firestore";
 import { db } from "../firebase.js";
 import { bulletsToHtml, mergeBodyHtml } from "./agendaHtml.js";

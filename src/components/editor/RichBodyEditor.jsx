@@ -161,7 +161,7 @@ export default function RichBodyEditor({
           // Placeholder — emitted by the Placeholder extension as a
           // data-placeholder attr + is-editor-empty class on the empty first
           // paragraph.
-          "& p.is-editor-empty:first-child::before": {
+          "& p.is-editor-empty:first-of-type::before": {
             content: "attr(data-placeholder)",
             color: t.ink3,
             pointerEvents: "none",

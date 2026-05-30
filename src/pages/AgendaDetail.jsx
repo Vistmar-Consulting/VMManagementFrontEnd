@@ -7,9 +7,12 @@
 // placeholder Meeting Focus KPI grid + a working Join Meeting button.
 //
 // Data: useDoc("agendas/:agendaId") + useDoc("calendar_series/:seriesId")
-// + useCollection("agendas/:agendaId/topics") + per-topic talkingPoints
-// subscription + useCollection("agendas/:agendaId/openFloor"). All
-// writes go straight to Firestore — no API/Graph mutation in this slice.
+// + useCollection("agendas/:agendaId/topics"). Topic bodies + Open Floor are
+// rich HTML (topic.bodyHtml / agenda.openFloorHtml) edited via RichBodyEditor;
+// the old per-bullet talkingPoints/notes/openFloor subscriptions were removed
+// in the v0.2.4 rich-text cutover (the agenda-level openFloor read that remains
+// only feeds the ActionBar Meeting-Prep email). All writes go straight to
+// Firestore — no API/Graph mutation in this slice.
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
