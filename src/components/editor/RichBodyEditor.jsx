@@ -28,18 +28,11 @@ export default function RichBodyEditor({
   debounceMs = 1500,
 }) {
   const debounceRef = useRef(null);
+  // onChangeHtml via ref so onUpdate + the unmount flush always call the latest
+  // callback without re-registering effects (parent passes an inline arrow each
+  // render). The unmount effect below depends only on [editor] for this reason.
   const onChangeHtmlRef = useRef(onChangeHtml);
   useEffect(() => { onChangeHtmlRef.current = onChangeHtml; }, [onChangeHtml]);
-
-  const flushDebounce = useCallback((editorInstance) => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
-    if (editorInstance) {
-      onChangeHtmlRef.current(editorInstance.getHTML());
-    }
-  }, []);
 
   const editor = useEditor({
     // Suppress SSR/hydration warning — this app is client-only (Vite SPA)

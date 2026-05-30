@@ -120,6 +120,31 @@ AI-driven Project Board updates (Fireflies + agendas → statusId 8 AI Gen items
 
 **Op note:** the shared agent-browser session kept getting pulled to a different local app (`localhost:5180/ga-kpi-preview`) between commands — worked around by chaining open+eval atomically. Not a Management issue.
 
+### v0.2.4 — Agenda rich-text editor (Phase 1) — IN PROGRESS (subagent-driven)
+
+**Spec:** `docs/superpowers/specs/2026-05-29-agenda-richtext-editor-design.md`
+**Plan:** `docs/superpowers/plans/2026-05-29-agenda-richtext-editor-phase1.md` (the authoritative task list; resume from it)
+
+Whole agenda → Word-like document: topic title (structured) + one rich **HTML body** per topic; Open Floor rich; Mini Project Board stays structured. Phase 1 = single-user TipTap editor + HTML-in-Firestore + migration + `composeAgendaHtml`. Phases 2 (Liveblocks/Yjs live collab), 3 (Conclude→archival snapshot + Word/PDF export + formatted-HTML email), 4 (AI generation) are designed-for-future.
+
+**Done + committed (Phase 1 Tasks 1–4):**
+- `e23ec63` deps: TipTap **v3.23** + dompurify (note: v3 — StarterKit bundles Link/Underline/Placeholder; the plan's snippets were v2-style)
+- `0b543b2` `src/lib/agendaHtml.js` — bulletsToHtml, sanitizeHtml, mergeBodyHtml, composeAgendaHtml — **11 Vitest tests pass** (`npx vitest run src/lib/__tests__/agendaHtml.test.js`)
+- `69264c5` `src/components/editor/RichBodyView.jsx` — sanitized read-only render
+- `6e03d4d` `src/components/editor/{EditorToolbar,RichBodyEditor}.jsx` — TipTap v3 editor (8 controls: bold/italic/underline/bullet/ordered/indent/outdent/cmd+K link), HTML out, debounced save, unmount-flush; + dead-code cleanup commit
+- composeAgendaHtml reads `t.title ?? t.name` (real topic title field is `name`)
+
+**KNOWN ISSUE to fix during Task 6/7 (browser-verifiable there):** the editor **placeholder text doesn't render** — the CSS relies on `is-editor-empty`/`data-placeholder` which only the TipTap **Placeholder extension** adds (not registered; StarterKit v3 does NOT bundle it). Fix: add `Placeholder` (from `@tiptap/extensions`) to the editor's extensions, then the existing `data-placeholder` CSS works. Verify empty-state ghost text live.
+
+**Remaining Phase 1 (resume here):**
+- **T5** — `src/lib/migrateAgendaBodies.js` (Firestore walk; mergeBodyHtml already done). Per plan Task 5 (steps 5+).
+- **T6** — wire `RichBodyEditor` into Overview view (`OverviewTopic` + `OpenFloorSection`); drop `talkingPoints`/`openFloor` subscriptions; bind to `topic.bodyHtml`/`agenda.openFloorHtml`; **browser-verify** + fix placeholder.
+- **T7** — wire into Working view (`AgendaTopicCard`); **remove `TopicNotesSection` component + its render call** (notes merge into bodyHtml — see plan); board/KPI unchanged; browser-verify.
+- **T8** — migration on live data: dev hook → dry-run → **Andy's explicit OK** → live migrate → remove hook. Production write; gated.
+- **Population (NEW, Andy 2026-05-29):** `docs/Existing_Agendas/` holds 5 real last-week agendas as **.docx** (Bryn Mawr, Golden Vision, ID Care, Unio Biweekly, Unio Weekly). Convert each `.docx → HTML` (use **mammoth.js**) and populate the corresponding agendas' `bodyHtml`. Runs after the editor + format exist (so render is verifiable). `.docx→HTML` maps directly onto our format — validates the HTML choice. (`~$…docx` = Word lock file, ignore.)
+
+**Process note:** executing subagent-driven on local `main` (project convention overrides the skill's worktree requirement). One reviewer false-positive was caught + not applied (claimed flush effect deps `[onChangeHtml]`; actual code uses `[editor]` + ref — correct). Shell exhibited transient output-doubling/`ls`-glitch mid-session; verify with `git show`/`find` when in doubt.
+
 ## Files Modified
 
 - `dev/sessions/v0_2_3_Andrew_MEETING_SCHEDULER_POLISH/context.md` — created (this file)
