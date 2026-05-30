@@ -108,6 +108,18 @@ AI-driven Project Board updates (Fireflies + agendas → statusId 8 AI Gen items
 
 **Minor observation (not fixed):** detectCadence labeled "ID Care - Biweekly" as WEEKLY — it's a heuristic on instance count over the window; cosmetic, pre-existing, out of scope.
 
+### v0.2.3.j — Silent-cancel toggle + deleted duplicate ID Care - Biweekly series ✅
+
+**Context:** investigation (prior step) found TWO "ID Care - Biweekly" recurring series — A `6jvfp6utmbu00gl122ps935n7g` (9 attendees, **has** Fireflies seo@ proxy) and B `ldkg1v1khcbsq1p1hfhejet4pg` (8 attendees, **missing** seo@). Two biweeklies offset by a week = weekly density → that's why the card showed WEEKLY. B was the later duplicate (no recording proxy, fewer attendees, later Graph entry-id). Both Firestore docs shared an identical reconcile `createdAt`, so creation order wasn't determinable from Firestore — identified B via the seo@/attendee/Graph-id signals; Andy confirmed delete B, **silently**.
+
+**Silent-cancel feature (commit `fe24bf4`, deployed):** added optional `notify` flag — `cancelMeeting` client → `cancel.js` passes `sendUpdates:"none"` to the Google cancel when `notify===false` (Graph cancel is silent in our tenant anyway). `CancelMeetingDialog` gained a "Notify attendees" checkbox (default ON, existing behavior unchanged) + corrected stale dialog copy (Google is the fan path, not Graph). Reusable for any silent cleanup.
+
+**Deletion (executed on prod via the UI + admin):** B series cancelled **Entire series + Notify OFF** (silent — no client email) → Google series deleted + Graph cancelled + agenda unbound; then Cancel agenda → agenda doc + subcollections deleted; then admin `deleteDoc` removed B's orphan `calendar_series` doc. **Verified:** keeper A (agenda + calendar_series) intact; all 4 of B's artifacts gone; B's agenda NOT re-created by reconcile (Google deletion propagated first); prod card now reads **RECURRING · BIWEEKLY** with one ID Care series (Next: Jun 9).
+
+**Cadence point:** the WEEKLY label was the duplicate's artifact — now correctly BIWEEKLY with no code change. Did NOT hardcode "Weekly" (it's genuinely biweekly).
+
+**Op note:** the shared agent-browser session kept getting pulled to a different local app (`localhost:5180/ga-kpi-preview`) between commands — worked around by chaining open+eval atomically. Not a Management issue.
+
 ## Files Modified
 
 - `dev/sessions/v0_2_3_Andrew_MEETING_SCHEDULER_POLISH/context.md` — created (this file)
