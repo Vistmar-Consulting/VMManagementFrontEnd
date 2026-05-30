@@ -76,6 +76,8 @@ A topic becomes: **title → KPI strip → `bodyHtml` editor → Mini Project Bo
 
 For each topic: read `talkingPoints` (sorted) + `notes` (sorted), render to HTML (`<ul><li>…</li></ul>`, notes appended), write `bodyHtml`. Same for `openFloor` → `openFloorHtml`. Old subcollections are **left in place** (ignored) so the migration is reversible; a later cleanup pass deletes them. Since agendas will be repopulated with last week's content shortly after, this simply preserves existing content without ceremony.
 
+**Read-path cutover:** as part of Phase 1, the views stop subscribing to `talkingPoints` / `notes` / `openFloor` and read `bodyHtml` / `openFloorHtml` instead — so the leftover (ignored) subcollections never double-render alongside the new body.
+
 ---
 
 ## 6. Realtime + snapshot sync
@@ -85,6 +87,8 @@ For each topic: read `talkingPoints` (sorted) + `notes` (sorted), render to HTML
 **Liveblocks rooms:** one room **per agenda** (`room = agendaId`). Within it, each editor binds to a named Yjs fragment — `topic:<topicId>` per topic body, `openFloor` for the open-floor body. Presence/cursors therefore span the whole agenda while each section is its own editable surface.
 
 **Snapshot to Firestore — client-side debounced write.** The active editor, after ~2s idle, writes its current HTML to `bodyHtml` / `openFloorHtml`. All clients share Yjs state, so concurrent writes converge on identical HTML (last-write-wins on an equal value — harmless). No server / Cloud Function required.
+
+> **Phasing note:** in **Phase 1** there is no Yjs/Liveblocks — this is simply a debounced single-writer save of the editor's HTML to Firestore. The convergence/last-write-wins reasoning above is a **Phase 2** concern (once multiple Yjs-synced clients exist). The Phase-1 plan should not build Liveblocks-aware write logic.
 
 **Source-of-truth rules:**
 - Liveblocks (Yjs) is authoritative while a room is live; Firestore HTML is the durable mirror.
@@ -108,6 +112,8 @@ composeAgendaHtml(agenda, topics) -> string  // one self-contained HTML document
 ```
 
 = the **Overview content**: each topic's title + `bodyHtml` in order, then `openFloorHtml`. **Excludes** Mini Project Boards. Output is sanitized; an email/export variant inlines styles.
+
+**Output contract (locked in Phase 1, even though consumers ship later):** `composeAgendaHtml` returns sanitized HTML. A sibling/option produces the **style-inlined** variant for email/export. This signature + output shape is what Phases 3–4 depend on, so the Phase-1 plan must pin it down and test it explicitly (sanitized default; inline-styled variant boundary).
 
 ### 7.1 Conclude → archival snapshot (per-occurrence "version history")
 
