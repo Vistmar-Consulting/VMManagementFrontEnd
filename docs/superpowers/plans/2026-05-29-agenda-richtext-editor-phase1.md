@@ -185,8 +185,10 @@ export function composeAgendaHtml(agenda, topics, { inlineStyles = false } = {})
     : 'class="agenda-topic-title"';
   const wrap = inlineStyles ? 'style="font-family:Arial,sans-serif;color:#1a1a2e;"' : "";
 
+  // NOTE: topic docs store the title in `name` in this codebase; accept either
+  // so real docs (t.name) and test fixtures (t.title) both render.
   const topicBlocks = sorted
-    .map((t) => `<section><h2 ${h2}>${escapeText(t.title)}</h2>${sanitizeHtml(t.bodyHtml)}</section>`)
+    .map((t) => `<section><h2 ${h2}>${escapeText(t.title ?? t.name)}</h2>${sanitizeHtml(t.bodyHtml)}</section>`)
     .join("");
 
   const ofHtml = sanitizeHtml(agenda?.openFloorHtml);
@@ -566,11 +568,13 @@ git commit -m "feat(agenda): Overview view uses RichBodyEditor for topic body + 
 
 **Files:** Modify `src/pages/AgendaDetail.jsx` (`AgendaTopicCard`)
 
-Context: `AgendaTopicCard` (~line 1500–1700) subscribes to `talkingPoints` (and notes) and renders the copper Talking Points bullets + blue Topic Notes bullets between the KPI strip and the Mini Project Board.
+Context (locate by function name — line numbers drift): `AgendaTopicCard` subscribes to the topic's `talkingPoints` subcollection and renders the copper Talking Points bullets **between the KPI strip and the `MiniProjectBoard`**. Topic **Notes are a SEPARATE component** — `TopicNotesSection` — which has its own `useCollection(.../notes)` and is rendered as a sibling **after** `MiniProjectBoard` (look for `<TopicNotesSection …/>`). Both must go, since their content is now merged into `bodyHtml`.
 
-- [ ] **Step 1: Replace the talking-points + notes sections with one body editor**
+- [ ] **Step 1: Replace the talking-points block with one body editor AND remove the notes section**
 
-Remove the `talkingPoints` (and notes) subscriptions + bullet lists. Between the KPI strip and the `MiniProjectBoard`, render:
+1. Remove the `talkingPoints` subscription + its bullet list/add-input from `AgendaTopicCard`.
+2. **Remove the `<TopicNotesSection …/>` render call** (sibling after `MiniProjectBoard`) **and delete the `TopicNotesSection` function definition** (its `useCollection(.../notes)`) — its content is now in `bodyHtml`. Leaving it would double-render notes below the board.
+3. Between the KPI strip and the `MiniProjectBoard`, render:
 ```jsx
 <RichBodyEditor
   valueHtml={topic.bodyHtml || ""}
@@ -611,17 +615,27 @@ git commit -m "feat(agenda): Working view topic uses RichBodyEditor; drop per-bu
 
 **Files:** none (operational)
 
-- [ ] **Step 1: Dry-run**
+- [ ] **Step 1: Expose a temporary dev hook**
 
-In the authed browser console (or a guarded admin action), call `migrateAgendaBodies({ dryRun: true })`; review the report counts. Confirm with Andy before a live write (destructive-ish: writes `bodyHtml` across agendas).
+`migrateAgendaBodies` is an ESM export, not on `window` — a raw console call won't resolve it. Add a dev-gated hook so it's callable, e.g. in `src/main.jsx` (or AgendaDetail) behind `import.meta.env.DEV`:
+```js
+if (import.meta.env.DEV) {
+  import("./lib/migrateAgendaBodies.js").then((m) => { window.__migrateAgendaBodies = m.migrateAgendaBodies; });
+}
+```
+Remove this hook after the migration. (Alternatively, an admin-only button.)
 
-- [ ] **Step 2: Live migrate (after Andy's OK)**
+- [ ] **Step 2: Dry-run**
 
-Call `migrateAgendaBodies({ dryRun: false })`. Spot-check 2–3 migrated agendas in the UI: legacy bullets now render in the body editor.
+Call `await window.__migrateAgendaBodies({ dryRun: true })` in the authed browser; review the report counts. Confirm with Andy before a live write (writes `bodyHtml`/`openFloorHtml` across agendas — shared production data, requires explicit OK).
 
-- [ ] **Step 3: Note residual cleanup**
+- [ ] **Step 3: Live migrate (after Andy's OK)**
 
-The old `talkingPoints`/`notes`/`openFloor` subcollections remain (ignored). Record a Deferred item to delete them once the migration is confirmed stable.
+Call `await window.__migrateAgendaBodies({ dryRun: false })`. Spot-check 2–3 migrated agendas in the UI: legacy bullets now render in the body editor.
+
+- [ ] **Step 4: Remove the dev hook + note residual cleanup**
+
+Delete the `window.__migrateAgendaBodies` dev hook. The old `talkingPoints`/`notes`/`openFloor` subcollections remain (ignored) — record a Deferred item to delete them once the migration is confirmed stable.
 
 ---
 
