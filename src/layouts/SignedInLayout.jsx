@@ -13,7 +13,11 @@ export default function SignedInLayout() {
       <Sidebar isAdmin={isAdmin} />
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <AppTopBar />
-        <Box component="main" sx={{ flex: 1, p: 6, overflow: "auto" }}>
+        {/* overflow MUST stay "visible": this column isn't height-constrained,
+            so the window does the scrolling. An "auto"/"hidden" here creates a
+            scroll-context that scopes (and kills) position:sticky in descendants
+            — e.g. the Agenda Overview's sticky formatting toolbar. */}
+        <Box component="main" sx={{ flex: 1, p: 6, overflow: "visible" }}>
           <Outlet />
         </Box>
       </Box>
