@@ -63,6 +63,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // AI feature prompts: aiPrompts/default + aiPrompts/{orgSlug} overrides.
+    // Readable by active users (the engine reads them); admin-only authoring.
+    match /aiPrompts/{id} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+
     // Top-level shared categories. Items reference by categoryId string.
     // Column-header filter popovers reduce to those used by visible items;
     // row cell dropdown shows the full list.

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import SignedInLayout from "./layouts/SignedInLayout.jsx";
 import AgendaDetail from "./pages/AgendaDetail.jsx";
+import AIIntegration from "./pages/AIIntegration.jsx";
 import Calendar from "./pages/Calendar.jsx";
 import ConsoleOrgIds from "./pages/admin/ConsoleOrgIds.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
@@ -60,6 +61,14 @@ export default function AppRoutes() {
           )}
         />
         <Route path="/settings" element={<Settings />} />
+        <Route
+          path="/settings/ai-integration"
+          element={(
+            <ProtectedRoute requireAdmin>
+              <AIIntegration />
+            </ProtectedRoute>
+          )}
+        />
         <Route path="/profile" element={<Profile />} />
       </Route>
 

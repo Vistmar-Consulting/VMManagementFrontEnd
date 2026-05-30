@@ -33,6 +33,7 @@ const TOP_LEVEL = [
 // Children render without icons — nested under a parent that has its own.
 const SETTINGS_CHILDREN = [
   { to: "/organizations", label: "Organizations", requireAdmin: true },
+  { to: "/settings/ai-integration", label: "AI Integration", requireAdmin: true },
   { to: "/profile", label: "Profile" },
 ];
 
