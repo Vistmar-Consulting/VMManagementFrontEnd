@@ -10,7 +10,7 @@
 // detail views read meetingDatetime from the agenda doc, not the API.
 
 import { useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
@@ -39,6 +39,7 @@ function pad2(n) { return String(n).padStart(2, "0"); }
 
 export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const originalStart = useMemo(
     () => (meeting?.date ? new Date(meeting.date) : new Date()),
     [meeting?.date]
@@ -88,6 +89,9 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
     },
     onSuccess: () => {
       setError(null);
+      // Refresh the Calendar's cached meeting list everywhere (this dialog is
+      // used from both the Calendar and the Agenda Action Bar).
+      queryClient.invalidateQueries({ queryKey: ["meetings-list"] });
       onSuccess?.();
     },
     onError: (err) => setError(err.message || "Reschedule failed"),

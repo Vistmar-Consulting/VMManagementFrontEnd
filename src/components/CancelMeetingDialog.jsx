@@ -30,12 +30,14 @@ import {
 import { format } from "date-fns";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { cancelMeeting } from "../lib/meetingsApi.js";
 
 export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, onClose }) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const isRecurring = !!calendarSeries?.recurrence;
   const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
 
@@ -99,6 +101,9 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
         });
       }
 
+      // Refresh the Calendar's cached meeting list so the cancelled meeting
+      // drops off when the user returns there.
+      queryClient.invalidateQueries({ queryKey: ["meetings-list"] });
       onClose();
     } catch (err) {
       setError(err.message || "Cancel failed");

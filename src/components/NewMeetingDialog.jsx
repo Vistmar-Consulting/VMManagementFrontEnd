@@ -51,6 +51,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { createMeeting } from "../lib/meetingsApi.js";
@@ -85,6 +86,7 @@ function pad2(n) { return String(n).padStart(2, "0"); }
 export default function NewMeetingDialog({ orgs, users, onClose }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const initialDate = useMemo(() => addDays(new Date(), 1), []);
 
@@ -249,7 +251,9 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
         );
       }
 
-      // 5. Navigate to the new agenda.
+      // 5. Refresh the Calendar's cached meeting list so the new meeting is
+      //    there when the user returns, then navigate to the new agenda.
+      queryClient.invalidateQueries({ queryKey: ["meetings-list"] });
       navigate(`/agendas/${newAgendaRef.id}`);
     } catch (err) {
       setError(err.message || "Create meeting failed");

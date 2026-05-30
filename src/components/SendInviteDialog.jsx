@@ -28,6 +28,7 @@ import {
 } from "@mui/material";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
@@ -35,6 +36,7 @@ import { patchAttendees } from "../lib/meetingsApi.js";
 
 export default function SendInviteDialog({ agenda, agendaId, calendarSeries, onClose }) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const isRecurring = !!calendarSeries?.recurrence;
 
   // Snapshot the attendee set on mount. Any concurrent edit in another tab
@@ -97,6 +99,8 @@ export default function SendInviteDialog({ agenda, agendaId, calendarSeries, onC
         updatedAt: serverTimestamp(),
         updatedByUid: user?.uid || null,
       });
+      // Roster change shows as attendee avatars on the Calendar cards — refresh.
+      queryClient.invalidateQueries({ queryKey: ["meetings-list"] });
       onClose();
     } catch (err) {
       setError(err.message || "Send failed");

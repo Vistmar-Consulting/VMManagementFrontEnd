@@ -268,10 +268,17 @@ export default function Calendar() {
   const meetingsQuery = useQuery({
     queryKey: ["meetings-list", queryWindow.start, queryWindow.end],
     queryFn: () => listMeetings({ start: queryWindow.start, end: queryWindow.end }),
-    // Meetings change rarely and mutations (reschedule/cancel/create) call
-    // refetch() explicitly, so keep the result fresh for 5 min — re-navigating
-    // to the Calendar within that window is an instant cache hit, no refetch.
-    staleTime: 5 * 60_000,
+    // "Load once, self-healing." The list is fetched once and kept for the whole
+    // session (gcTime Infinity), so re-navigating to the Calendar is always an
+    // instant cache hit — never a blank reload. In-app create/reschedule/cancel
+    // invalidate ["meetings-list"] directly (in the meeting dialogs), so those
+    // changes appear immediately. The long staleTime + refetchOnWindowFocus
+    // quietly re-syncs EXTERNAL changes (RSVPs, client/teammate edits in
+    // Google/Outlook) when you return to the tab — stale-while-revalidate, so
+    // still no blank. The manual Refresh button forces an immediate re-sync.
+    staleTime: 60 * 60_000, // 1h — don't auto-refetch within the hour
+    gcTime: Infinity, // keep the cache for the session (no cold blank reloads)
+    refetchOnWindowFocus: true, // quiet background re-sync on tab focus when stale
   });
   const meetings = meetingsQuery.data?.meetings || [];
 
@@ -929,10 +936,7 @@ export default function Calendar() {
             || null
           }
           onClose={() => setRescheduleTarget(null)}
-          onSuccess={() => {
-            setRescheduleTarget(null);
-            meetingsQuery.refetch();
-          }}
+          onSuccess={() => setRescheduleTarget(null)}
         />
       )}
 
