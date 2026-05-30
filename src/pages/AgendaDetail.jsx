@@ -11,7 +11,7 @@
 // subscription + useCollection("agendas/:agendaId/openFloor"). All
 // writes go straight to Firestore — no API/Graph mutation in this slice.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
 import {
   Box,
@@ -29,7 +29,6 @@ import {
   ArrowBack,
   ArrowDropDown,
   Check,
-  Close,
   ExpandMore,
   MoreVert,
   PersonAdd,
@@ -331,126 +330,6 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   );
 }
 
-// ─── Inline-editable bullet rows ───────────────────────────────────────
-//
-// Generic component shared by Talking Points (copper) and Topic Notes
-// (blue). Caller passes the subcollection segment under the topic and the
-// accent color; everything else is the same UX:
-//   - inline-edit row
-//   - Enter inserts a new blank row at sortOrder + 0.5 (returned via onAfterEnter)
-//   - blur with empty trimmed value → deleteDoc
-//   - hover reveals X icon for explicit delete
-//
-// `extraSx` is optional, used by Topic Notes to enable multi-line behavior.
-
-function BulletRow({
-  topicId,
-  agendaId,
-  point,
-  subcollection,
-  accent,
-  multiline,
-  onAfterEnter,
-  autoFocus,
-}) {
-  const [value, setValue] = useState(point.text || "");
-  const inputRef = useRef(null);
-  useEffect(() => setValue(point.text || ""), [point.text]);
-  useEffect(() => {
-    if (autoFocus && inputRef.current) inputRef.current.focus();
-  }, [autoFocus]);
-
-  const ref = doc(db, "agendas", agendaId, "topics", topicId, subcollection, point.id);
-  const handleBlur = async () => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      await deleteDoc(ref).catch(() => {});
-      return;
-    }
-    if (trimmed === point.text) return;
-    await updateDoc(ref, { text: trimmed, updatedAt: serverTimestamp() });
-  };
-  const handleKeyDown = (e) => {
-    // Multi-line bullets: Shift+Enter inserts a newline, plain Enter blurs +
-    // inserts a new row below (Console pattern for Topic Notes).
-    if (e.key === "Enter" && (!multiline || !e.shiftKey)) {
-      e.preventDefault();
-      e.currentTarget.blur();
-      onAfterEnter?.(point.sortOrder);
-    }
-  };
-
-  const inputComponent = multiline ? "textarea" : "input";
-  const extraInputSx = multiline ? { resize: "none", minHeight: 18 } : {};
-
-  return (
-    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, py: 0.4, "&:hover .row-x": { opacity: 1 } }}>
-      <Box sx={{ width: 5, height: 5, borderRadius: "50%", background: accent, flexShrink: 0, mt: "8px" }} />
-      <Box
-        component={inputComponent}
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        placeholder="…"
-        rows={multiline ? 1 : undefined}
-        sx={{ ...inputBase, fontSize: 13, py: "2px", color: t.ink, "&:focus": { borderBottomColor: accent }, ...extraInputSx }}
-      />
-      <IconButton
-        size="small"
-        className="row-x"
-        onClick={() => deleteDoc(ref).catch(() => {})}
-        sx={{ opacity: 0, transition: "opacity 0.15s", color: t.ink3, p: 0.3, mt: "1px" }}
-        aria-label="Delete bullet"
-      >
-        <Close sx={{ fontSize: 14 }} />
-      </IconButton>
-    </Box>
-  );
-}
-
-function AddBullet({ topicId, agendaId, lastSortOrder, subcollection, accent, placeholder, multiline }) {
-  const { user } = useAuth();
-  const [value, setValue] = useState("");
-  const submit = async () => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    setValue("");
-    await addDoc(collection(db, "agendas", agendaId, "topics", topicId, subcollection), {
-      text: trimmed,
-      sortOrder: (lastSortOrder ?? 0) + 1,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdByUid: user?.uid || null,
-    });
-  };
-  return (
-    <Box
-      component="input"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={submit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          submit();
-        }
-      }}
-      placeholder={placeholder || "+ Add a bullet…"}
-      sx={{
-        ...inputBase,
-        fontSize: 12,
-        py: "4px",
-        color: t.ink3,
-        borderBottom: "1px dashed transparent",
-        "&:focus": { borderBottomColor: accent, color: t.ink },
-        ml: 1.5,
-      }}
-    />
-  );
-}
-
 // ─── Overview topic ────────────────────────────────────────────────────
 
 function OverviewTopic({ topic, agendaId }) {
@@ -506,69 +385,6 @@ function OverviewTopic({ topic, agendaId }) {
           })
         }
       />
-    </Box>
-  );
-}
-
-// ─── Topic Notes (Working view, blue accent) ───────────────────────────
-//
-// Same UX as Talking Points but blue. Lives in
-// agendas/{agendaId}/topics/{topicId}/notes subcollection.
-
-function TopicNotesSection({ topic, agendaId }) {
-  const { user } = useAuth();
-  const constraints = useMemo(() => [orderBy("sortOrder", "asc")], []);
-  const { data: notesRaw } = useCollection(
-    `agendas/${agendaId}/topics/${topic.id}/notes`,
-    constraints
-  );
-  const notes = notesRaw || [];
-  const lastSort = notes.length ? notes[notes.length - 1].sortOrder ?? 0 : 0;
-
-  const [focusOnNext, setFocusOnNext] = useState(null);
-  const insertAfter = async (currentSort) => {
-    const newDoc = await addDoc(
-      collection(db, "agendas", agendaId, "topics", topic.id, "notes"),
-      {
-        text: "",
-        sortOrder: (currentSort ?? 0) + 0.5,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdByUid: user?.uid || null,
-      }
-    );
-    setFocusOnNext(newDoc.id);
-  };
-
-  return (
-    <Box sx={{ mt: 2 }}>
-      <Typography sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.blue, mb: 0.5 }}>
-        Topic Notes
-      </Typography>
-      <Box sx={{ pl: 0.5 }}>
-        {notes.map((n) => (
-          <BulletRow
-            key={n.id}
-            topicId={topic.id}
-            agendaId={agendaId}
-            point={n}
-            subcollection="notes"
-            accent={t.blue}
-            multiline
-            onAfterEnter={insertAfter}
-            autoFocus={focusOnNext === n.id}
-          />
-        ))}
-        <AddBullet
-          topicId={topic.id}
-          agendaId={agendaId}
-          lastSortOrder={lastSort}
-          subcollection="notes"
-          accent={t.blue}
-          placeholder="+ Add a note…"
-          multiline
-        />
-      </Box>
     </Box>
   );
 }
@@ -1416,29 +1232,6 @@ function AgendaTopicCard({
     await deleteDoc(doc(db, "agendas", agendaId, "topics", topic.id)).catch(() => {});
   };
 
-  // Talking points
-  const tpConstraints = useMemo(() => [orderBy("sortOrder", "asc")], []);
-  const { data: tpRaw } = useCollection(
-    `agendas/${agendaId}/topics/${topic.id}/talkingPoints`,
-    tpConstraints
-  );
-  const talkingPoints = tpRaw || [];
-  const lastTpSort = talkingPoints.length ? talkingPoints[talkingPoints.length - 1].sortOrder ?? 0 : 0;
-  const [focusOnNextTp, setFocusOnNextTp] = useState(null);
-  const insertTpAfter = async (currentSort) => {
-    const newDoc = await addDoc(
-      collection(db, "agendas", agendaId, "topics", topic.id, "talkingPoints"),
-      {
-        text: "",
-        sortOrder: (currentSort ?? 0) + 0.5,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdByUid: user?.uid || null,
-      }
-    );
-    setFocusOnNextTp(newDoc.id);
-  };
-
   return (
     <Box
       sx={{
@@ -1538,34 +1331,17 @@ function AgendaTopicCard({
             onChange={setTopicKpiFilter}
           />
 
-          {/* Talking Points */}
-          <Box sx={{ mb: 2 }}>
-            <Typography sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper, mb: 0.5 }}>
-              Talking Points
-            </Typography>
-            <Box sx={{ pl: 0.5 }}>
-              {talkingPoints.map((p) => (
-                <BulletRow
-                  key={p.id}
-                  topicId={topic.id}
-                  agendaId={agendaId}
-                  point={p}
-                  subcollection="talkingPoints"
-                  accent={t.copper}
-                  onAfterEnter={insertTpAfter}
-                  autoFocus={focusOnNextTp === p.id}
-                />
-              ))}
-              <AddBullet
-                topicId={topic.id}
-                agendaId={agendaId}
-                lastSortOrder={lastTpSort}
-                subcollection="talkingPoints"
-                accent={t.copper}
-                placeholder="+ Add a talking point…"
-              />
-            </Box>
-          </Box>
+          <RichBodyEditor
+            valueHtml={topic.bodyHtml || ""}
+            placeholder="Add talking points…"
+            onChangeHtml={(html) =>
+              updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
+                bodyHtml: html,
+                updatedAt: serverTimestamp(),
+                updatedByUid: user?.uid || null,
+              })
+            }
+          />
 
           <MiniProjectBoard
             topic={topic}
@@ -1580,8 +1356,6 @@ function AgendaTopicCard({
             getCommentCount={getCommentCount}
             getFileCount={getFileCount}
           />
-
-          <TopicNotesSection topic={topic} agendaId={agendaId} />
         </Box>
       )}
 
