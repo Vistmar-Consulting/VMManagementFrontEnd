@@ -53,7 +53,8 @@ function buildSystem(prompt, style) {
   return `${filled}
 
 ## How to use the inputs
-- Reconcile the current agenda with everything that happened since this meeting last occurred: this client's meetings, internal Vistamar meetings, recent Project Board activity, and any additional context the user provided.
+- Reconcile the current agenda with everything that happened since this meeting last occurred: this client's meetings, internal Vistamar meetings, recent Project Board activity, this client's OTHER meeting agendas, and any additional context the user provided.
+- The org operates holistically — be aware of everything happening across this client. Use the client's other agendas so this agenda stays coherent with them: don't duplicate or contradict what's already on another meeting's agenda, surface cross-meeting dependencies, and keep one consistent picture of the client's work.
 - Internal Vistamar meetings (tagged [Vistamar internal]) are for YOUR situational awareness — never surface internal-only mechanics, staffing, or candor into a client-facing agenda, especially an executive one. Keep Vistamar looking strong and prepared to the client.
 - Use Project Board activity to reflect what is done, in progress, or newly raised — fold it into the relevant topics rather than listing tasks verbatim.
 
@@ -71,7 +72,7 @@ const SCOPE_TAG = {
   "vistamar-internal": "Vistamar internal",
 };
 
-function buildUserMessage(agenda, transcripts, style, projectBoard, extraContext) {
+function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext) {
   const a = agenda || {};
   const lines = [];
   lines.push(`Generate the next ${style} meeting agenda for: ${a.title || "(untitled meeting)"}.`);
@@ -108,6 +109,18 @@ function buildUserMessage(agenda, transcripts, style, projectBoard, extraContext
     });
     lines.push("");
   }
+  if (Array.isArray(orgAgendas) && orgAgendas.length > 0) {
+    lines.push("## This client's other meeting agendas (current planning across the org — for coherence, not to copy)");
+    orgAgendas.forEach((oa) => {
+      lines.push(`### ${oa.title || "Meeting"}`);
+      if (oa.preBriefHtml) lines.push(`Pre-Brief: ${oa.preBriefHtml}`);
+      (oa.topics || []).forEach((t) => {
+        lines.push(`- ${t.name || ""}${t.bodyHtml ? `: ${t.bodyHtml}` : ""}`);
+      });
+      if (oa.openFloorHtml) lines.push(`Open Floor: ${oa.openFloorHtml}`);
+      lines.push("");
+    });
+  }
   if (extraContext && String(extraContext).trim()) {
     lines.push("## Additional context the user provided for this generation");
     lines.push(String(extraContext).trim());
@@ -126,7 +139,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server" });
   }
 
-  const { prompt, meetingStyle, agenda, transcripts, projectBoard, extraContext } = req.body || {};
+  const { prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext } = req.body || {};
   if (!prompt || !agenda) {
     return res.status(400).json({ error: "Missing required field: prompt and agenda" });
   }
@@ -140,7 +153,7 @@ export default async function handler(req, res) {
       thinking: { type: "adaptive" },
       system: buildSystem(prompt, style),
       output_config: { format: { type: "json_schema", schema: AGENDA_SCHEMA } },
-      messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, extraContext) }],
+      messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext) }],
     });
 
     if (message.stop_reason === "max_tokens") {

@@ -41,6 +41,7 @@ function summaryText(s) {
       : "recently";
   const meetings = s.orgCount + s.internalCount;
   const parts = [`Read ${meetings} meeting${meetings === 1 ? "" : "s"} ${since} — ${s.orgCount} client, ${s.internalCount} Vistamar internal`];
+  if (s.orgAgendaCount) parts.push(`${s.orgAgendaCount} other client agenda${s.orgAgendaCount === 1 ? "" : "s"}`);
   if (s.projectCount) parts.push(`${s.projectCount} Project Board update${s.projectCount === 1 ? "" : "s"} (${s.projectNewCount} new)`);
   const notes = [];
   if (s.failedCount) notes.push(`couldn't load ${s.failedCount} transcript${s.failedCount === 1 ? "" : "s"}`);
@@ -83,7 +84,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
       if (!prompt) {
         throw new Error("No Meeting Agenda Gen prompt is configured. Set one in Settings → AI Integration.");
       }
-      const { transcripts, projectBoard, summary: sum } = await assembleGenInputs(agenda, items, orgSlug);
+      const { transcripts, projectBoard, orgAgendas, summary: sum } = await assembleGenInputs(agenda, items, orgSlug);
       setSummary(sum);
 
       const result = await generateAgenda({
@@ -97,6 +98,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
         },
         transcripts,
         projectBoard,
+        orgAgendas,
         extraContext: extraContext.trim() || undefined,
       });
       setProposal(result);

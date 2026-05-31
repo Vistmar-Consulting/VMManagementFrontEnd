@@ -12,8 +12,11 @@ import {
   doc,
   getDoc,
   getDocs,
+  orderBy,
+  query,
   serverTimestamp,
   updateDoc,
+  where,
   writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "../firebase.js";
@@ -131,12 +134,51 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null) {
     project: it.parentId ? nameById.get(it.parentId) || null : null,
   }));
 
+  // Org-wide agenda awareness: the CURRENT content of this client's OTHER
+  // meeting agendas (what's planned across the org's meetings, regardless of
+  // stage / whether they've been AI-generated). Complements transcripts (what
+  // was said) + the board (task state) so the whole org view stays coherent.
+  // Org lives on calendar_series → resolve seriesIds → their agenda docs.
+  let orgAgendas = [];
+  if (targetOrg) {
+    const seriesSnap = await getDocs(
+      query(collection(db, "calendar_series"), where("organizationId", "==", targetOrg)),
+    );
+    const seriesIds = seriesSnap.docs.map((d) => d.id);
+    const currentSeriesId = agenda?.calendarSeriesId || null;
+    const agendaDocs = [];
+    for (let i = 0; i < seriesIds.length; i += 10) {
+      const chunk = seriesIds.slice(i, i + 10);
+      if (!chunk.length) continue;
+      const aSnap = await getDocs(
+        query(collection(db, "agendas"), where("calendarSeriesId", "in", chunk)),
+      );
+      aSnap.docs.forEach((d) => agendaDocs.push({ id: d.id, ...d.data() }));
+    }
+    const others = agendaDocs.filter((a) => a.calendarSeriesId !== currentSeriesId).slice(0, 15);
+    orgAgendas = await Promise.all(
+      others.map(async (a) => {
+        const tSnap = await getDocs(
+          query(collection(db, "agendas", a.id, "topics"), orderBy("sortOrder", "asc")),
+        );
+        return {
+          title: a.title || "",
+          preBriefHtml: a.preBriefHtml || "",
+          openFloorHtml: a.openFloorHtml || "",
+          topics: tSnap.docs.map((d) => ({ name: d.data().name || "", bodyHtml: d.data().bodyHtml || "" })),
+        };
+      }),
+    );
+  }
+
   return {
     transcripts,
     projectBoard,
+    orgAgendas,
     summary: {
       windowStart,
       usedFallbackWindow: lastOccurrence === 0,
+      orgAgendaCount: orgAgendas.length,
       orgCount: transcripts.filter((t) => t.scope === "this-org").length,
       internalCount: transcripts.filter((t) => t.scope === "vistamar-internal").length,
       projectCount: projectBoard.length,
@@ -161,7 +203,7 @@ export async function setAgendaStyle(agendaId, meetingStyle, uid = null) {
 
 // POST the assembled inputs to the Vercel function. Returns the proposal
 // { preBriefHtml, topics:[{name,bodyHtml}], openFloorHtml }.
-export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, extraContext }) {
+export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
@@ -169,7 +211,7 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
   const res = await fetch("/api/ai/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, extraContext }),
+    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
