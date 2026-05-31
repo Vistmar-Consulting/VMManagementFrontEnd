@@ -18,12 +18,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
 import {
   Box,
+  Button,
   Chip,
   CircularProgress,
   Divider,
   IconButton,
   Menu,
   MenuItem,
+  Stack,
   TextField,
   Tooltip,
   Typography,
@@ -31,6 +33,7 @@ import {
 import {
   ArrowBack,
   ArrowDropDown,
+  AutoAwesome as AutoAwesomeIcon,
   Check,
   ExpandMore,
   History as HistoryIcon,
@@ -42,6 +45,7 @@ import {
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
 import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
+import AIGenDialog from "../components/AIGenDialog.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
 import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
@@ -1415,6 +1419,7 @@ function AgendaTopicCard({
 export default function AgendaDetail() {
   const { agendaId } = useParams();
   const navigate = useNavigate();
+  const { user, isAdmin } = useAuth();
   const [viewMode, setViewMode] = useState("overview");
   // Working-view filters. Set from Meeting Focus / Attendees clicks; will
   // drive topic-card auto-expand + Mini Project Board row filtering once
@@ -1424,6 +1429,7 @@ export default function AgendaDetail() {
   const [attendeeFilter, setAttendeeFilter] = useState(null);
   const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [aiGenOpen, setAiGenOpen] = useState(false);
 
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
     agendaId ? `agendas/${agendaId}` : null
@@ -1607,16 +1613,28 @@ export default function AgendaDetail() {
             <ArrowBack fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Version history">
-          <IconButton
-            onClick={() => setHistoryOpen(true)}
-            size="small"
-            sx={{ color: t.ink3 }}
-            aria-label="Version history"
-          >
-            <HistoryIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          {isAdmin && (
+            <Button
+              onClick={() => setAiGenOpen(true)}
+              size="small"
+              startIcon={<AutoAwesomeIcon fontSize="small" />}
+              sx={{ color: t.ink3, textTransform: "none" }}
+            >
+              AI Gen
+            </Button>
+          )}
+          <Tooltip title="Version history">
+            <IconButton
+              onClick={() => setHistoryOpen(true)}
+              size="small"
+              sx={{ color: t.ink3 }}
+              aria-label="Version history"
+            >
+              <HistoryIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
       </Box>
 
       <AgendaHero
@@ -1778,6 +1796,15 @@ export default function AgendaDetail() {
 
       {historyOpen && (
         <AgendaHistoryDialog agendaId={agendaId} onClose={() => setHistoryOpen(false)} />
+      )}
+      {aiGenOpen && (
+        <AIGenDialog
+          agendaId={agendaId}
+          agenda={agenda}
+          topics={topics}
+          orgSlug={organizationId}
+          onClose={() => setAiGenOpen(false)}
+        />
       )}
     </Box>
   );

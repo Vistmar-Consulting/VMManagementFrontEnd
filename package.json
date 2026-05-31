@@ -20,6 +20,7 @@
     "not dead"
   ],
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
     "@azure/identity": "^4.13.1",
     "@azure/keyvault-secrets": "^4.11.2",
     "@emotion/react": "11.11.4",
