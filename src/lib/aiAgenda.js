@@ -8,13 +8,11 @@
 // assembleTranscripts → generateAgenda → (review) → applyProposal. Apply is
 // reversible via the pre-ai-gen version snapshot (Slice 2).
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
   getDocs,
   serverTimestamp,
-  updateDoc,
   writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "../firebase.js";
@@ -81,30 +79,31 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
   return data.proposal;
 }
 
-// Apply a reviewed proposal: overwrite the agenda's Pre-Brief + Open Floor,
-// then replace the topic set (proposal topics have no ids → delete current,
-// create fresh; categoryIds/tagIds empty in 3a, Slice 3b adds them). The
-// caller snapshots "pre-ai-gen" first, so this is reversible.
+// Apply a reviewed proposal: overwrite the agenda's Pre-Brief + Open Floor and
+// replace the topic set (proposal topics have no ids → delete current, create
+// fresh; categoryIds/tagIds empty in 3a, Slice 3b adds them). Done as a single
+// writeBatch so apply is atomic — a mid-apply failure can't leave the agenda
+// with new content but missing/partial topics. The caller snapshots
+// "pre-ai-gen" first, so a successful apply is also reversible.
+// (Topic counts are far below Firestore's 500-op batch limit.)
 export async function applyProposal(agendaId, proposal, uid = null) {
-  await updateDoc(doc(db, "agendas", agendaId), {
+  const cur = await getDocs(collection(db, "agendas", agendaId, "topics"));
+  const batch = writeBatch(db);
+
+  batch.update(doc(db, "agendas", agendaId), {
     preBriefHtml: sanitizeHtml(proposal.preBriefHtml || ""),
     openFloorHtml: sanitizeHtml(proposal.openFloorHtml || ""),
     updatedAt: serverTimestamp(),
     updatedByUid: uid,
   });
 
-  const cur = await getDocs(collection(db, "agendas", agendaId, "topics"));
-  if (!cur.empty) {
-    const batch = writeBatch(db);
-    cur.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-  }
+  cur.docs.forEach((d) => batch.delete(d.ref));
 
-  const topics = proposal.topics || [];
-  for (let i = 0; i < topics.length; i++) {
-    await addDoc(collection(db, "agendas", agendaId, "topics"), {
-      name: String(topics[i].name || ""),
-      bodyHtml: sanitizeHtml(topics[i].bodyHtml || ""),
+  (proposal.topics || []).forEach((t, i) => {
+    const ref = doc(collection(db, "agendas", agendaId, "topics"));
+    batch.set(ref, {
+      name: String(t.name || ""),
+      bodyHtml: sanitizeHtml(t.bodyHtml || ""),
       sortOrder: i + 1,
       categoryIds: [],
       tagIds: [],
@@ -113,5 +112,7 @@ export async function applyProposal(agendaId, proposal, uid = null) {
       updatedAt: serverTimestamp(),
       updatedByUid: uid,
     });
-  }
+  });
+
+  await batch.commit();
 }
