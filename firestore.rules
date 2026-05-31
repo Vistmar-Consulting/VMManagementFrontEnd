@@ -195,6 +195,12 @@ service cloud.firestore {
       match /openFloor/{itemId} {
         allow read, create, update, delete: if isActiveUser();
       }
+
+      // Version history snapshots of the agenda's content. Save/restore is an
+      // active-user action (matches the open-to-active-user agenda editing).
+      match /versions/{versionId} {
+        allow read, create, update, delete: if isActiveUser();
+      }
     }
   }
 }

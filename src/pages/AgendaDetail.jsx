@@ -33,6 +33,7 @@ import {
   ArrowDropDown,
   Check,
   ExpandMore,
+  History as HistoryIcon,
   MoreVert,
   PersonAdd,
   Schedule as ScheduleIcon,
@@ -40,6 +41,7 @@ import {
 
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
+import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
 import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
@@ -1421,6 +1423,7 @@ export default function AgendaDetail() {
   const [meetingFocusFilter, setMeetingFocusFilter] = useState(null);
   const [attendeeFilter, setAttendeeFilter] = useState(null);
   const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
     agendaId ? `agendas/${agendaId}` : null
@@ -1592,7 +1595,7 @@ export default function AgendaDetail() {
 
   return (
     <Box sx={{ maxWidth: 1280, mx: "auto", pb: 8 }}>
-      <Box sx={{ pt: 2, px: 4 }}>
+      <Box sx={{ pt: 2, px: 4, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Tooltip title="Back to Calendar">
           <IconButton
             component={RouterLink}
@@ -1602,6 +1605,16 @@ export default function AgendaDetail() {
             aria-label="Back to Calendar"
           >
             <ArrowBack fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Version history">
+          <IconButton
+            onClick={() => setHistoryOpen(true)}
+            size="small"
+            sx={{ color: t.ink3 }}
+            aria-label="Version history"
+          >
+            <HistoryIcon fontSize="small" />
           </IconButton>
         </Tooltip>
       </Box>
@@ -1761,6 +1774,10 @@ export default function AgendaDetail() {
           users={users}
           onClose={() => setManageGuestsOpen(false)}
         />
+      )}
+
+      {historyOpen && (
+        <AgendaHistoryDialog agendaId={agendaId} onClose={() => setHistoryOpen(false)} />
       )}
     </Box>
   );
