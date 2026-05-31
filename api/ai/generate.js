@@ -20,6 +20,11 @@ import { requireAuth } from "../meetings/_lib/auth.js";
 // admin-triggered low volume). Bump to Opus per-org later if needed.
 const MODEL = "claude-sonnet-4-6";
 
+// Generation reconciles a lot of input (transcripts + project board + other
+// agendas + categorization). Give the function generous headroom so a long
+// run isn't killed by the platform default. (Vercel reads per-function config.)
+export const config = { maxDuration: 300 };
+
 // Structured-output schema for the proposed agenda. Strings + a flat array;
 // no recursion / numeric constraints (structured-outputs limitations).
 const AGENDA_SCHEMA = {
@@ -179,7 +184,10 @@ export default async function handler(req, res) {
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       system: buildSystem(prompt, style, categories, tagVocab),
-      output_config: { format: { type: "json_schema", schema: AGENDA_SCHEMA } },
+      // medium effort — agenda gen is reconciliation + formatting, not hard
+      // reasoning; medium roughly halves thinking time vs the default high,
+      // keeping the call well under timeout without a quality hit.
+      output_config: { effort: "medium", format: { type: "json_schema", schema: AGENDA_SCHEMA } },
       messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext) }],
     });
 

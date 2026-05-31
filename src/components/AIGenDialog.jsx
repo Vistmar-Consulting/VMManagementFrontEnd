@@ -102,7 +102,10 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
         transcripts,
         projectBoard,
         orgAgendas,
-        categories,
+        // Send category name + description for assignment (not the full SOP
+        // bodies — feeding all 10 SOPs pushed generation past the timeout for
+        // no categorization gain). Full SOPs are reserved for Slice 5.
+        categories: (categories || []).map((c) => ({ slug: c.slug, name: c.name, description: c.description })),
         tagVocab,
         extraContext: extraContext.trim() || undefined,
       });
