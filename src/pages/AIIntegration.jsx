@@ -6,15 +6,20 @@
 // override; absence of its meetingAgendaGen field = inherits Default.
 import { useEffect, useMemo, useState } from "react";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
   Chip,
+  Divider,
   Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { doc, setDoc, updateDoc, deleteField, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
 import { useDoc } from "../hooks/useDoc.js";
@@ -33,6 +38,47 @@ Meeting style: {{meetingStyle}}  (working | executive)
 For each topic give a title + a few tight bullets (what's on the table now). Propose strategic categories/tags for the topic's mini project board (categories broad + rare; tags specific + frequent). Also propose Project Board task creates (status = AI Gen) and status moves. A human reviews everything; never fabricate; cite sources.`;
 
 const VARIABLES_HINT = "Available variables: {{meetingStyle}} (working | executive). More are added as the engine defines its inputs.";
+
+// Human-readable explanation of what the Meeting Agenda Gen engine actually
+// does — the parts that live in the code (inputs, window, guardrails), NOT in
+// the editable prompt below. Keep this in sync with src/lib/aiAgenda.js
+// (assembleGenInputs) + api/ai/generate.js (buildSystem). Organized by
+// component so it's easy to refine: ask Claude Code to update a row when the
+// engine changes.
+const HOW_IT_WORKS = [
+  {
+    group: "What it reads",
+    items: [
+      ["Current agenda", "The meeting's existing Pre-Brief, topics, and Open Floor — the starting point it moves forward."],
+      ["Meeting transcripts", "Every Fireflies meeting since this meeting last occurred — this client's meetings plus internal Vistamar meetings (auto-detected by who attended). What was said."],
+      ["Other client agendas", "The current content of the client's other meeting agendas, whatever stage they're in. What's planned across the org."],
+      ["Project Board", "The client's tasks created or updated in the window — with status, on-hold, and brand-new flags. Task state."],
+      ["Your note", "The optional “Additional context” you type when you click Generate (e.g. “these two articles are published”)."],
+    ],
+  },
+  {
+    group: "How it scopes & frames",
+    items: [
+      ["The window", "“Since this meeting last occurred” — anchored to the meeting's most recent past occurrence. Falls back to the last ~21 days if the meeting isn't mapped to Fireflies yet."],
+      ["Meeting style", "Working vs Executive, set per meeting and remembered. Working = granular deliverables + next steps; Executive = higher-level initiatives, decisions, progress. Fills {{meetingStyle}} in the prompt."],
+    ],
+  },
+  {
+    group: "Guardrails (always on)",
+    items: [
+      ["Internal / client boundary", "Internal Vistamar meetings are for the assistant's awareness only — their mechanics and candor are never surfaced into a client-facing agenda. Vistamar always reads as strong and prepared."],
+      ["Org coherence", "It won't duplicate or contradict what's already on the client's other agendas, and it surfaces cross-meeting dependencies."],
+      ["Concise output", "A short, tight agenda — never a multi-page document."],
+    ],
+  },
+  {
+    group: "Safe to run",
+    items: [
+      ["Review before apply", "Nothing changes until you click Apply on the proposal. Applying saves the current agenda to version history first, so it's always revertible."],
+      ["Admin-only", "The AI Gen button appears only for admins."],
+    ],
+  },
+];
 
 export default function AIIntegration() {
   const { user } = useAuth();
@@ -116,6 +162,50 @@ export default function AIIntegration() {
           Author the prompts that drive AI features. The <strong>Default</strong> applies to every org; pick an org to override it.
         </Typography>
       </Box>
+
+      {/* How it works — explains the under-the-hood engine (inputs, window,
+          guardrails) that lives in code, not in the editable prompt below. */}
+      <Accordion defaultExpanded variant="outlined" disableGutters sx={{ "&:before": { display: "none" }, borderRadius: 1 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box>
+            <Typography sx={{ fontWeight: 600 }}>How Meeting Agenda Gen works</Typography>
+            <Typography variant="caption" color="text.secondary">
+              What's built into the system. The editable prompt below sets voice, priorities, and emphasis.
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails sx={{ pt: 0 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Clicking <strong>AI Gen</strong> on a meeting agenda reconciles that meeting with everything happening
+            across the client since it last occurred, then proposes a new agenda for you to review.
+          </Typography>
+          <Stack spacing={2}>
+            {HOW_IT_WORKS.map((section) => (
+              <Box key={section.group}>
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 0.5 }}>
+                  {section.group}
+                </Typography>
+                <Divider sx={{ mb: 1, mt: 0.25 }} />
+                <Stack spacing={1}>
+                  {section.items.map(([label, desc]) => (
+                    <Box key={label} sx={{ display: "flex", gap: 1.5, alignItems: "baseline" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 170, flexShrink: 0 }}>
+                        {label}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {desc}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2, fontStyle: "italic" }}>
+            To change any of the above (inputs, window, guardrails), ask Claude Code — they live in the codebase, not this prompt.
+          </Typography>
+        </AccordionDetails>
+      </Accordion>
 
       {/* Scope pills — Default first + default-selected, then one per org */}
       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }} useFlexGap>
