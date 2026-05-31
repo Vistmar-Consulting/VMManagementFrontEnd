@@ -63,7 +63,9 @@ export default function AIIntegration() {
   const [draft, setDraft] = useState("");
   useEffect(() => { setDraft(sourceText); }, [scope, sourceText]);
 
-  const dirty = editable && draft !== sourceText;
+  // Dirty when edited, OR when the Default doc doesn't exist yet (so the first
+  // Save can persist the seed without requiring a throwaway edit first).
+  const dirty = editable && (draft !== sourceText || (isDefault && defaultMissing));
   const [busy, setBusy] = useState(false);
 
   const stamp = useMemo(() => () => ({ updatedAt: serverTimestamp(), updatedByUid: user?.uid || null }), [user?.uid]);
