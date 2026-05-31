@@ -83,7 +83,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
       if (!prompt) {
         throw new Error("No Meeting Agenda Gen prompt is configured. Set one in Settings → AI Integration.");
       }
-      const { transcripts, projectBoard, summary: sum } = await assembleGenInputs(agenda, items);
+      const { transcripts, projectBoard, summary: sum } = await assembleGenInputs(agenda, items, orgSlug);
       setSummary(sum);
 
       const result = await generateAgenda({

@@ -22,11 +22,18 @@ const SILENT_PROXIES = new Set([
   "seo@vistamarconsulting.com",
 ]);
 
+// Attendees that are bots/proxies, not real participants — excluded before org
+// determination. The Fireflies notetaker (fred@fireflies.ai, or any
+// @fireflies.ai) joins every recorded meeting; counting it as a "real"
+// attendee breaks the all-VM internal-meeting check (Rule 2).
+function isSilentProxy(email) {
+  const e = email.toLowerCase();
+  return SILENT_PROXIES.has(e) || e.endsWith("@fireflies.ai");
+}
+
 export function resolveOrgFromAttendees(attendees) {
   if (!Array.isArray(attendees) || attendees.length === 0) return null;
-  const realAttendees = attendees.filter(
-    (a) => a?.email && !SILENT_PROXIES.has(a.email.toLowerCase())
-  );
+  const realAttendees = attendees.filter((a) => a?.email && !isSilentProxy(a.email));
   if (realAttendees.length === 0) return null;
 
   // Rule 1 — client domain wins.

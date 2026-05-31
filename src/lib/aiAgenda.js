@@ -67,9 +67,11 @@ export async function resolvePrompt(orgSlug) {
 // when this agenda has no mapped past meeting yet. Detail fetches are parallel
 // and partial-failure tolerant (allSettled) — one flaky transcript can't kill
 // the whole run, but the gap is surfaced via summary.failedCount.
-export async function assembleGenInputs(agenda, items = []) {
+export async function assembleGenInputs(agenda, items = [], orgSlug = null) {
   const now = Date.now();
-  const targetOrg = agenda?.organizationId || null;
+  // Org lives on the calendar_series (the agenda doc's organizationId is often
+  // null); the caller passes the resolved slug. Fall back to the agenda field.
+  const targetOrg = orgSlug || agenda?.organizationId || null;
 
   const listData = await firefliesQuery(GQL_MEETING_LIST, { limit: 50, skip: 0 });
   const list = listData?.transcripts || [];
