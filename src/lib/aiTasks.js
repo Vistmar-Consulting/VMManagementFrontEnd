@@ -7,10 +7,9 @@
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
+  runTransaction,
   serverTimestamp,
-  writeBatch,
 } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 import { auth, db } from "../firebase.js";
@@ -36,12 +35,16 @@ export async function suggestTasks({ agenda, transcripts, orgAgendas, existingTa
 }
 
 // Write selected suggested tasks as statusId 8 items into the org's board.
+// Category/tag reference data is read up front (uncontended); the org
+// itemNumber counter + all writes run in a transaction so the counter can't
+// collide with a concurrent item-create (matches TaskBoard's pattern).
+// New AI-Gen tasks seed `order` fresh (sort to the top of the Active group) —
+// intentional for triage visibility; the human re-ranks as they promote them.
 export async function applyTaskSuggestions(orgSlug, tasks, uid = null) {
   if (!orgSlug) throw new Error("Missing org");
-  const [catSnap, tagSnap, orgSnap] = await Promise.all([
+  const [catSnap, tagSnap] = await Promise.all([
     getDocs(collection(db, "categories")),
     getDocs(collection(db, "tags")),
-    getDoc(doc(db, "organizations", orgSlug)),
   ]);
   const catBySlug = new Set(catSnap.docs.map((d) => d.id));
   const catByName = new Map(catSnap.docs.map((d) => [(d.data().name || "").toLowerCase(), d.id]));
@@ -52,62 +55,67 @@ export async function applyTaskSuggestions(orgSlug, tasks, uid = null) {
   };
   const existingTagIds = new Set(tagSnap.docs.map((d) => d.id));
   const existingTagByName = new Map(tagSnap.docs.map((d) => [(d.data().name || d.id).toLowerCase(), d.id]));
-  let tagSort = tagSnap.size;
-  const newTagWrites = [];
-  const resolveTag = (t) => {
-    const name = String(t || "").trim();
-    if (!name) return null;
-    if (existingTagIds.has(name)) return name;
-    const byName = existingTagByName.get(name.toLowerCase());
-    if (byName) return byName;
-    const id = tagSlug(name);
-    if (!id || existingTagIds.has(id)) return id || null;
-    if (!newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name });
-    return id;
-  };
+  const tagSort = tagSnap.size;
+  const orgRef = doc(db, "organizations", orgSlug);
 
-  const batch = writeBatch(db);
-  let num = orgSnap.data()?.nextItemNumber ?? 1;
-  let order = null;
+  let newTagCount = 0;
+  await runTransaction(db, async (tx) => {
+    const orgS = await tx.get(orgRef);
+    let num = orgS.data()?.nextItemNumber ?? 1;
+    let order = null;
+    // Built fresh each tx attempt so a retry doesn't double-create tags.
+    const newTagWrites = [];
+    const resolveTag = (t) => {
+      const name = String(t || "").trim();
+      if (!name) return null;
+      if (existingTagIds.has(name)) return name;
+      const byName = existingTagByName.get(name.toLowerCase());
+      if (byName) return byName;
+      const id = tagSlug(name);
+      if (!id || existingTagIds.has(id)) return id || null;
+      if (!newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name });
+      return id;
+    };
 
-  (tasks || []).forEach((t) => {
-    order = generateKeyBetween(order, null);
-    const ref = doc(collection(db, "items"));
-    batch.set(ref, {
-      organizationId: orgSlug,
-      parentId: null,
-      hasChildren: false,
-      type: "task",
-      title: String(t.title || ""),
-      description: String(t.note || ""),
-      statusId: AI_GEN_STATUS,
-      priorityId: null,
-      categoryId: resolveCat(t.category),
-      tagIds: [...new Set((t.tags || []).map(resolveTag).filter(Boolean))],
-      onHold: false,
-      dueDate: null,
-      completedAt: null,
-      assigneeIds: [],
-      itemNumber: num++,
-      createdBy: uid || null,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      order,
+    (tasks || []).forEach((t) => {
+      order = generateKeyBetween(order, null);
+      const ref = doc(collection(db, "items"));
+      tx.set(ref, {
+        organizationId: orgSlug,
+        parentId: null,
+        hasChildren: false,
+        type: "task",
+        title: String(t.title || ""),
+        description: String(t.note || ""),
+        statusId: AI_GEN_STATUS,
+        priorityId: null,
+        categoryId: resolveCat(t.category),
+        tagIds: [...new Set((t.tags || []).map(resolveTag).filter(Boolean))],
+        onHold: false,
+        dueDate: null,
+        completedAt: null,
+        assigneeIds: [],
+        itemNumber: num++,
+        createdBy: uid || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        order,
+      });
     });
-  });
 
-  newTagWrites.forEach((w, i) => {
-    batch.set(doc(db, "tags", w.id), {
-      name: w.name,
-      color: "#8b5cf6",
-      layer: 3,
-      sortOrder: tagSort + i + 1,
-      createdAt: serverTimestamp(),
-      createdByUid: uid,
+    newTagWrites.forEach((w, i) => {
+      tx.set(doc(db, "tags", w.id), {
+        name: w.name,
+        color: "#8b5cf6",
+        layer: 3,
+        sortOrder: tagSort + i + 1,
+        createdAt: serverTimestamp(),
+        createdByUid: uid,
+      });
     });
-  });
 
-  batch.set(doc(db, "organizations", orgSlug), { nextItemNumber: num }, { merge: true });
-  await batch.commit();
-  return { created: (tasks || []).length, newTags: newTagWrites.length };
+    tx.set(orgRef, { nextItemNumber: num }, { merge: true });
+    newTagCount = newTagWrites.length;
+  });
+  return { created: (tasks || []).length, newTags: newTagCount };
 }

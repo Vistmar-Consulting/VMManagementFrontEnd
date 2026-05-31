@@ -2,7 +2,7 @@
 // the meeting window (reusing assembleGenInputs) + full SOPs + the org's
 // existing board, proposes NEW tasks, and writes the selected ones as
 // statusId 8 ("AI Gen" triage) for the human to promote/discard on the board.
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Alert,
   Box,
@@ -34,11 +34,9 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
   const [tasks, setTasks] = useState([]);
   const [selected, setSelected] = useState(new Set());
 
-  const existingTags = useMemo(() => {
-    // built lazily after assembleGenInputs; for "new" flag in review
-    return new Set();
-  }, []);
-  const [existingTagSet, setExistingTagSet] = useState(existingTags);
+  // Existing tag names (lowercased) — populated after assembleGenInputs; used
+  // to flag coined tags as "· new" in the review.
+  const [existingTagSet, setExistingTagSet] = useState(() => new Set());
 
   const run = async () => {
     setBusy(true);
