@@ -19,3 +19,7 @@ firebase-debug.log
 # Client agenda source files (real client docs — kept out of the repo; used
 # locally as input for agenda population). Includes Word ~$ lock files.
 docs/Existing_Agendas/
+
+# Internal SOP seed content (lives in Firestore, not git)
+src/seed/sops/
+src/seed/*.local.js

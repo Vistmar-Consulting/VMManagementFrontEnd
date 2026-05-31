@@ -4,6 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import SignedInLayout from "./layouts/SignedInLayout.jsx";
 import AgendaDetail from "./pages/AgendaDetail.jsx";
 import AIIntegration from "./pages/AIIntegration.jsx";
+import ClientSops from "./pages/ClientSops.jsx";
 import Calendar from "./pages/Calendar.jsx";
 import ConsoleOrgIds from "./pages/admin/ConsoleOrgIds.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
@@ -66,6 +67,14 @@ export default function AppRoutes() {
           element={(
             <ProtectedRoute requireAdmin>
               <AIIntegration />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/settings/client-sops"
+          element={(
+            <ProtectedRoute requireAdmin>
+              <ClientSops />
             </ProtectedRoute>
           )}
         />

@@ -34,6 +34,7 @@ const TOP_LEVEL = [
 const SETTINGS_CHILDREN = [
   { to: "/organizations", label: "Organizations", requireAdmin: true },
   { to: "/settings/ai-integration", label: "AI Integration", requireAdmin: true },
+  { to: "/settings/client-sops", label: "Client SOPs", requireAdmin: true },
   { to: "/profile", label: "Profile" },
 ];
 
