@@ -46,6 +46,7 @@ import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
 import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
 import AIGenDialog from "../components/AIGenDialog.jsx";
+import SuggestTasksDialog from "../components/SuggestTasksDialog.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
 import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
@@ -1430,6 +1431,7 @@ export default function AgendaDetail() {
   const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [aiGenOpen, setAiGenOpen] = useState(false);
+  const [suggestTasksOpen, setSuggestTasksOpen] = useState(false);
 
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
     agendaId ? `agendas/${agendaId}` : null
@@ -1624,6 +1626,15 @@ export default function AgendaDetail() {
               AI Gen
             </Button>
           )}
+          {isAdmin && (
+            <Button
+              onClick={() => setSuggestTasksOpen(true)}
+              size="small"
+              sx={{ color: t.ink3, textTransform: "none" }}
+            >
+              Suggest tasks
+            </Button>
+          )}
           <Tooltip title="Version history">
             <IconButton
               onClick={() => setHistoryOpen(true)}
@@ -1805,6 +1816,14 @@ export default function AgendaDetail() {
           items={allItems}
           orgSlug={organizationId}
           onClose={() => setAiGenOpen(false)}
+        />
+      )}
+      {suggestTasksOpen && (
+        <SuggestTasksDialog
+          agenda={agenda}
+          items={allItems}
+          orgSlug={organizationId}
+          onClose={() => setSuggestTasksOpen(false)}
         />
       )}
     </Box>

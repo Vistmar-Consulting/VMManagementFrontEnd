@@ -240,7 +240,7 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
 // "pre-ai-gen" first, so a successful apply is also reversible.
 // (Topic counts are far below Firestore's 500-op batch limit.)
 // slugify a coined tag name → a stable lowercase-hyphenated id.
-function tagSlug(name) {
+export function tagSlug(name) {
   return String(name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
