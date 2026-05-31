@@ -124,7 +124,7 @@ export async function assembleGenInputs(agenda, items = []) {
   const cappedItems = recentItems.slice(0, MAX_BOARD_ITEMS);
   const projectBoard = cappedItems.map((it) => ({
     name: it.name || "",
-    status: statusLabel(it.statusId),
+    status: it.onHold ? `${statusLabel(it.statusId)} (on hold)` : statusLabel(it.statusId),
     isNew: toMs(it.createdAt) >= windowStart,
     project: it.parentId ? nameById.get(it.parentId) || null : null,
   }));
@@ -134,6 +134,7 @@ export async function assembleGenInputs(agenda, items = []) {
     projectBoard,
     summary: {
       windowStart,
+      usedFallbackWindow: lastOccurrence === 0,
       orgCount: transcripts.filter((t) => t.scope === "this-org").length,
       internalCount: transcripts.filter((t) => t.scope === "vistamar-internal").length,
       projectCount: projectBoard.length,

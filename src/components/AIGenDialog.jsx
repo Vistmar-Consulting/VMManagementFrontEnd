@@ -34,11 +34,13 @@ import {
 // input set (no silent caps / dropped data).
 function summaryText(s) {
   if (!s) return "";
-  const since = s.windowStart
-    ? new Date(s.windowStart).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-    : "?";
+  const since = s.usedFallbackWindow
+    ? "in the last 21 days"
+    : s.windowStart
+      ? `since ${new Date(s.windowStart).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+      : "recently";
   const meetings = s.orgCount + s.internalCount;
-  const parts = [`Read ${meetings} meeting${meetings === 1 ? "" : "s"} since ${since} — ${s.orgCount} client, ${s.internalCount} Vistamar internal`];
+  const parts = [`Read ${meetings} meeting${meetings === 1 ? "" : "s"} ${since} — ${s.orgCount} client, ${s.internalCount} Vistamar internal`];
   if (s.projectCount) parts.push(`${s.projectCount} Project Board update${s.projectCount === 1 ? "" : "s"} (${s.projectNewCount} new)`);
   const notes = [];
   if (s.failedCount) notes.push(`couldn't load ${s.failedCount} transcript${s.failedCount === 1 ? "" : "s"}`);

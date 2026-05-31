@@ -109,7 +109,7 @@ function buildUserMessage(agenda, transcripts, style, projectBoard, extraContext
     lines.push("");
   }
   if (extraContext && String(extraContext).trim()) {
-    lines.push("## Additional context from the user (treat as authoritative)");
+    lines.push("## Additional context the user provided for this generation");
     lines.push(String(extraContext).trim());
     lines.push("");
   }
