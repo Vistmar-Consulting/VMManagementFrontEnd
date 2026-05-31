@@ -52,6 +52,11 @@ function buildSystem(prompt, style) {
   const filled = String(prompt || "").replaceAll("{{meetingStyle}}", style);
   return `${filled}
 
+## How to use the inputs
+- Reconcile the current agenda with everything that happened since this meeting last occurred: this client's meetings, internal Vistamar meetings, recent Project Board activity, and any additional context the user provided.
+- Internal Vistamar meetings (tagged [Vistamar internal]) are for YOUR situational awareness — never surface internal-only mechanics, staffing, or candor into a client-facing agenda, especially an executive one. Keep Vistamar looking strong and prepared to the client.
+- Use Project Board activity to reflect what is done, in progress, or newly raised — fold it into the relevant topics rather than listing tasks verbatim.
+
 ## Output format
 Return the proposed next agenda as JSON matching the provided schema:
 - preBriefHtml: a SHORT HTML pre-brief framing this meeting (a few tight bullets), or "" if not warranted.
@@ -61,7 +66,12 @@ Return the proposed next agenda as JSON matching the provided schema:
 HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise — never a long document.`;
 }
 
-function buildUserMessage(agenda, transcripts, style) {
+const SCOPE_TAG = {
+  "this-org": "Client",
+  "vistamar-internal": "Vistamar internal",
+};
+
+function buildUserMessage(agenda, transcripts, style, projectBoard, extraContext) {
   const a = agenda || {};
   const lines = [];
   lines.push(`Generate the next ${style} meeting agenda for: ${a.title || "(untitled meeting)"}.`);
@@ -78,14 +88,30 @@ function buildUserMessage(agenda, transcripts, style) {
   if (Array.isArray(transcripts) && transcripts.length > 0) {
     lines.push("## Recent meeting transcripts (what happened since last time)");
     transcripts.forEach((tr) => {
-      lines.push(`### ${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}`);
+      const tag = SCOPE_TAG[tr.scope] || "Client";
+      lines.push(`### [${tag}] ${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}`);
       if (tr.overview) lines.push(`Overview: ${tr.overview}`);
       if (tr.actionItems) lines.push(`Action items: ${tr.actionItems}`);
       lines.push("");
     });
   } else {
     lines.push("## Recent meeting transcripts");
-    lines.push("(none provided — base the next agenda on the current agenda alone.)");
+    lines.push("(none in the window — base the next agenda on the current agenda + the inputs below.)");
+    lines.push("");
+  }
+  if (Array.isArray(projectBoard) && projectBoard.length > 0) {
+    lines.push("## Recent Project Board activity (created or updated since last meeting)");
+    projectBoard.forEach((it) => {
+      const flag = it.isNew ? "NEW" : "updated";
+      const proj = it.project ? ` — ${it.project}` : "";
+      lines.push(`- [${flag}] ${it.name || "(untitled)"} (status: ${it.status || "?"})${proj}`);
+    });
+    lines.push("");
+  }
+  if (extraContext && String(extraContext).trim()) {
+    lines.push("## Additional context from the user (treat as authoritative)");
+    lines.push(String(extraContext).trim());
+    lines.push("");
   }
   return lines.join("\n");
 }
@@ -100,7 +126,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server" });
   }
 
-  const { prompt, meetingStyle, agenda, transcripts } = req.body || {};
+  const { prompt, meetingStyle, agenda, transcripts, projectBoard, extraContext } = req.body || {};
   if (!prompt || !agenda) {
     return res.status(400).json({ error: "Missing required field: prompt and agenda" });
   }
@@ -114,7 +140,7 @@ export default async function handler(req, res) {
       thinking: { type: "adaptive" },
       system: buildSystem(prompt, style),
       output_config: { format: { type: "json_schema", schema: AGENDA_SCHEMA } },
-      messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style) }],
+      messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, extraContext) }],
     });
 
     if (message.stop_reason === "max_tokens") {

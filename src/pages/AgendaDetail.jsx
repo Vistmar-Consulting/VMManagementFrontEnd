@@ -1802,6 +1802,7 @@ export default function AgendaDetail() {
           agendaId={agendaId}
           agenda={agenda}
           topics={topics}
+          items={allItems}
           orgSlug={organizationId}
           onClose={() => setAiGenOpen(false)}
         />
