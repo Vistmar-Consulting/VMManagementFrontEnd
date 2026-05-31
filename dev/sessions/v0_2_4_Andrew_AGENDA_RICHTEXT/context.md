@@ -156,6 +156,14 @@ Move Pre-Brief off freeform `preBriefHtml` → **structured per-topic checklist*
 - **Intelligent first-name attendee pills in Overview:** show attendee FIRST names as clickable pills; clicking highlights every agenda line mentioning that name — lets a user review "what they're on the hook for" before/during a meeting. (Replaces the removed chip strip with something useful.)
 - **External-attendee → org persistence (Andy: "critical design"):** when creating a meeting and adding a non-@vistamarconsulting.com person, save that person to the org. The "add external user" email+name inputs become text-entry + dropdowns that select known persons from the org's saved people — so you don't re-type email+name every meeting. Needs a per-org people store + lookup. Establish before meeting-creation UX gets annoying.
 
+## AI Integration build (the heart-and-soul feature) — slice sequence
+
+Decomposed (Andy-approved 2026-05-30): **1** Settings AI Integration tab + prompt store → **2** agenda version history (snapshot+restore; prereq for safe gen) → **3/4/5** the engine (prompt content, LLM call + working/executive modal + AI Gen button, AI-Gen task create/promote). Spec for slice 1: `docs/superpowers/specs/2026-05-30-ai-integration-settings-tab-design.md`. Design space: `dev/Features/AI Prompt Management/`.
+
+### Slice 1 — Settings → AI Integration tab + prompt store ✅ DONE + prod-verified (2026-05-30)
+Admin-only `/settings/ai-integration` (Sidebar Settings child). Default + per-org pills (single-select, Default first/default-selected). **Meeting Agenda Gen** card: Default editable; org inherits Default (read-only) → **Create override** (editable copy) → **Reset to Default** (`deleteField`). Store: `aiPrompts/default` + `aiPrompts/{orgSlug}` (override only). Seeded `aiPrompts/default` with the starter prompt (796 chars). **One prompt, `{{meetingStyle}}` runtime variable** (working|executive). Firestore rule `aiPrompts/{id}` (read active, write admin) — **Andy deployed it** (creds were expired; I can't deploy rules). Commits `c119d17` + Save-when-missing fix. **Prod-verified the full loop:** Default save persists; org inherit→create-override→reset all flip correctly. NOTE: `aiPrompts/default` now holds the seed; the REAL prompt content is Slice 3 (brainstorm).
+- **Op note:** localhost 5173 verification is currently near-impossible — the other project's `localhost:5180/ga-kpi-preview` aggressively steals the agent-browser tab. **Verify on PROD instead** (different origin, stable). The eval-import Firestore technique only works on localhost dev (prod has hashed bundles) — on prod, verify via UI state (driven by useDoc reads) instead.
+
 ## Files Modified
 
 - `dev/sessions/v0_2_4_Andrew_AGENDA_RICHTEXT/context.md` — created (this file)
