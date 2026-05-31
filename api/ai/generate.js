@@ -35,8 +35,10 @@ const AGENDA_SCHEMA = {
         properties: {
           name: { type: "string" },
           bodyHtml: { type: "string" },
+          categories: { type: "array", items: { type: "string" } },
+          tags: { type: "array", items: { type: "string" } },
         },
-        required: ["name", "bodyHtml"],
+        required: ["name", "bodyHtml", "categories", "tags"],
       },
     },
     openFloorHtml: { type: "string" },
@@ -48,7 +50,32 @@ const AGENDA_SCHEMA = {
 // contract. The stored prompt varies per org + style, so there is no stable
 // reusable prefix — no prompt caching for this one-shot call (per the
 // prompt-caching prefix-match guidance).
-function buildSystem(prompt, style) {
+function buildCategorization(categories, tagVocab) {
+  const cats = Array.isArray(categories) ? categories : [];
+  const tags = Array.isArray(tagVocab) ? tagVocab : [];
+  if (cats.length === 0) return "";
+  const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n");
+  const tagList = tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean).join(", ");
+  const sops = cats
+    .filter((c) => c.sop)
+    .map((c) => `### ${c.name} (${c.slug})\n${c.sop}`)
+    .join("\n\n");
+  return `
+
+## Categorization (REQUIRED for every topic)
+For each topic, also set:
+- categories: 1–3 category SLUGS from this list — the most relevant kinds of work the topic covers. Use the slug exactly.
+${catList}
+- tags: relevant tags from this vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur (e.g. a specific initiative name).
+Tags: ${tagList}
+
+Use the SOPs below to assign categories accurately and to reference the right owner/contact in the agenda content (e.g. who executes website vs. technical work).
+
+## Category SOPs (how each kind of work gets done + who to contact)
+${sops}`;
+}
+
+function buildSystem(prompt, style, categories, tagVocab) {
   const filled = String(prompt || "").replaceAll("{{meetingStyle}}", style);
   return `${filled}
 
@@ -64,7 +91,7 @@ Return the proposed next agenda as JSON matching the provided schema:
 - topics: an array of { name, bodyHtml } — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.
 - openFloorHtml: HTML for any open-floor items, or "".
 
-HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise — never a long document.`;
+HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise — never a long document.${buildCategorization(categories, tagVocab)}`;
 }
 
 const SCOPE_TAG = {
@@ -139,7 +166,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server" });
   }
 
-  const { prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext } = req.body || {};
+  const { prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab } = req.body || {};
   if (!prompt || !agenda) {
     return res.status(400).json({ error: "Missing required field: prompt and agenda" });
   }
@@ -151,7 +178,7 @@ export default async function handler(req, res) {
       model: MODEL,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
-      system: buildSystem(prompt, style),
+      system: buildSystem(prompt, style, categories, tagVocab),
       output_config: { format: { type: "json_schema", schema: AGENDA_SCHEMA } },
       messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext) }],
     });
@@ -178,7 +205,12 @@ export default async function handler(req, res) {
     const proposal = {
       preBriefHtml: String(parsed.preBriefHtml || ""),
       topics: Array.isArray(parsed.topics)
-        ? parsed.topics.map((t) => ({ name: String(t?.name || ""), bodyHtml: String(t?.bodyHtml || "") }))
+        ? parsed.topics.map((t) => ({
+            name: String(t?.name || ""),
+            bodyHtml: String(t?.bodyHtml || ""),
+            categories: Array.isArray(t?.categories) ? t.categories.map((c) => String(c)) : [],
+            tags: Array.isArray(t?.tags) ? t.tags.map((x) => String(x)) : [],
+          }))
         : [],
       openFloorHtml: String(parsed.openFloorHtml || ""),
     };

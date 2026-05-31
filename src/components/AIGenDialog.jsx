@@ -8,6 +8,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -61,6 +62,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
   const [error, setError] = useState(null);
   const [proposal, setProposal] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [existingTags, setExistingTags] = useState(new Set());
 
   const previewHtml = useMemo(
     () => (proposal ? composeAgendaHtml(proposal, proposal.topics || []) : ""),
@@ -84,8 +86,9 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
       if (!prompt) {
         throw new Error("No Meeting Agenda Gen prompt is configured. Set one in Settings → AI Integration.");
       }
-      const { transcripts, projectBoard, orgAgendas, summary: sum } = await assembleGenInputs(agenda, items, orgSlug);
+      const { transcripts, projectBoard, orgAgendas, categories, tagVocab, summary: sum } = await assembleGenInputs(agenda, items, orgSlug);
       setSummary(sum);
+      setExistingTags(new Set((tagVocab || []).map((t) => (t.name || "").toLowerCase())));
 
       const result = await generateAgenda({
         prompt,
@@ -99,6 +102,8 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
         transcripts,
         projectBoard,
         orgAgendas,
+        categories,
+        tagVocab,
         extraContext: extraContext.trim() || undefined,
       });
       setProposal(result);
@@ -152,6 +157,37 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
               }}
               dangerouslySetInnerHTML={{ __html: previewHtml || "<em>Empty proposal</em>" }}
             />
+            {(proposal.topics || []).some((t) => (t.categories?.length || t.tags?.length)) && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Topic categorization <Typography component="span" variant="caption" color="text.secondary">(drives each topic's mini-board; “new” tags get created on Apply)</Typography>
+                </Typography>
+                <Stack spacing={1.25}>
+                  {(proposal.topics || []).map((t, i) => (
+                    <Box key={i}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{t.name}</Typography>
+                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5, mt: 0.5 }} useFlexGap>
+                        {(t.categories || []).map((c) => (
+                          <Chip key={`c-${c}`} label={c} size="small" color="primary" variant="outlined" />
+                        ))}
+                        {(t.tags || []).map((tag) => {
+                          const isNew = !existingTags.has(String(tag).toLowerCase());
+                          return (
+                            <Chip
+                              key={`t-${tag}`}
+                              label={isNew ? `${tag} · new` : tag}
+                              size="small"
+                              color={isNew ? "secondary" : "default"}
+                              variant={isNew ? "filled" : "outlined"}
+                            />
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            )}
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
               Applying replaces the Pre-Brief, topics, and Open Floor. The current agenda was saved to
               version history first — you can restore it from the history dialog.

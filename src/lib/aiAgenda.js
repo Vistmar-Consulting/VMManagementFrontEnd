@@ -171,10 +171,21 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null) {
     );
   }
 
+  // Categories (with SOPs) + tag vocabulary for AI categorization (Slice 3b).
+  const catSnap = await getDocs(query(collection(db, "categories"), orderBy("sortOrder", "asc")));
+  const categories = catSnap.docs.map((d) => {
+    const c = d.data();
+    return { slug: d.id, name: c.name || d.id, description: c.description || "", sop: c.sop || "" };
+  });
+  const tagSnap = await getDocs(query(collection(db, "tags"), orderBy("sortOrder", "asc")));
+  const tagVocab = tagSnap.docs.map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null }));
+
   return {
     transcripts,
     projectBoard,
     orgAgendas,
+    categories,
+    tagVocab,
     summary: {
       windowStart,
       usedFallbackWindow: lastOccurrence === 0,
@@ -203,7 +214,7 @@ export async function setAgendaStyle(agendaId, meetingStyle, uid = null) {
 
 // POST the assembled inputs to the Vercel function. Returns the proposal
 // { preBriefHtml, topics:[{name,bodyHtml}], openFloorHtml }.
-export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext }) {
+export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
@@ -211,7 +222,7 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
   const res = await fetch("/api/ai/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext }),
+    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
@@ -228,8 +239,45 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
 // with new content but missing/partial topics. The caller snapshots
 // "pre-ai-gen" first, so a successful apply is also reversible.
 // (Topic counts are far below Firestore's 500-op batch limit.)
+// slugify a coined tag name → a stable lowercase-hyphenated id.
+function tagSlug(name) {
+  return String(name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 export async function applyProposal(agendaId, proposal, uid = null) {
-  const cur = await getDocs(collection(db, "agendas", agendaId, "topics"));
+  // Resolve categories/tags (Slice 3b): valid category slugs + existing tags,
+  // creating any coined (new) tags as layer-3 client-proprietary.
+  const [catSnap, tagSnap, cur] = await Promise.all([
+    getDocs(collection(db, "categories")),
+    getDocs(collection(db, "tags")),
+    getDocs(collection(db, "agendas", agendaId, "topics")),
+  ]);
+  // category resolution: accept slug (doc id) or lowercased name → slug.
+  const catBySlug = new Set(catSnap.docs.map((d) => d.id));
+  const catByName = new Map(catSnap.docs.map((d) => [(d.data().name || "").toLowerCase(), d.id]));
+  const resolveCat = (c) => {
+    const v = String(c || "").trim();
+    if (catBySlug.has(v)) return v;
+    return catByName.get(v.toLowerCase()) || null;
+  };
+  // tag resolution: existing by id(=name); new tags get created.
+  const existingTagIds = new Set(tagSnap.docs.map((d) => d.id));
+  const existingTagByName = new Map(tagSnap.docs.map((d) => [(d.data().name || d.id).toLowerCase(), d.id]));
+  let tagSort = tagSnap.size;
+  const newTagWrites = []; // {id, name}
+  const resolveTag = (t) => {
+    const name = String(t || "").trim();
+    if (!name) return null;
+    if (existingTagIds.has(name)) return name;
+    const byName = existingTagByName.get(name.toLowerCase());
+    if (byName) return byName;
+    const id = tagSlug(name);
+    if (!id) return null;
+    if (existingTagIds.has(id)) return id;
+    if (!newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name });
+    return id;
+  };
+
   const batch = writeBatch(db);
 
   batch.update(doc(db, "agendas", agendaId), {
@@ -242,17 +290,31 @@ export async function applyProposal(agendaId, proposal, uid = null) {
   cur.docs.forEach((d) => batch.delete(d.ref));
 
   (proposal.topics || []).forEach((t, i) => {
+    const categoryIds = [...new Set((t.categories || []).map(resolveCat).filter(Boolean))];
+    const tagIds = [...new Set((t.tags || []).map(resolveTag).filter(Boolean))];
     const ref = doc(collection(db, "agendas", agendaId, "topics"));
     batch.set(ref, {
       name: String(t.name || ""),
       bodyHtml: sanitizeHtml(t.bodyHtml || ""),
       sortOrder: i + 1,
-      categoryIds: [],
-      tagIds: [],
+      categoryIds,
+      tagIds,
       createdAt: serverTimestamp(),
       createdByUid: uid,
       updatedAt: serverTimestamp(),
       updatedByUid: uid,
+    });
+  });
+
+  // Create any coined tags (layer-3 client-proprietary).
+  newTagWrites.forEach((w, i) => {
+    batch.set(doc(db, "tags", w.id), {
+      name: w.name,
+      color: "#8b5cf6",
+      layer: 3,
+      sortOrder: tagSort + i + 1,
+      createdAt: serverTimestamp(),
+      createdByUid: uid,
     });
   });
 
