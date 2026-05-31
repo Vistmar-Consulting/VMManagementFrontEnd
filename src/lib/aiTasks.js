@@ -7,15 +7,18 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   runTransaction,
   serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 import { auth, db } from "../firebase.js";
 import { tagSlug } from "./aiAgenda.js";
 
 const AI_GEN_STATUS = 8;
+const STATUS_MAP = { Assigned: 1, "In Progress": 2, Review: 4, Done: 5, Pending: 6 };
 
 export async function suggestTasks({ agenda, transcripts, orgAgendas, existingTasks, categories, tagVocab, extraContext }) {
   const user = auth.currentUser;
@@ -31,17 +34,58 @@ export async function suggestTasks({ agenda, transcripts, orgAgendas, existingTa
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   const data = await res.json();
-  return data.tasks || [];
+  return { tasks: data.tasks || [], moves: data.moves || [], notes: data.notes || [] };
 }
 
-// Write selected suggested tasks as statusId 8 items into the org's board.
-// Category/tag reference data is read up front (uncontended); the org
-// itemNumber counter + all writes run in a transaction so the counter can't
-// collide with a concurrent item-create (matches TaskBoard's pattern).
-// New AI-Gen tasks seed `order` fresh (sort to the top of the Active group) —
-// intentional for triage visibility; the human re-ranks as they promote them.
-export async function applyTaskSuggestions(orgSlug, tasks, uid = null) {
+// Apply reviewed task changes (Slice 5a creates + 5b moves/notes):
+//   creates → new statusId-8 items (in a transaction for the org itemNumber
+//     counter; matches TaskBoard's pattern). Fresh `order` → sorts to top
+//     for triage; the human re-ranks as they promote.
+//   moves   → status change on an existing item (+ completedAt when → Done).
+//   notes   → appended to the existing item's description.
+// Moves/notes run in a writeBatch (no counter contention).
+export async function applyTaskChanges(orgSlug, { creates = [], moves = [], notes = [] }, uid = null) {
   if (!orgSlug) throw new Error("Missing org");
+  let createdCount = 0;
+  let newTagCount = 0;
+
+  if (creates.length) {
+    const result = await writeCreates(orgSlug, creates, uid);
+    createdCount = result.created;
+    newTagCount = result.newTags;
+  }
+
+  if (moves.length || notes.length) {
+    const noteSnaps = await Promise.all(notes.map((n) => getDoc(doc(db, "items", n.itemId))));
+    const batch = writeBatch(db);
+    moves.forEach((m) => {
+      const sid = STATUS_MAP[m.toStatus];
+      if (!sid || !m.itemId) return;
+      batch.update(doc(db, "items", m.itemId), {
+        statusId: sid,
+        completedAt: sid === STATUS_MAP.Done ? serverTimestamp() : null,
+        updatedAt: serverTimestamp(),
+        updatedByUid: uid,
+      });
+    });
+    notes.forEach((n, i) => {
+      const snap = noteSnaps[i];
+      if (!snap?.exists() || !n.note) return;
+      const cur = snap.data().description || "";
+      batch.update(doc(db, "items", n.itemId), {
+        description: `${cur ? `${cur}\n` : ""}— ${n.note}`,
+        updatedAt: serverTimestamp(),
+        updatedByUid: uid,
+      });
+    });
+    await batch.commit();
+  }
+
+  return { created: createdCount, moved: moves.length, noted: notes.length, newTags: newTagCount };
+}
+
+// Write new statusId-8 items in a transaction (atomic org itemNumber counter).
+async function writeCreates(orgSlug, tasks, uid) {
   const [catSnap, tagSnap] = await Promise.all([
     getDocs(collection(db, "categories")),
     getDocs(collection(db, "tags")),

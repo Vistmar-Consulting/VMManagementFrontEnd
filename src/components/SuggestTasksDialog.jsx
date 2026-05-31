@@ -1,8 +1,11 @@
-// AI Suggest Tasks dialog (Slice 5a). Admin-triggered from the agenda. Reads
-// the meeting window (reusing assembleGenInputs) + full SOPs + the org's
-// existing board, proposes NEW tasks, and writes the selected ones as
-// statusId 8 ("AI Gen" triage) for the human to promote/discard on the board.
-import { useState } from "react";
+// AI Suggest Tasks dialog (Slice 5a + 5b). Admin-triggered from the agenda.
+// Reads the meeting window (assembleGenInputs) + full SOPs + the org's board,
+// and proposes three reviewable, selectable kinds of change:
+//   • New tasks   → written as statusId 8 ("AI Gen" triage)
+//   • Status moves → status change on an existing task (mutates — opt-in)
+//   • Notes        → appended to an existing task's description
+// Nothing applies unless checked.
+import { useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -14,13 +17,14 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   Stack,
-  TextField,
   Typography,
+  TextField,
 } from "@mui/material";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { assembleGenInputs } from "../lib/aiAgenda.js";
-import { suggestTasks, applyTaskSuggestions } from "../lib/aiTasks.js";
+import { suggestTasks, applyTaskChanges } from "../lib/aiTasks.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 
 const statusName = (id) => STATUS_OPTIONS.find((s) => s.id === id)?.name || "";
@@ -32,11 +36,16 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [tasks, setTasks] = useState([]);
-  const [selected, setSelected] = useState(new Set());
-
-  // Existing tag names (lowercased) — populated after assembleGenInputs; used
-  // to flag coined tags as "· new" in the review.
+  const [moves, setMoves] = useState([]);
+  const [notes, setNotes] = useState([]);
+  const [selTasks, setSelTasks] = useState(new Set());
+  const [selMoves, setSelMoves] = useState(new Set());
+  const [selNotes, setSelNotes] = useState(new Set());
   const [existingTagSet, setExistingTagSet] = useState(() => new Set());
+
+  const itemsById = useMemo(() => new Map((items || []).map((it) => [it.id, it])), [items]);
+  const totalSelected = selTasks.size + selMoves.size + selNotes.size;
+  const totalProposed = tasks.length + moves.length + notes.length;
 
   const run = async () => {
     setBusy(true);
@@ -47,7 +56,7 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
       setExistingTagSet(new Set((tagVocab || []).map((t) => (t.name || "").toLowerCase())));
       const existingTasks = (items || [])
         .filter((it) => it.organizationId === orgSlug)
-        .map((it) => ({ title: it.title || "", status: statusName(it.statusId), category: it.categoryId || "" }));
+        .map((it) => ({ id: it.id, title: it.title || "", status: statusName(it.statusId), category: it.categoryId || "" }));
       const result = await suggestTasks({
         agenda: { title: agenda?.title || "" },
         transcripts,
@@ -57,8 +66,12 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
         tagVocab,
         extraContext: extraContext.trim() || undefined,
       });
-      setTasks(result);
-      setSelected(new Set(result.map((_, i) => i))); // default all checked
+      setTasks(result.tasks);
+      setMoves(result.moves);
+      setNotes(result.notes);
+      setSelTasks(new Set(result.tasks.map((_, i) => i)));
+      setSelMoves(new Set(result.moves.map((_, i) => i)));
+      setSelNotes(new Set(result.notes.map((_, i) => i)));
       setStep("review");
     } catch (err) {
       setError(err.message || "Task suggestion failed");
@@ -68,24 +81,24 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
     }
   };
 
-  const toggle = (i) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
-  };
+  const toggle = (setFn) => (i) => setFn((prev) => {
+    const next = new Set(prev);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    return next;
+  });
 
   const apply = async () => {
     setBusy(true);
     setError(null);
     try {
-      const chosen = tasks.filter((_, i) => selected.has(i));
-      await applyTaskSuggestions(orgSlug, chosen, user?.uid || null);
+      await applyTaskChanges(orgSlug, {
+        creates: tasks.filter((_, i) => selTasks.has(i)),
+        moves: moves.filter((_, i) => selMoves.has(i)),
+        notes: notes.filter((_, i) => selNotes.has(i)),
+      }, user?.uid || null);
       onClose();
     } catch (err) {
-      setError(err.message || "Failed to add tasks");
+      setError(err.message || "Failed to apply changes");
       setBusy(false);
     }
   };
@@ -94,27 +107,26 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
     <Dialog open onClose={busy ? undefined : onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pb: 1 }}>Suggest tasks from this meeting</DialogTitle>
       <DialogContent dividers>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>
-        )}
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
 
         {step === "review" ? (
           <Box>
-            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-              {tasks.length === 0 ? "No new tasks found" : `${selected.size} of ${tasks.length} selected`}
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              {totalProposed === 0 ? "No board changes proposed" : `${totalSelected} of ${totalProposed} selected`}
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-              Selected tasks are added to the board in the <strong>AI Gen</strong> column for you to triage.
-            </Typography>
-            {tasks.length === 0 ? (
+            {totalProposed === 0 && (
               <Typography variant="body2" color="text.secondary">
-                Nothing new surfaced in this meeting's record that isn't already on the board.
+                Nothing in this meeting's record warrants a board change beyond what's already tracked.
               </Typography>
-            ) : (
-              <Stack spacing={1}>
+            )}
+
+            {tasks.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>New tasks → AI Gen</Typography>
+                <Divider sx={{ mb: 0.5 }} />
                 {tasks.map((t, i) => (
-                  <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "flex-start", borderBottom: "1px solid", borderColor: "divider", pb: 1 }}>
-                    <Checkbox size="small" checked={selected.has(i)} onChange={() => toggle(i)} sx={{ mt: -0.5 }} />
+                  <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "flex-start", py: 0.75 }}>
+                    <Checkbox size="small" checked={selTasks.has(i)} onChange={() => toggle(setSelTasks)(i)} sx={{ mt: -0.5 }} />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>{t.title}</Typography>
                       <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5, my: 0.5 }} useFlexGap>
@@ -128,21 +140,59 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
                     </Box>
                   </Box>
                 ))}
-              </Stack>
+              </Box>
+            )}
+
+            {moves.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>Status updates (existing tasks)</Typography>
+                <Divider sx={{ mb: 0.5 }} />
+                {moves.map((m, i) => {
+                  const cur = statusName(itemsById.get(m.itemId)?.statusId) || "?";
+                  return (
+                    <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "flex-start", py: 0.75 }}>
+                      <Checkbox size="small" checked={selMoves.has(i)} onChange={() => toggle(setSelMoves)(i)} sx={{ mt: -0.5 }} />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{m.title}</Typography>
+                        <Typography variant="caption" sx={{ display: "block" }}>
+                          <strong>{cur}</strong> → <strong>{m.toStatus}</strong>
+                        </Typography>
+                        {m.reason && <Typography variant="caption" color="text.secondary">{m.reason}</Typography>}
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+
+            {notes.length > 0 && (
+              <Box>
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>Notes (added to existing tasks)</Typography>
+                <Divider sx={{ mb: 0.5 }} />
+                {notes.map((n, i) => (
+                  <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "flex-start", py: 0.75 }}>
+                    <Checkbox size="small" checked={selNotes.has(i)} onChange={() => toggle(setSelNotes)(i)} sx={{ mt: -0.5 }} />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{n.title}</Typography>
+                      <Typography variant="caption" color="text.secondary">{n.note}</Typography>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
             )}
           </Box>
         ) : step === "working" ? (
           <Stack alignItems="center" spacing={2} sx={{ py: 4 }}>
             <CircularProgress size={28} />
             <Typography variant="body2" color="text.secondary" align="center">
-              Reading the meeting record + SOPs and surfacing new tasks…
+              Reading the meeting record + SOPs and reconciling against the board…
             </Typography>
           </Stack>
         ) : (
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               The assistant scans this meeting's transcripts + agendas (with the Client SOPs) and proposes new
-              Project Board tasks that aren't already tracked. You review + select before anything is added.
+              tasks, status updates on existing tasks, and notes. You review + select before anything is applied.
             </Typography>
             <TextField
               value={extraContext}
@@ -160,8 +210,8 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
       <DialogActions>
         <Button onClick={onClose} disabled={busy}>{step === "review" ? "Discard" : "Cancel"}</Button>
         {step === "review" ? (
-          <Button variant="contained" onClick={apply} disabled={busy || selected.size === 0}>
-            {busy ? "Adding…" : `Add ${selected.size} task${selected.size === 1 ? "" : "s"}`}
+          <Button variant="contained" onClick={apply} disabled={busy || totalSelected === 0}>
+            {busy ? "Applying…" : `Apply ${totalSelected} change${totalSelected === 1 ? "" : "s"}`}
           </Button>
         ) : (
           <Button variant="contained" onClick={run} disabled={busy}>Suggest tasks</Button>

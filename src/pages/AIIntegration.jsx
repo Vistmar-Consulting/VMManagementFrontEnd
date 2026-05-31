@@ -54,7 +54,7 @@ const HOW_IT_WORKS = [
       ["Other client agendas", "The current content of the client's other meeting agendas, whatever stage they're in. What's planned across the org."],
       ["Project Board", "The client's tasks created or updated in the window — with status, on-hold, and brand-new flags. Task state."],
       ["Your note", "The optional “Additional context” you type when you click Generate (e.g. “these two articles are published”)."],
-      ["Client SOPs", "Category descriptions guide how topics are categorized. The full Client SOPs (workflows + who-to-contact) are currently reserved for AI-suggested tasks, not the agenda draft — this keeps generation fast (~1 min vs ~2). Tell Claude Code to feed full SOPs into the agenda draft if you want the deeper context there."],
+      ["Client SOPs", "Category descriptions guide topic categorization (fast, ~1 min). For deeper who-to-contact context in the agenda draft, tick “Include full Client SOPs” in the AI Gen modal (slower, ~2 min). AI-suggested tasks always use the full SOPs."],
     ],
   },
   {

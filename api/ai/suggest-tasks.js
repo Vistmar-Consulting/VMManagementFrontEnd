@@ -32,8 +32,35 @@ const TASKS_SCHEMA = {
         required: ["title", "category", "tags", "note"],
       },
     },
+    moves: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          itemId: { type: "string" },
+          title: { type: "string" },
+          toStatus: { type: "string" },
+          reason: { type: "string" },
+        },
+        required: ["itemId", "title", "toStatus", "reason"],
+      },
+    },
+    notes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          itemId: { type: "string" },
+          title: { type: "string" },
+          note: { type: "string" },
+        },
+        required: ["itemId", "title", "note"],
+      },
+    },
   },
-  required: ["tasks"],
+  required: ["tasks", "moves", "notes"],
 };
 
 function buildSystem(categories, tagVocab) {
@@ -42,12 +69,20 @@ function buildSystem(categories, tagVocab) {
   const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n");
   const tagList = tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean).join(", ");
   const sops = cats.filter((c) => c.sop).map((c) => `### ${c.name} (${c.slug})\n${c.sop}`).join("\n\n");
-  return `You extract NEW, actionable Project Board tasks for a Vistamar Consulting client from a marketing meeting's record. These become tasks a human triages.
+  return `You review a Vistamar Consulting client's marketing-meeting record and propose three kinds of Project Board updates a human will review: NEW tasks, STATUS MOVES on existing tasks, and NOTES on existing tasks. You are given the existing board tasks each with an itemId.
 
-Rules:
-- Propose ONLY tasks that genuinely surfaced in the meeting record (transcripts, current agenda, additional context) and are NOT already on the board (you'll be given the existing task titles — do not duplicate them).
-- Each task: a concrete, action-oriented title; exactly ONE category slug; relevant tags; a one-line note citing the source (meeting/date) and naming the owner/contact (use the SOPs to identify who executes — e.g. Bill = website, Cedric = technical).
-- Be precise, not exhaustive — surface real new work, don't pad. If nothing new surfaced, return an empty tasks array.
+## tasks — NEW tasks
+- Propose ONLY work that genuinely surfaced in the record and is NOT already on the board (don't duplicate existing tasks).
+- Each: concrete action-oriented title; exactly ONE category slug; relevant tags; a one-line note citing the source (meeting/date) + naming the owner/contact (use the SOPs — e.g. Bill = website, Cedric = technical).
+
+## moves — STATUS MOVES on EXISTING tasks
+- When the record clearly indicates an existing task progressed, propose a move. Set itemId (exact, from the existing list), title (copy the existing title), toStatus (one of: Assigned, In Progress, Review, Done, Pending), and a one-line reason citing the source.
+- Examples: transcript says something shipped/aired/published → toStatus "Done"; work actively underway → "In Progress"; awaiting sign-off → "Review"; blocked/waiting → "Pending". Only move when the record is clear — when unsure, omit.
+
+## notes — context on EXISTING tasks
+- When the record adds useful context to an existing task without changing its status, propose a note: itemId, title (copy existing), and the note text (cite the source).
+
+Be precise, not exhaustive. Return empty arrays for any kind with nothing to propose.
 - Use ONLY existing category slugs. Use existing tags where they fit; coin a new lowercase-hyphenated tag only when nothing fits and it'll recur.
 
 ## Categories
@@ -64,8 +99,8 @@ function buildUserMessage(agenda, transcripts, orgAgendas, existingTasks, extraC
   const lines = [];
   lines.push(`Meeting: ${agenda?.title || "(untitled)"}`);
   lines.push("");
-  lines.push("## Existing board tasks (DO NOT duplicate these)");
-  (existingTasks || []).forEach((t) => lines.push(`- ${t.title}${t.status ? ` [${t.status}]` : ""}${t.category ? ` (${t.category})` : ""}`));
+  lines.push("## Existing board tasks (don't duplicate for new tasks; reference itemId for moves/notes)");
+  (existingTasks || []).forEach((t) => lines.push(`- [itemId:${t.id}] ${t.title}${t.status ? ` [${t.status}]` : ""}${t.category ? ` (${t.category})` : ""}`));
   if (!existingTasks || existingTasks.length === 0) lines.push("(none)");
   lines.push("");
   if (Array.isArray(transcripts) && transcripts.length > 0) {
@@ -134,7 +169,22 @@ export default async function handler(req, res) {
           note: String(t?.note || ""),
         })).filter((t) => t.title)
       : [];
-    return res.status(200).json({ tasks });
+    const moves = Array.isArray(parsed.moves)
+      ? parsed.moves.map((m) => ({
+          itemId: String(m?.itemId || ""),
+          title: String(m?.title || ""),
+          toStatus: String(m?.toStatus || ""),
+          reason: String(m?.reason || ""),
+        })).filter((m) => m.itemId && m.toStatus)
+      : [];
+    const notes = Array.isArray(parsed.notes)
+      ? parsed.notes.map((n) => ({
+          itemId: String(n?.itemId || ""),
+          title: String(n?.title || ""),
+          note: String(n?.note || ""),
+        })).filter((n) => n.itemId && n.note)
+      : [];
+    return res.status(200).json({ tasks, moves, notes });
   } catch (err) {
     console.error("ai/suggest-tasks failed", err);
     const status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 500;

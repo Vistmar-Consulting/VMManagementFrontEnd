@@ -8,12 +8,14 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   Stack,
   TextField,
   ToggleButton,
@@ -58,6 +60,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
   const [step, setStep] = useState("choose"); // choose | working | review
   const [meetingStyle, setMeetingStyle] = useState(agenda?.meetingStyle === "executive" ? "executive" : "working");
   const [extraContext, setExtraContext] = useState("");
+  const [includeSops, setIncludeSops] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [proposal, setProposal] = useState(null);
@@ -102,10 +105,12 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
         transcripts,
         projectBoard,
         orgAgendas,
-        // Send category name + description for assignment (not the full SOP
-        // bodies — feeding all 10 SOPs pushed generation past the timeout for
-        // no categorization gain). Full SOPs are reserved for Slice 5.
-        categories: (categories || []).map((c) => ({ slug: c.slug, name: c.name, description: c.description })),
+        // Default: category name + description (fast, ~1 min). The "Include
+        // full SOPs" toggle sends the full SOP bodies for deeper context at
+        // the cost of a slower (~2 min) generation.
+        categories: includeSops
+          ? categories
+          : (categories || []).map((c) => ({ slug: c.slug, name: c.name, description: c.description })),
         tagVocab,
         extraContext: extraContext.trim() || undefined,
       });
@@ -236,6 +241,15 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
               minRows={3}
               fullWidth
               disabled={busy}
+            />
+            <FormControlLabel
+              sx={{ mt: 1, display: "block" }}
+              control={<Checkbox size="small" checked={includeSops} onChange={(e) => setIncludeSops(e.target.checked)} disabled={busy} />}
+              label={
+                <Typography variant="caption" color="text.secondary">
+                  Include full Client SOPs (deeper who-to-contact context — slower, ~2 min vs ~1)
+                </Typography>
+              }
             />
           </Box>
         )}
