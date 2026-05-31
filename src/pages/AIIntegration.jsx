@@ -29,13 +29,13 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 // Starter prompt seeded into aiPrompts/default the first time it's saved, so
 // there's real text to iterate. The true content gets refined in a later slice
 // (see dev/Features/AI Prompt Management/prompts/refresh-agenda.v0.md).
-const SEED_MEETING_AGENDA_GEN = `You generate the next Vistamar Consulting client meeting agenda for an org, reconciling the prior agenda + recent meeting transcripts (incl. internal Vistamar meetings) into a SHORT, concise agenda — never a 5-page document.
+const SEED_MEETING_AGENDA_GEN = `You generate the next Vistamar Consulting client meeting agenda, reconciling the current agenda with what's happened across the client since the meeting last occurred into a SHORT, concise agenda — never a multi-page document.
 
 Meeting style: {{meetingStyle}}  (working | executive)
-- executive: higher-level initiatives, decisions, approvals, progress. NOT day-to-day mechanics.
-- working: granular content/SEO/web deliverables + the next concrete step per item.
+- executive: higher-level initiatives, decisions, approvals, and progress — not day-to-day mechanics.
+- working: granular content/SEO/web deliverables and the next concrete step per item.
 
-For each topic give a title + a few tight bullets (what's on the table now). Propose strategic categories/tags for the topic's mini project board (categories broad + rare; tags specific + frequent). Also propose Project Board task creates (status = AI Gen) and status moves. A human reviews everything; never fabricate; cite sources.`;
+For each topic, give a clear title and a few tight bullets capturing what's on the table now. Lead with what's most decision-ready or time-sensitive, and drop a topic entirely if nothing is live on it. A human reviews every proposal before it's applied — never fabricate or assume facts the inputs don't support.`;
 
 const VARIABLES_HINT = "Available variables: {{meetingStyle}} (working | executive). More are added as the engine defines its inputs.";
 
