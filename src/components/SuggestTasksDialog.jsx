@@ -29,7 +29,7 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 
 const statusName = (id) => STATUS_OPTIONS.find((s) => s.id === id)?.name || "";
 
-export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) {
+export default function SuggestTasksDialog({ agendaId, agenda, items, orgSlug, onClose }) {
   const { user } = useAuth();
   const [step, setStep] = useState("choose"); // choose | working | review
   const [extraContext, setExtraContext] = useState("");
@@ -52,7 +52,7 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
     setError(null);
     setStep("working");
     try {
-      const { transcripts, orgAgendas, categories, tagVocab } = await assembleGenInputs(agenda, items, orgSlug);
+      const { transcripts, orgAgendas, categories, tagVocab } = await assembleGenInputs(agenda, items, orgSlug, { anchorField: "lastSuggestTasksAt" });
       setExistingTagSet(new Set((tagVocab || []).map((t) => (t.name || "").toLowerCase())));
       const existingTasks = (items || [])
         .filter((it) => it.organizationId === orgSlug)
@@ -95,7 +95,7 @@ export default function SuggestTasksDialog({ agenda, items, orgSlug, onClose }) 
         creates: tasks.filter((_, i) => selTasks.has(i)),
         moves: moves.filter((_, i) => selMoves.has(i)),
         notes: notes.filter((_, i) => selNotes.has(i)),
-      }, user?.uid || null);
+      }, user?.uid || null, { agendaId });
       onClose();
     } catch (err) {
       setError(err.message || "Failed to apply changes");

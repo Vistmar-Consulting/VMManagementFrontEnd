@@ -58,7 +58,7 @@ import ScheduleCreateDialog from "../components/ScheduleCreateDialog.jsx";
 import SendInviteDialog from "../components/SendInviteDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
-import { format, parseISO } from "date-fns";
+import { format, formatDistanceToNow, parseISO } from "date-fns";
 import {
   addDoc,
   collection,
@@ -1616,6 +1616,13 @@ export default function AgendaDetail() {
           </IconButton>
         </Tooltip>
         <Stack direction="row" alignItems="center" spacing={0.5}>
+          {isAdmin && agenda?.lastAgendaGenAt?.toDate && (
+            <Tooltip title={`Last AI-generated ${format(agenda.lastAgendaGenAt.toDate(), "MMM d, yyyy · h:mm a")}`}>
+              <Typography variant="caption" sx={{ color: t.ink3, mr: 0.5 }}>
+                gen {formatDistanceToNow(agenda.lastAgendaGenAt.toDate(), { addSuffix: true })}
+              </Typography>
+            </Tooltip>
+          )}
           {isAdmin && (
             <Button
               onClick={() => setAiGenOpen(true)}
@@ -1820,6 +1827,7 @@ export default function AgendaDetail() {
       )}
       {suggestTasksOpen && (
         <SuggestTasksDialog
+          agendaId={agendaId}
           agenda={agenda}
           items={allItems}
           orgSlug={organizationId}

@@ -8,6 +8,7 @@
 // assembleTranscripts → generateAgenda → (review) → applyProposal. Apply is
 // reversible via the pre-ai-gen version snapshot (Slice 2).
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -70,7 +71,7 @@ export async function resolvePrompt(orgSlug) {
 // when this agenda has no mapped past meeting yet. Detail fetches are parallel
 // and partial-failure tolerant (allSettled) — one flaky transcript can't kill
 // the whole run, but the gap is surfaced via summary.failedCount.
-export async function assembleGenInputs(agenda, items = [], orgSlug = null) {
+export async function assembleGenInputs(agenda, items = [], orgSlug = null, { anchorField = "lastAgendaGenAt" } = {}) {
   const now = Date.now();
   // Org lives on the calendar_series (the agenda doc's organizationId is often
   // null); the caller passes the resolved slug. Fall back to the agenda field.
@@ -79,7 +80,12 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null) {
   const listData = await firefliesQuery(GQL_MEETING_LIST, { limit: 50, skip: 0 });
   const list = listData?.transcripts || [];
 
-  // Window start: most recent PAST transcript whose title maps to this agenda.
+  // Window start, in priority order:
+  //  1. The last AI-Gen anchor for this flow ("since I last reconciled") — the
+  //     robust, intuitive default once the agenda has been generated once.
+  //  2. The meeting's most recent PAST Fireflies occurrence (first-gen fallback).
+  //  3. A flat lookback (unmapped agenda).
+  const anchorMs = toMs(agenda?.[anchorField]);
   const titleSet = new Set((agenda?.firefliesTitles || []).map((s) => (s || "").toLowerCase().trim()));
   let lastOccurrence = 0;
   for (const t of list) {
@@ -87,7 +93,10 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null) {
     const d = toMs(t.date);
     if (d > 0 && d < now && d > lastOccurrence) lastOccurrence = d;
   }
-  const windowStart = lastOccurrence > 0 ? lastOccurrence : now - FALLBACK_WINDOW_MS;
+  const windowStart = anchorMs > 0
+    ? anchorMs
+    : (lastOccurrence > 0 ? lastOccurrence : now - FALLBACK_WINDOW_MS);
+  const anchoredToGen = anchorMs > 0;
 
   // In-window transcripts classified as this org or internal Vistamar.
   const included = [];
@@ -188,7 +197,8 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null) {
     tagVocab,
     summary: {
       windowStart,
-      usedFallbackWindow: lastOccurrence === 0,
+      anchoredToGen,
+      usedFallbackWindow: !anchoredToGen && lastOccurrence === 0,
       orgAgendaCount: orgAgendas.length,
       orgCount: transcripts.filter((t) => t.scope === "this-org").length,
       internalCount: transcripts.filter((t) => t.scope === "vistamar-internal").length,
@@ -244,7 +254,7 @@ export function tagSlug(name) {
   return String(name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-export async function applyProposal(agendaId, proposal, uid = null) {
+export async function applyProposal(agendaId, proposal, uid = null, { style = null } = {}) {
   // Resolve categories/tags (Slice 3b): valid category slugs + existing tags,
   // creating any coined (new) tags as layer-3 client-proprietary.
   const [catSnap, tagSnap, cur] = await Promise.all([
@@ -285,6 +295,7 @@ export async function applyProposal(agendaId, proposal, uid = null) {
     openFloorHtml: sanitizeHtml(proposal.openFloorHtml || ""),
     updatedAt: serverTimestamp(),
     updatedByUid: uid,
+    lastAgendaGenAt: serverTimestamp(), // window anchor + "last generated" record
   });
 
   cur.docs.forEach((d) => batch.delete(d.ref));
@@ -319,4 +330,18 @@ export async function applyProposal(agendaId, proposal, uid = null) {
   });
 
   await batch.commit();
+
+  // Record the gen event (visible AI-Gen activity history). Best-effort +
+  // outside the atomic batch so it never gates the core apply — and tolerates
+  // the aiGenLog rule not yet being deployed (logs as a warning if so).
+  try {
+    await addDoc(collection(db, "agendas", agendaId, "aiGenLog"), {
+      at: serverTimestamp(),
+      byUid: uid,
+      kind: "agenda",
+      style: style || null,
+    });
+  } catch (e) {
+    console.warn("aiGenLog (agenda) write skipped:", e?.message);
+  }
 }

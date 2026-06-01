@@ -5,12 +5,14 @@
 // the Vercel function; applyTaskSuggestions() writes the selected proposals as
 // statusId 8 ("AI Gen" triage) items into the org's board.
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
   getDocs,
   runTransaction,
   serverTimestamp,
+  updateDoc,
   writeBatch,
 } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
@@ -44,7 +46,7 @@ export async function suggestTasks({ agenda, transcripts, orgAgendas, existingTa
 //   moves   → status change on an existing item (+ completedAt when → Done).
 //   notes   → appended to the existing item's description.
 // Moves/notes run in a writeBatch (no counter contention).
-export async function applyTaskChanges(orgSlug, { creates = [], moves = [], notes = [] }, uid = null) {
+export async function applyTaskChanges(orgSlug, { creates = [], moves = [], notes = [] }, uid = null, { agendaId = null } = {}) {
   if (!orgSlug) throw new Error("Missing org");
   let createdCount = 0;
   let newTagCount = 0;
@@ -79,6 +81,22 @@ export async function applyTaskChanges(orgSlug, { creates = [], moves = [], note
       });
     });
     await batch.commit();
+  }
+
+  // Record on the triggering agenda: window anchor + visible gen history.
+  if (agendaId) {
+    await updateDoc(doc(db, "agendas", agendaId), { lastSuggestTasksAt: serverTimestamp() });
+    // Best-effort log (tolerates aiGenLog rule not yet deployed).
+    try {
+      await addDoc(collection(db, "agendas", agendaId, "aiGenLog"), {
+        at: serverTimestamp(),
+        byUid: uid,
+        kind: "tasks",
+        counts: { created: createdCount, moved: moves.length, noted: notes.length },
+      });
+    } catch (e) {
+      console.warn("aiGenLog (tasks) write skipped:", e?.message);
+    }
   }
 
   return { created: createdCount, moved: moves.length, noted: notes.length, newTags: newTagCount };

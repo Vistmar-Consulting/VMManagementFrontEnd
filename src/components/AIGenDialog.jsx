@@ -128,7 +128,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
     setBusy(true);
     setError(null);
     try {
-      await applyProposal(agendaId, proposal, user?.uid || null);
+      await applyProposal(agendaId, proposal, user?.uid || null, { style: meetingStyle });
       onClose();
     } catch (err) {
       setError(err.message || "Failed to apply");

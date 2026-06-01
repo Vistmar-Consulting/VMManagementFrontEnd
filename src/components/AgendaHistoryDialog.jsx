@@ -31,6 +31,19 @@ const SOURCE_LABEL = {
   "pre-restore": "Before restore",
 };
 
+function genSummary(g) {
+  if (g.kind === "agenda") return `Agenda generated${g.style ? ` · ${g.style}` : ""}`;
+  if (g.kind === "tasks") {
+    const c = g.counts || {};
+    const parts = [];
+    if (c.created) parts.push(`${c.created} new`);
+    if (c.moved) parts.push(`${c.moved} move${c.moved === 1 ? "" : "s"}`);
+    if (c.noted) parts.push(`${c.noted} note${c.noted === 1 ? "" : "s"}`);
+    return `Tasks suggested${parts.length ? ` · ${parts.join(", ")}` : ""}`;
+  }
+  return g.kind || "AI Gen";
+}
+
 function fmt(ts) {
   try {
     const d = ts?.toDate ? ts.toDate() : null;
@@ -44,6 +57,8 @@ export default function AgendaHistoryDialog({ agendaId, onClose }) {
   const { user } = useAuth();
   const constraints = useMemo(() => [orderBy("createdAt", "desc")], []);
   const { data: versions } = useCollection(agendaId ? `agendas/${agendaId}/versions` : null, constraints);
+  const genConstraints = useMemo(() => [orderBy("at", "desc")], []);
+  const { data: genLog } = useCollection(agendaId ? `agendas/${agendaId}/aiGenLog` : null, genConstraints);
 
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
@@ -100,6 +115,20 @@ export default function AgendaHistoryDialog({ agendaId, onClose }) {
           </Box>
         ) : (
           <>
+            {genLog && genLog.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>AI Gen activity</Typography>
+                <Divider sx={{ mb: 0.5 }} />
+                <Stack spacing={0.25} sx={{ maxHeight: 140, overflow: "auto" }}>
+                  {genLog.map((g) => (
+                    <Stack key={g.id} direction="row" spacing={1} alignItems="baseline">
+                      <Typography variant="caption" sx={{ minWidth: 150, flexShrink: 0, color: "text.secondary" }}>{fmt(g.at)}</Typography>
+                      <Typography variant="caption">{genSummary(g)}</Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
+            )}
             <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
               <TextField
                 value={label}

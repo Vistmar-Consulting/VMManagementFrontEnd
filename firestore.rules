@@ -201,6 +201,13 @@ service cloud.firestore {
       match /versions/{versionId} {
         allow read, create, update, delete: if isActiveUser();
       }
+
+      // AI Gen activity log — append-only record of when the agenda was
+      // AI-generated / had tasks suggested (drives the window anchor + the
+      // visible "AI Gen activity" history).
+      match /aiGenLog/{logId} {
+        allow read, create: if isActiveUser();
+      }
     }
   }
 }
