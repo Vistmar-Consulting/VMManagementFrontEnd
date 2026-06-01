@@ -8,12 +8,13 @@ Source of truth: `docs/superpowers/specs/2026-05-12-vmmanagement-spinout-design.
 
 ## Deployment & Environment
 
-- **Dev server:** `npm run dev` → `http://localhost:5173`
+- **Primary test surface:** the deployed **Vercel site**. Design and QA happen directly against Vercel (FE) with the live `/api/*` serverless functions and Firestore — not against a local dev server.
+- **Dev server:** `npm run dev` → `http://localhost:5173` (available for quick local checks; proxies `/api/*` to the deployed backend).
 - **Build:** `npm run build` → `/dist`
 - **Hosting:** Vercel (FE) + Firebase project `management-db9eb` (Auth, Firestore, Functions, Storage)
 - **Auth:** Google SSO restricted to `@vistamarconsulting.com`
 
-**Do not kill running dev servers.** Never `kill`, `lsof -t | xargs kill`, or force-stop. Inform the developer.
+**Dev server is Claude-managed.** Claude may freely start, restart, force-rebuild (`npm run dev -- --force`), or kill the local dev server as needed — e.g. to clear a corrupt Vite `.vite/deps` optimized-dependency cache (symptom: app renders blank at every route with CJS-interop errors like `… does not provide an export named 'default'`). No need to ask first. Since the dev server isn't the primary test surface, killing it has no shared-state cost.
 
 ## Tech Stack
 
