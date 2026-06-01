@@ -396,7 +396,9 @@ export default function TaskBoardRow({
         )}
 
         {/* Tags (multi-select). Linear-style: stack of colored-dot + name
-            rows, one per tag. Empty state shows "—". */}
+            rows, one per tag. Empty state shows "—".
+            Hidden in compact (Mini Project Board) mode. */}
+        {!compact && (
         <TableCell>
           {(() => {
             const tagIds = item.tagIds || [];
@@ -492,6 +494,7 @@ export default function TaskBoardRow({
             );
           })()}
         </TableCell>
+        )}
 
         {/* Due Date — calendar icon hidden; the date text itself opens the picker */}
         <TableCell>
@@ -530,17 +533,20 @@ export default function TaskBoardRow({
           )}
         </TableCell>
 
-        {/* Updated */}
+        {/* Updated + Created — hidden in compact (Mini Project Board) mode. */}
+        {!compact && (
         <TableCell>
           <Typography variant="caption">{lastUpdated}</Typography>
         </TableCell>
+        )}
 
-        {/* Created */}
+        {!compact && (
         <TableCell>
           <Typography variant="caption">
             {createdAt ? createdAt.toLocaleDateString() : ""}
           </Typography>
         </TableCell>
+        )}
 
         {/* Comments — hidden in compact (Mini Project Board) mode. */}
         {!compact && (
@@ -580,7 +586,8 @@ export default function TaskBoardRow({
         </TableCell>
         )}
 
-        {/* Files — URL links only in V1 (actual uploads land with Blaze). */}
+        {/* Files — URL links only in V1. Hidden in compact (Mini Project Board) mode. */}
+        {!compact && (
         <TableCell sx={{ overflow: "hidden", textAlign: "center", p: 0.5 }}>
           {fileCount > 0 ? (
             <Tooltip title={`${fileCount} file link${fileCount > 1 ? "s" : ""}`} enterDelay={500} placement="top">
@@ -615,6 +622,7 @@ export default function TaskBoardRow({
             </Tooltip>
           )}
         </TableCell>
+        )}
 
         {/* Action menu */}
         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
@@ -669,7 +677,7 @@ export default function TaskBoardRow({
       {/* + Add subitem row */}
       {!isSubitem && expanded && canUpdate && (
         <TableRow>
-          <TableCell colSpan={compact ? 12 : 14} sx={{ borderBottom: "none", py: 0.5, pl: 7 }}>
+          <TableCell colSpan={compact ? 8 : 14} sx={{ borderBottom: "none", py: 0.5, pl: 7 }}>
             <Typography
               variant="caption"
               onClick={() => onAddSubitem?.(item)}
