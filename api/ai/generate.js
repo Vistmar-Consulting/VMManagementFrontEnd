@@ -80,15 +80,23 @@ Use the SOPs below to assign categories accurately and to reference the right ow
 ${sops}`;
 }
 
-function buildSystem(prompt, style, categories, tagVocab) {
+function buildSystem(prompt, style, categories, tagVocab, internal = false) {
   const filled = String(prompt || "").replaceAll("{{meetingStyle}}", style);
-  return `${filled}
-
-## How to use the inputs
+  const howToUse = internal
+    ? `## How to use the inputs
+- This is a VISTAMAR INTERNAL meeting agenda — NOT client-facing. Reconcile the current agenda with everything that happened since this meeting last occurred: Vistamar internal meetings, recent Vistamar Project Board activity, Vistamar's OTHER internal agendas, and any additional context the user provided.
+- SCOPE — Vistamar internal work is ONLY: (1) platform/product development of Vistamar's own apps and internal tooling, and (2) business development — promoting Vistamar's company & services AND outreach to PROSPECTIVE clients for new-business acquisition. Keep this agenda to that scope.
+- Work that delivers services to an EXISTING client org (Unio, Bryn Mawr, Golden Vision, ID Care) does NOT belong on this internal agenda — it lives on that client's agenda/board. Outreach to a PROSPECTIVE (not-yet) client IS Vistamar business development and DOES belong here.
+- Use Vistamar's other internal agendas for coherence: don't duplicate or contradict what's already planned elsewhere; surface cross-meeting dependencies.
+- Use Project Board activity to reflect what is done, in progress, or newly raised — fold it into the relevant topics rather than listing tasks verbatim.`
+    : `## How to use the inputs
 - Reconcile the current agenda with everything that happened since this meeting last occurred: this client's meetings, internal Vistamar meetings, recent Project Board activity, this client's OTHER meeting agendas, and any additional context the user provided.
 - The org operates holistically — be aware of everything happening across this client. Use the client's other agendas so this agenda stays coherent with them: don't duplicate or contradict what's already on another meeting's agenda, surface cross-meeting dependencies, and keep one consistent picture of the client's work.
 - Internal Vistamar meetings (tagged [Vistamar internal]) are for YOUR situational awareness — never surface internal-only mechanics, staffing, or candor into a client-facing agenda, especially an executive one. Keep Vistamar looking strong and prepared to the client.
-- Use Project Board activity to reflect what is done, in progress, or newly raised — fold it into the relevant topics rather than listing tasks verbatim.
+- Use Project Board activity to reflect what is done, in progress, or newly raised — fold it into the relevant topics rather than listing tasks verbatim.`;
+  return `${filled}
+
+${howToUse}
 
 ## Output format
 Return the proposed next agenda as JSON matching the provided schema:
@@ -171,7 +179,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server" });
   }
 
-  const { prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab } = req.body || {};
+  const { prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal } = req.body || {};
   if (!prompt || !agenda) {
     return res.status(400).json({ error: "Missing required field: prompt and agenda" });
   }
@@ -183,7 +191,7 @@ export default async function handler(req, res) {
       model: MODEL,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
-      system: buildSystem(prompt, style, categories, tagVocab),
+      system: buildSystem(prompt, style, categories, tagVocab, !!internal),
       // medium effort — agenda gen is reconciliation + formatting, not hard
       // reasoning; medium roughly halves thinking time vs the default high,
       // keeping the call well under timeout without a quality hit.

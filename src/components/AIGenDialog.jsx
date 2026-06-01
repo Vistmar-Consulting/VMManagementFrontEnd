@@ -91,7 +91,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
       if (!prompt) {
         throw new Error("No Meeting Agenda Gen prompt is configured. Set one in Settings → AI Integration.");
       }
-      const { transcripts, projectBoard, orgAgendas, categories, tagVocab, summary: sum } = await assembleGenInputs(agenda, items, orgSlug);
+      const { transcripts, projectBoard, orgAgendas, categories, tagVocab, internal, summary: sum } = await assembleGenInputs(agenda, items, orgSlug);
       setSummary(sum);
       setExistingTags(new Set((tagVocab || []).map((t) => (t.name || "").toLowerCase())));
 
@@ -114,6 +114,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
           ? categories
           : (categories || []).map((c) => ({ slug: c.slug, name: c.name, description: c.description })),
         tagVocab,
+        internal,
         extraContext: extraContext.trim() || undefined,
       });
       setProposal(result);

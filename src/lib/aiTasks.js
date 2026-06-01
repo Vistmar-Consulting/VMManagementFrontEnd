@@ -22,14 +22,14 @@ import { tagSlug } from "./aiAgenda.js";
 const AI_GEN_STATUS = 8;
 const STATUS_MAP = { Assigned: 1, "In Progress": 2, Review: 4, Done: 5, Pending: 6 };
 
-export async function suggestTasks({ agenda, transcripts, orgAgendas, existingTasks, categories, tagVocab, extraContext }) {
+export async function suggestTasks({ agenda, transcripts, orgAgendas, existingTasks, categories, tagVocab, extraContext, internal }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
   const res = await fetch("/api/ai/suggest-tasks", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({ agenda, transcripts, orgAgendas, existingTasks, categories, tagVocab, extraContext }),
+    body: JSON.stringify({ agenda, transcripts, orgAgendas, existingTasks, categories, tagVocab, extraContext, internal: !!internal }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));

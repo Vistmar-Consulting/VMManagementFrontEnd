@@ -63,13 +63,19 @@ const TASKS_SCHEMA = {
   required: ["tasks", "moves", "notes"],
 };
 
-function buildSystem(categories, tagVocab) {
+function buildSystem(categories, tagVocab, internal = false) {
   const cats = Array.isArray(categories) ? categories : [];
   const tags = Array.isArray(tagVocab) ? tagVocab : [];
   const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n");
   const tagList = tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean).join(", ");
   const sops = cats.filter((c) => c.sop).map((c) => `### ${c.name} (${c.slug})\n${c.sop}`).join("\n\n");
-  return `You review a Vistamar Consulting client's marketing-meeting record and propose three kinds of Project Board updates a human will review: NEW tasks, STATUS MOVES on existing tasks, and NOTES on existing tasks. You are given the existing board tasks each with an itemId.
+  const intro = internal
+    ? `You review a VISTAMAR INTERNAL meeting record and propose three kinds of updates for VISTAMAR'S OWN Project Board that a human will review: NEW tasks, STATUS MOVES on existing tasks, and NOTES on existing tasks. You are given the existing board tasks each with an itemId.
+
+## SCOPE — what belongs on the Vistamar board
+Vistamar's board covers ONLY Vistamar's own work: (1) platform/product development of Vistamar's own apps and internal tooling, and (2) business development — promoting Vistamar's company & services AND outreach to PROSPECTIVE clients for new-business acquisition. Work that delivers services to an EXISTING client org (Unio, Bryn Mawr, Golden Vision, ID Care) does NOT belong here — it lives on that client's board, so do NOT propose it as a Vistamar task. Outreach to a PROSPECTIVE (not-yet) client IS Vistamar business development → include it.`
+    : `You review a Vistamar Consulting client's marketing-meeting record and propose three kinds of Project Board updates a human will review: NEW tasks, STATUS MOVES on existing tasks, and NOTES on existing tasks. You are given the existing board tasks each with an itemId.`;
+  return `${intro}
 
 ## tasks — NEW tasks
 - Propose ONLY work that genuinely surfaced in the record and is NOT already on the board (don't duplicate existing tasks).
@@ -135,7 +141,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server" });
 
-  const { agenda, transcripts, orgAgendas, existingTasks, categories, tagVocab, extraContext } = req.body || {};
+  const { agenda, transcripts, orgAgendas, existingTasks, categories, tagVocab, extraContext, internal } = req.body || {};
 
   try {
     const client = new Anthropic({ apiKey });
@@ -143,7 +149,7 @@ export default async function handler(req, res) {
       model: MODEL,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
-      system: buildSystem(categories, tagVocab),
+      system: buildSystem(categories, tagVocab, !!internal),
       output_config: { effort: "medium", format: { type: "json_schema", schema: TASKS_SCHEMA } },
       messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, orgAgendas, existingTasks, extraContext) }],
     });

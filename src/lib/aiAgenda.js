@@ -212,6 +212,9 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
     orgAgendas,
     categories,
     tagVocab,
+    // Vistamar is the only internal org — drives the AI prompt's internal
+    // framing + scope guardrail (board = platform dev + biz dev only).
+    internal: targetOrg === "vistamar",
     summary: {
       windowStart,
       anchoredToGen,
@@ -241,7 +244,7 @@ export async function setAgendaStyle(agendaId, meetingStyle, uid = null) {
 
 // POST the assembled inputs to the Vercel function. Returns the proposal
 // { preBriefHtml, topics:[{name,bodyHtml}], openFloorHtml }.
-export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab }) {
+export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
@@ -249,7 +252,7 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
   const res = await fetch("/api/ai/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab }),
+    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal: !!internal }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));

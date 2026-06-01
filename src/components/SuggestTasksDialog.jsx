@@ -52,7 +52,7 @@ export default function SuggestTasksDialog({ agendaId, agenda, items, orgSlug, o
     setError(null);
     setStep("working");
     try {
-      const { transcripts, orgAgendas, categories, tagVocab } = await assembleGenInputs(agenda, items, orgSlug, { anchorField: "lastSuggestTasksAt" });
+      const { transcripts, orgAgendas, categories, tagVocab, internal } = await assembleGenInputs(agenda, items, orgSlug, { anchorField: "lastSuggestTasksAt" });
       setExistingTagSet(new Set((tagVocab || []).map((t) => (t.name || "").toLowerCase())));
       const existingTasks = (items || [])
         .filter((it) => it.organizationId === orgSlug)
@@ -64,6 +64,7 @@ export default function SuggestTasksDialog({ agendaId, agenda, items, orgSlug, o
         existingTasks,
         categories, // WITH full SOPs (the point of task suggestion)
         tagVocab,
+        internal,
         extraContext: extraContext.trim() || undefined,
       });
       setTasks(result.tasks);
