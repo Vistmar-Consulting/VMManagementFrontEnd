@@ -48,7 +48,14 @@ const statusLabel = (id) => STATUS_OPTIONS.find((s) => s.id === id)?.name || "?"
 
 // Resolve the Meeting Agenda Gen prompt: an org override if present, else the
 // Default. Returns "" if neither exists (caller surfaces that).
-export async function resolvePrompt(orgSlug) {
+export async function resolvePrompt(orgSlug, { master = false } = {}) {
+  // MASTER (Touch Base): its own dedicated prompt at aiPrompts/master. Falls
+  // back to the default prompt if no master prompt is authored yet.
+  if (master) {
+    const mSnap = await getDoc(doc(db, "aiPrompts", "master"));
+    const mp = mSnap.exists() ? mSnap.data()?.meetingAgendaGen?.prompt : null;
+    if (mp) return mp;
+  }
   if (orgSlug) {
     const oSnap = await getDoc(doc(db, "aiPrompts", orgSlug));
     const p = oSnap.exists() ? oSnap.data()?.meetingAgendaGen?.prompt : null;
@@ -71,11 +78,24 @@ export async function resolvePrompt(orgSlug) {
 // when this agenda has no mapped past meeting yet. Detail fetches are parallel
 // and partial-failure tolerant (allSettled) — one flaky transcript can't kill
 // the whole run, but the gap is surfaced via summary.failedCount.
-export async function assembleGenInputs(agenda, items = [], orgSlug = null, { anchorField = "lastAgendaGenAt" } = {}) {
+export async function assembleGenInputs(agenda, items = [], orgSlug = null, { anchorField = "lastAgendaGenAt", master = false } = {}) {
   const now = Date.now();
   // Org lives on the calendar_series (the agenda doc's organizationId is often
   // null); the caller passes the resolved slug. Fall back to the agenda field.
   const targetOrg = orgSlug || agenda?.organizationId || null;
+
+  // MASTER mode (the Monday Touch Base): instead of one org + Vistamar, the
+  // agenda spans EVERY org. Transcripts/board/agendas are gathered across all
+  // orgs and tagged with their org so the prompt + views can group by org.
+  // Org display/order is loaded once here (clients by sortOrder, Vistamar last).
+  let orgMeta = [];
+  if (master) {
+    const orgsSnap = await getDocs(query(collection(db, "organizations"), orderBy("sortOrder", "asc")));
+    orgMeta = orgsSnap.docs
+      .map((d) => ({ slug: d.id, name: d.data().name || d.id, type: d.data().type || "client", sortOrder: d.data().sortOrder ?? 999 }))
+      .sort((a, b) => (a.type === "internal" ? 1 : 0) - (b.type === "internal" ? 1 : 0) || a.sortOrder - b.sortOrder);
+  }
+  const orgNameOf = (slug) => orgMeta.find((o) => o.slug === slug)?.name || slug;
 
   const listData = await firefliesQuery(GQL_MEETING_LIST, { limit: 50, skip: 0 });
   const list = listData?.transcripts || [];
@@ -115,14 +135,20 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
     : (meetingAnchor || orgAnchor || now - FALLBACK_WINDOW_MS);
   const anchoredToGen = anchorMs > 0;
 
-  // In-window transcripts classified as this org or internal Vistamar.
+  // In-window transcripts. Per-org gen: this org + internal Vistamar.
+  // MASTER: every classified org (the whole week across all clients + Vistamar).
   const included = [];
   for (const t of list) {
     const d = toMs(t.date);
     if (d < windowStart || d > now) continue;
     const cls = resolveOrgFromAttendees(t.meeting_attendees);
-    if (!cls || (cls !== targetOrg && cls !== "vistamar")) continue;
-    included.push({ ...t, _ms: d, scope: cls === targetOrg ? "this-org" : "vistamar-internal" });
+    if (!cls) continue;
+    if (master) {
+      included.push({ ...t, _ms: d, org: cls, scope: cls === "vistamar" ? "vistamar-internal" : "this-org" });
+    } else {
+      if (cls !== targetOrg && cls !== "vistamar") continue;
+      included.push({ ...t, _ms: d, org: cls, scope: cls === targetOrg ? "this-org" : "vistamar-internal" });
+    }
   }
   included.sort((a, b) => b._ms - a._ms);
   const capped = included.slice(0, MAX_TRANSCRIPTS);
@@ -141,23 +167,29 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
       title: capped[i].title || "",
       date: isoDate(capped[i].date),
       scope: capped[i].scope,
+      org: capped[i].org || null,
+      orgName: orgNameOf(capped[i].org),
       overview: s.overview || s.short_overview || "",
       actionItems: s.action_items || "",
     });
   });
 
-  // Project Board activity: this org's items created or updated in the window.
+  // Project Board activity. Per-org gen: this org's items. MASTER: every org's
+  // items (tagged with their org), so the prompt can group deliverables by
+  // client. Higher cap in master to fit all orgs.
   const nameById = new Map((items || []).map((it) => [it.id, it.name]));
   const recentItems = (items || [])
-    .filter((it) => it.organizationId === targetOrg)
+    .filter((it) => (master ? it.organizationId != null : it.organizationId === targetOrg))
     .filter((it) => toMs(it.createdAt) >= windowStart || toMs(it.updatedAt) >= windowStart)
     .sort((a, b) => toMs(b.updatedAt) - toMs(a.updatedAt));
-  const cappedItems = recentItems.slice(0, MAX_BOARD_ITEMS);
+  const cappedItems = recentItems.slice(0, master ? 120 : MAX_BOARD_ITEMS);
   const projectBoard = cappedItems.map((it) => ({
     name: it.name || "",
     status: it.onHold ? `${statusLabel(it.statusId)} (on hold)` : statusLabel(it.statusId),
     isNew: toMs(it.createdAt) >= windowStart,
     project: it.parentId ? nameById.get(it.parentId) || null : null,
+    org: it.organizationId || null,
+    orgName: orgNameOf(it.organizationId),
   }));
 
   // Org-wide agenda awareness: the CURRENT content of this client's OTHER
@@ -166,10 +198,13 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
   // was said) + the board (task state) so the whole org view stays coherent.
   // Org lives on calendar_series → resolve seriesIds → their agenda docs.
   let orgAgendas = [];
-  if (targetOrg) {
-    const seriesSnap = await getDocs(
-      query(collection(db, "calendar_series"), where("organizationId", "==", targetOrg)),
-    );
+  if (master || targetOrg) {
+    // MASTER: every org's series (tag each agenda with its org for grouping).
+    // Per-org: just this org's series.
+    const seriesSnap = master
+      ? await getDocs(collection(db, "calendar_series"))
+      : await getDocs(query(collection(db, "calendar_series"), where("organizationId", "==", targetOrg)));
+    const seriesOrg = new Map(seriesSnap.docs.map((d) => [d.id, d.data().organizationId || null]));
     const seriesIds = seriesSnap.docs.map((d) => d.id);
     const currentSeriesId = agenda?.calendarSeriesId || null;
     const agendaDocs = [];
@@ -181,14 +216,17 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
       );
       aSnap.docs.forEach((d) => agendaDocs.push({ id: d.id, ...d.data() }));
     }
-    const others = agendaDocs.filter((a) => a.calendarSeriesId !== currentSeriesId).slice(0, 15);
+    const others = agendaDocs.filter((a) => a.calendarSeriesId !== currentSeriesId).slice(0, master ? 25 : 15);
     orgAgendas = await Promise.all(
       others.map(async (a) => {
         const tSnap = await getDocs(
           query(collection(db, "agendas", a.id, "topics"), orderBy("sortOrder", "asc")),
         );
+        const ao = seriesOrg.get(a.calendarSeriesId) || a.organizationId || null;
         return {
           title: a.title || "",
+          org: ao,
+          orgName: orgNameOf(ao),
           preBriefHtml: a.preBriefHtml || "",
           openFloorHtml: a.openFloorHtml || "",
           topics: tSnap.docs.map((d) => ({ name: d.data().name || "", bodyHtml: d.data().bodyHtml || "" })),
@@ -215,9 +253,14 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
     // Vistamar is the only internal org — drives the AI prompt's internal
     // framing + scope guardrail (board = platform dev + biz dev only).
     internal: targetOrg === "vistamar",
+    // MASTER: org ordering/names (clients first, Vistamar last) so the prompt
+    // can lay out one section per org. Empty for per-org gen.
+    master: !!master,
+    orgMeta,
     summary: {
       windowStart,
       anchoredToGen,
+      master: !!master,
       usedFallbackWindow: !anchoredToGen && !meetingAnchor && !orgAnchor,
       orgAgendaCount: orgAgendas.length,
       orgCount: transcripts.filter((t) => t.scope === "this-org").length,
@@ -244,7 +287,7 @@ export async function setAgendaStyle(agendaId, meetingStyle, uid = null) {
 
 // POST the assembled inputs to the Vercel function. Returns the proposal
 // { preBriefHtml, topics:[{name,bodyHtml}], openFloorHtml }.
-export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal }) {
+export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal, master, orgMeta }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
@@ -252,7 +295,7 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
   const res = await fetch("/api/ai/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal: !!internal }),
+    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal: !!internal, master: !!master, orgMeta: orgMeta || [] }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
@@ -330,6 +373,9 @@ export async function applyProposal(agendaId, proposal, uid = null, { style = nu
       sortOrder: i + 1,
       categoryIds,
       tagIds,
+      // Master Touch Base: each topic is tagged with the org it belongs to so
+      // the Working/Overview views group + color by org. null for normal agendas.
+      organizationId: t.organizationId || null,
       createdAt: serverTimestamp(),
       createdByUid: uid,
       updatedAt: serverTimestamp(),

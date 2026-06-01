@@ -45,7 +45,7 @@ import {
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
 import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
-import { getContrastText } from "../theme/pillColors.js";
+import { getContrastText, hexToRgba } from "../theme/pillColors.js";
 import AIGenDialog from "../components/AIGenDialog.jsx";
 import SuggestTasksDialog from "../components/SuggestTasksDialog.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
@@ -1418,6 +1418,25 @@ function AgendaTopicCard({
 
 // ─── Main page ─────────────────────────────────────────────────────────
 
+// Master Touch Base: org section band rendered above the first topic of each
+// org, so the cross-org agenda reads client-by-client with the org's color.
+function OrgSectionHeader({ org }) {
+  const accent = org?.accentColor || "#888";
+  return (
+    <Box
+      sx={{
+        mt: 2.5, mb: 1, px: 1.5, py: 0.6, borderRadius: "8px",
+        background: accent, color: getContrastText(accent),
+        display: "flex", alignItems: "center", gap: 1,
+      }}
+    >
+      <Typography sx={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase" }}>
+        {org?.name || "Unassigned"}
+      </Typography>
+    </Box>
+  );
+}
+
 export default function AgendaDetail() {
   const { agendaId } = useParams();
   const navigate = useNavigate();
@@ -1478,6 +1497,10 @@ export default function AgendaDetail() {
   // organizationId for "+ New Item" — read from the calendar_series doc since
   // that's where reconciliation stamps the resolved Management slug.
   const organizationId = calendarSeries?.organizationId || agenda?.organizationId || null;
+  // The Monday Touch Base is the cross-org MASTER agenda — flagged on its
+  // calendar_series. Drives master AI Gen + org-grouped/colored topic rendering.
+  const isMaster = !!(calendarSeries?.masterAgenda || agenda?.masterAgenda);
+  const orgById = useMemo(() => Object.fromEntries((orgs || []).map((o) => [o.id, o])), [orgs]);
 
   // V2.2.2e.2: aggregate matched items across every topic's category/tag
   // filter, deduplicated. Drives the sidebar Meeting Focus + Attendees
@@ -1697,6 +1720,9 @@ export default function AgendaDetail() {
                                   "&:hover .topic-grip": { opacity: 0.55 },
                                 }}
                               >
+                                {isMaster && topic.organizationId !== (topics[idx - 1]?.organizationId) && (
+                                  <OrgSectionHeader org={orgById[topic.organizationId]} />
+                                )}
                                 <OverviewTopic
                                   topic={topic}
                                   agendaId={agendaId}
@@ -1752,8 +1778,15 @@ export default function AgendaDetail() {
                               sx={{
                                 background: snapshot.isDragging ? "rgba(184,115,51,0.04)" : "transparent",
                                 borderRadius: 1.5,
+                                ...(isMaster && topic.organizationId && {
+                                  borderLeft: `4px solid ${orgById[topic.organizationId]?.accentColor || "#888"}`,
+                                  pl: 1,
+                                }),
                               }}
                             >
+                              {isMaster && topic.organizationId !== (topics[idx - 1]?.organizationId) && (
+                                <OrgSectionHeader org={orgById[topic.organizationId]} />
+                              )}
                               <AgendaTopicCard
                                 topic={topic}
                                 agendaId={agendaId}
@@ -1823,6 +1856,7 @@ export default function AgendaDetail() {
           topics={topics}
           items={allItems}
           orgSlug={organizationId}
+          master={isMaster}
           onClose={() => setAiGenOpen(false)}
         />
       )}

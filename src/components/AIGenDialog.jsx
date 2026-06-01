@@ -56,7 +56,7 @@ function summaryText(s) {
   return txt;
 }
 
-export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, onClose }) {
+export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, master = false, onClose }) {
   const { user } = useAuth();
   const [step, setStep] = useState("choose"); // choose | working | review
   const [meetingStyle, setMeetingStyle] = useState(agenda?.meetingStyle === "executive" ? "executive" : "working");
@@ -87,11 +87,11 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
         await setAgendaStyle(agendaId, meetingStyle, user?.uid || null);
       }
 
-      const prompt = await resolvePrompt(orgSlug);
+      const prompt = await resolvePrompt(orgSlug, { master });
       if (!prompt) {
         throw new Error("No Meeting Agenda Gen prompt is configured. Set one in Settings → AI Integration.");
       }
-      const { transcripts, projectBoard, orgAgendas, categories, tagVocab, internal, summary: sum } = await assembleGenInputs(agenda, items, orgSlug);
+      const { transcripts, projectBoard, orgAgendas, categories, tagVocab, internal, orgMeta, summary: sum } = await assembleGenInputs(agenda, items, orgSlug, { master });
       setSummary(sum);
       setExistingTags(new Set((tagVocab || []).map((t) => (t.name || "").toLowerCase())));
 
@@ -115,6 +115,8 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
           : (categories || []).map((c) => ({ slug: c.slug, name: c.name, description: c.description })),
         tagVocab,
         internal,
+        master,
+        orgMeta,
         extraContext: extraContext.trim() || undefined,
       });
       setProposal(result);

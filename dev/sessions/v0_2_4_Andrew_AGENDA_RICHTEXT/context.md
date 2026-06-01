@@ -251,3 +251,56 @@ Admin-only `/settings/ai-integration` (Sidebar Settings child). Default + per-or
 
 - `dev/sessions/v0_2_4_Andrew_AGENDA_RICHTEXT/context.md` — created (this file)
 - `dev/SESSION_INDEX.json` — this entry added `status: active`
+
+---
+
+## Session close — 2026-06-01 (org colors, meeting lifecycle, AI internal scope)
+
+### Shipped + prod-verified today (all on origin/dev → vm-management-front-end.vercel.app)
+NOTE: `dev` push does NOT auto-promote the prod alias — after each deploy run `vercel alias set <new-deploy>.vercel.app vm-management-front-end.vercel.app`.
+1. **Meeting lifecycle** (commit 855eccd) — calendar popover gains **Cancel meeting** (only when bound) + **Retire** (flags `calendar_series.archived`); series-cancel also archives the agenda; actionable legacy note. Custom note-to-attendees was built then **removed** (commit aa6f011) — the Postmark relay returned `sent:1` but never delivered to a VM Gmail; not worth chasing for a nice-to-have.
+2. **Card org names** (2b6f420) then **org-color banner** (1ea6c3f) — meeting cards lead with `{Org} · {Cadence}` in a full-width org-color top banner (auto-contrast text).
+3. **Per-org colors** (20e5c3e) — palette set on live org docs + seed: vistamar #13539D, unio #1B6E9A, bryn-mawr #F29248, golden-vision #89081C, id-care #842162. New `getContrastText()` + `hexToRgba()` in `src/theme/pillColors.js`; filled org pills app-wide switched off hardcoded white. Calendar month-grid chips colored by org.
+4. **AI Gen org-type-aware scope** (3a00d71) — `assembleGenInputs` returns `internal: targetOrg==="vistamar"`, threaded into generate.js + suggest-tasks.js. When internal, prompts swap to internal framing + the guardrail: **Vistamar board = platform dev + biz-dev (incl. prospective-client outreach) ONLY; existing-client delivery → that client's board.** VALIDATED live on "Vistamar Platform Development updates" — gen produced platform-dev-only topics, applied.
+
+### CLAUDE.md change (d6c6076): dev server is now Claude-managed; primary test surface = Vercel.
+
+### Loose ends / known issues
+- **Postmark relay delivery bug (real):** `sendRelay` (api/meetings/_lib/relay-mail.js) returns HTTP 200 / `sent:1` but mail does NOT arrive at adeemer@ (VM Gmail). Native Graph invites (meetings@) DO arrive. relay-mail only checks `res.ok`, never Postmark's JSON `ErrorCode` — likely masks a soft-fail (suppression / pending-approval). **Affects send-schedule + send-prep too.** Fix: check Postmark ErrorCode + check the Postmark dashboard for suppression on adeemer@.
+- **AI Gen summary mislabel:** for a Vistamar-target gen, the dialog says "X client, 0 Vistamar internal" — wording is wrong when the target IS Vistamar (its transcripts count under "client"). Logic is fine; only the AIGenDialog summary string needs an internal-case label. Small.
+- **Fireflies→org classification unverified at scale:** inclusion is by attendee-domain (`resolveOrgFromAttendees`, CLIENT_DOMAINS in orgMapping.js), NOT title. If a client gen reads "0 client" transcripts, a client used an email domain not in CLIENT_DOMAINS → add it + redeploy. `firefliesTitles` only sharpens the window anchor (orgAnchor fallback covers gaps).
+- **docx agenda population** still deferred from prior session: Bryn Mawr / Golden Vision / ID Care / Unio Biweekly (blocked on base+_R agenda-doc matching). Unio Weekly done.
+- Local dev server can't render (date-fns v3 / @mui/x-date-pickers ESM-interop breaks App mount; optimizeDeps.include didn't fix). Doesn't matter — we test on Vercel. The eval-import batch technique is therefore unavailable (needs localhost + can't transplant auth token — credential classifier blocks that, correctly).
+- A standalone authenticated Chrome (CDP port 9222, profile /tmp/vmm-test-chrome) is open from today's testing — Andy signed it in. Disposable.
+
+---
+
+## TOMORROW'S PLAN (2026-06-02) — aim: finish V1 dev. Demo to team in the AM.
+
+### P0 — Touch Base "MASTER" meeting (highest priority; ~1hr; design WITH Andy first)
+The Monday "VM Weekly Touch Base" is the cross-org master agenda (see memory `project_touchbase_master_meeting`). It must scope + render DIFFERENTLY from every other (single-org) meeting. **Do NOT run the current per-org AI Gen on it** — that would mis-treat it as a single Vistamar meeting.
+
+Build plan:
+1. **Mark it master.** Add a field (e.g. `agendaScope: 'master'` / `masterAgenda: true`) on the Touch Base `calendar_series`/agenda so the app branches on it.
+2. **Per-topic `organizationId`.** Topics need an org tag so Working cards color + group by org. Add to the topic model + AGENDA_SCHEMA (master mode) + persist in `applyProposal`.
+3. **Master-mode `assembleGenInputs`.** Gather ACROSS all active client orgs (each client's this-week/active board items + recent transcripts + current agendas) + Vistamar internal (platform dev; biz-dev if present). Emphasis on IMMEDIATE weekly deliverables per client.
+4. **Master-mode prompt.** Organize the agenda BY ORG — client by client (their topics + our key immediate deliverables), then Vistamar platform dev, then biz-dev if relevant. Set `organizationId` on every topic.
+5. **Working view (AgendaDetail):** color each topic card by its org accentColor (reuse pillColors), grouped/ordered client-by-client then Vistamar. Org section dividers/headers.
+6. **Overview view:** client-distinguished — org-colored section headers/pills so the team scans each org's week.
+
+DECIDED 2026-06-01: **a GROUP per client** — org is a SECTION (org-colored header) containing multiple topic cards; Vistamar internal is its own section. Org-grouping layer sits above topics; each topic still carries `organizationId` (= its section's org). Working view = org-colored section headers with topic cards beneath, client-by-client then Vistamar.
+
+STILL OPEN to settle with Andy before building:
+- Client/section ordering (org sortOrder? most-active first?).
+- "Immediate / this-week" heuristic (due-this-week? active/in-progress? newly-raised?).
+- Does master gen synthesize from each client's board+transcript, or also fold the per-client agendas?
+
+### P1 — Populate via AI Gen (Andy will click through; Claude on standby)
+Run AI Gen → Apply + Suggest tasks → Apply for all meetings on vm-management-front-end.vercel.app. **Vistamar Platform Dev already done.** Watch the gray summary line for "0 client" (→ Fireflies domain gap; ping Claude to add domain + redeploy). The Touch Base gets the NEW master gen (after P0), not the per-org gen.
+
+### P2 — V1 finish audit
+Enumerate remaining V1 items from the spec (`docs/superpowers/specs/2026-05-12-vmmanagement-spinout-design.md` §) + open deferrals (job-title display, external-attendee→org persistence, docx population, the loose ends above) and close what's in V1 scope.
+
+### Quick wins (any time)
+- Fix the AIGenDialog Vistamar summary-label wording.
+- Decide/fix the Postmark relay delivery (ErrorCode check + dashboard).

@@ -27,29 +27,34 @@ export const config = { maxDuration: 300 };
 
 // Structured-output schema for the proposed agenda. Strings + a flat array;
 // no recursion / numeric constraints (structured-outputs limitations).
-const AGENDA_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    preBriefHtml: { type: "string" },
-    topics: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          name: { type: "string" },
-          bodyHtml: { type: "string" },
-          categories: { type: "array", items: { type: "string" } },
-          tags: { type: "array", items: { type: "string" } },
-        },
-        required: ["name", "bodyHtml", "categories", "tags"],
+// MASTER (Touch Base) adds a required per-topic `organizationId` so the
+// cross-org agenda can be grouped + colored by org.
+function buildSchema(master) {
+  const topicProps = {
+    name: { type: "string" },
+    bodyHtml: { type: "string" },
+    categories: { type: "array", items: { type: "string" } },
+    tags: { type: "array", items: { type: "string" } },
+  };
+  const topicRequired = ["name", "bodyHtml", "categories", "tags"];
+  if (master) {
+    topicProps.organizationId = { type: "string" };
+    topicRequired.push("organizationId");
+  }
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      preBriefHtml: { type: "string" },
+      topics: {
+        type: "array",
+        items: { type: "object", additionalProperties: false, properties: topicProps, required: topicRequired },
       },
+      openFloorHtml: { type: "string" },
     },
-    openFloorHtml: { type: "string" },
-  },
-  required: ["preBriefHtml", "topics", "openFloorHtml"],
-};
+    required: ["preBriefHtml", "topics", "openFloorHtml"],
+  };
+}
 
 // Fill {{meetingStyle}} in the stored prompt, then append the HTML/output
 // contract. The stored prompt varies per org + style, so there is no stable
@@ -80,9 +85,26 @@ Use the SOPs below to assign categories accurately and to reference the right ow
 ${sops}`;
 }
 
-function buildSystem(prompt, style, categories, tagVocab, internal = false) {
+function orgListBlock(orgMeta) {
+  const list = (Array.isArray(orgMeta) ? orgMeta : [])
+    .map((o) => `- ${o.slug} — ${o.name}${o.type === "internal" ? " (Vistamar, internal)" : " (client)"}`)
+    .join("\n");
+  return list || "(no organizations provided)";
+}
+
+function buildSystem(prompt, style, categories, tagVocab, internal = false, master = false, orgMeta = []) {
   const filled = String(prompt || "").replaceAll("{{meetingStyle}}", style);
-  const howToUse = internal
+  const howToUse = master
+    ? `## How to use the inputs — MASTER weekly agenda (the Monday Touch Base)
+- This is Vistamar's MASTER cross-client weekly agenda: the internal team's single working view of everything to get done THIS WEEK, organized by organization. It spans EVERY active client PLUS Vistamar's own internal work, reconciling everything since the last Touch Base.
+- Build it ORG BY ORG, in the order listed below. For EACH client, produce one or more topics covering their immediate this-week deliverables and what surfaced since the last Touch Base — drawn from that client's transcripts, board activity, and current agendas. Then a Vistamar section: platform development (always), and business development only if something surfaced.
+- EVERY topic MUST set organizationId to the slug of the org it belongs to (from the list below). Keep each org's topics together and follow the given org order (clients first, Vistamar last).
+- Focus on IMMEDIATE / this-week deliverables, decisions, and blockers — NOT the full backlog. Fold board state (in progress / awaiting sign-off / newly raised) into the relevant topics rather than listing tasks verbatim.
+- Vistamar's section is ONLY Vistamar's own work — platform/product development + business development (promoting Vistamar + prospective-client outreach). Work delivering services to an existing client belongs under THAT client's section, never Vistamar's.
+
+## Organizations (use these exact slugs for organizationId; keep this order)
+${orgListBlock(orgMeta)}`
+    : internal
     ? `## How to use the inputs
 - This is a VISTAMAR INTERNAL meeting agenda — NOT client-facing. Reconcile the current agenda with everything that happened since this meeting last occurred: Vistamar internal meetings, recent Vistamar Project Board activity, Vistamar's OTHER internal agendas, and any additional context the user provided.
 - SCOPE — Vistamar internal work is ONLY: (1) platform/product development of Vistamar's own apps and internal tooling, and (2) business development — promoting Vistamar's company & services AND outreach to PROSPECTIVE clients for new-business acquisition. Keep this agenda to that scope.
@@ -101,7 +123,7 @@ ${howToUse}
 ## Output format
 Return the proposed next agenda as JSON matching the provided schema:
 - preBriefHtml: a SHORT HTML pre-brief framing this meeting (a few tight bullets), or "" if not warranted.
-- topics: an array of { name, bodyHtml } — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.
+- topics: an array of ${master ? "{ name, bodyHtml, organizationId }" : "{ name, bodyHtml }"} — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.${master ? " Set organizationId on EVERY topic; group topics by org in the listed order." : ""}
 - openFloorHtml: HTML for any open-floor items, or "".
 
 HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise — never a long document.${buildCategorization(categories, tagVocab)}`;
@@ -112,7 +134,69 @@ const SCOPE_TAG = {
   "vistamar-internal": "Vistamar internal",
 };
 
-function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext) {
+function buildMasterUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext, orgMeta) {
+  const a = agenda || {};
+  const lines = [];
+  lines.push(`Generate this week's MASTER Touch Base agenda (${style}). Organize it ORG BY ORG in the order below (clients first, Vistamar last); set organizationId on every topic.`);
+  lines.push("");
+  lines.push("## Current Touch Base agenda (move it forward from here)");
+  (a.topics || []).forEach((t, i) => {
+    lines.push(`Topic ${i + 1}: ${t.name || ""}${t.organizationId ? ` [org: ${t.organizationId}]` : ""}`);
+    if (t.bodyHtml) lines.push(`  Body (HTML): ${t.bodyHtml}`);
+  });
+  if (a.openFloorHtml) lines.push(`Open Floor (HTML): ${a.openFloorHtml}`);
+  lines.push("");
+
+  const order = (Array.isArray(orgMeta) ? orgMeta : []).map((o) => o.slug);
+  const present = [...new Set([
+    ...(transcripts || []).map((t) => t.org),
+    ...(projectBoard || []).map((b) => b.org),
+    ...(orgAgendas || []).map((g) => g.org),
+  ].filter(Boolean))];
+  const ordered = [...order.filter((s) => present.includes(s)), ...present.filter((s) => !order.includes(s))];
+
+  lines.push("## This week, by organization (since the last Touch Base)");
+  for (const slug of ordered) {
+    const name = (orgMeta.find((o) => o.slug === slug)?.name) || slug;
+    lines.push(`### ${name}  [organizationId: ${slug}]`);
+    const trs = (transcripts || []).filter((t) => t.org === slug);
+    if (trs.length) {
+      lines.push("Meeting transcripts:");
+      trs.forEach((tr) => {
+        lines.push(`- ${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}`);
+        if (tr.overview) lines.push(`  Overview: ${tr.overview}`);
+        if (tr.actionItems) lines.push(`  Action items: ${tr.actionItems}`);
+      });
+    }
+    const bd = (projectBoard || []).filter((b) => b.org === slug);
+    if (bd.length) {
+      lines.push("Project Board activity:");
+      bd.forEach((it) => {
+        const flag = it.isNew ? "NEW" : "updated";
+        const proj = it.project ? ` — ${it.project}` : "";
+        lines.push(`- [${flag}] ${it.name || "(untitled)"} (status: ${it.status || "?"})${proj}`);
+      });
+    }
+    const ags = (orgAgendas || []).filter((g) => g.org === slug);
+    if (ags.length) {
+      lines.push("Current agendas (planning context, don't copy):");
+      ags.forEach((oa) => {
+        lines.push(`  ${oa.title || "Meeting"}:`);
+        (oa.topics || []).forEach((t) => lines.push(`   - ${t.name || ""}${t.bodyHtml ? `: ${t.bodyHtml}` : ""}`));
+      });
+    }
+    if (!trs.length && !bd.length && !ags.length) lines.push("(nothing surfaced this week)");
+    lines.push("");
+  }
+  if (extraContext && String(extraContext).trim()) {
+    lines.push("## Additional context the user provided for this generation");
+    lines.push(String(extraContext).trim());
+  }
+  return lines.join("\n");
+}
+
+function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext, master = false, orgMeta = []) {
+  if (master) return buildMasterUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext, orgMeta);
   const a = agenda || {};
   const lines = [];
   lines.push(`Generate the next ${style} meeting agenda for: ${a.title || "(untitled meeting)"}.`);
@@ -179,7 +263,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server" });
   }
 
-  const { prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal } = req.body || {};
+  const { prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal, master, orgMeta } = req.body || {};
   if (!prompt || !agenda) {
     return res.status(400).json({ error: "Missing required field: prompt and agenda" });
   }
@@ -189,14 +273,15 @@ export default async function handler(req, res) {
     const client = new Anthropic({ apiKey });
     const message = await client.messages.create({
       model: MODEL,
-      max_tokens: 16000,
+      // Master spans every org — give it more output room than a single-org agenda.
+      max_tokens: master ? 24000 : 16000,
       thinking: { type: "adaptive" },
-      system: buildSystem(prompt, style, categories, tagVocab, !!internal),
+      system: buildSystem(prompt, style, categories, tagVocab, !!internal, !!master, orgMeta || []),
       // medium effort — agenda gen is reconciliation + formatting, not hard
       // reasoning; medium roughly halves thinking time vs the default high,
       // keeping the call well under timeout without a quality hit.
-      output_config: { effort: "medium", format: { type: "json_schema", schema: AGENDA_SCHEMA } },
-      messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext) }],
+      output_config: { effort: "medium", format: { type: "json_schema", schema: buildSchema(!!master) } },
+      messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext, !!master, orgMeta || []) }],
     });
 
     if (message.stop_reason === "max_tokens") {
@@ -226,6 +311,7 @@ export default async function handler(req, res) {
             bodyHtml: String(t?.bodyHtml || ""),
             categories: Array.isArray(t?.categories) ? t.categories.map((c) => String(c)) : [],
             tags: Array.isArray(t?.tags) ? t.tags.map((x) => String(x)) : [],
+            organizationId: t?.organizationId ? String(t.organizationId) : null,
           }))
         : [],
       openFloorHtml: String(parsed.openFloorHtml || ""),
