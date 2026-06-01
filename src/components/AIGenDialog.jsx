@@ -4,6 +4,7 @@
 // revertible) → assemble inputs (windowed org + Vistamar transcripts + Project
 // Board activity) → call Claude → review the proposal → Apply or Discard.
 import { useMemo, useState } from "react";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   Alert,
   Box,
@@ -71,6 +72,7 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
     () => (proposal ? composeAgendaHtml(proposal, proposal.topics || []) : ""),
     [proposal],
   );
+  const lastGen = agenda?.lastAgendaGenAt?.toDate ? agenda.lastAgendaGenAt.toDate() : null;
 
   const generate = async () => {
     setBusy(true);
@@ -212,6 +214,14 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
           </Stack>
         ) : (
           <Box>
+            <Typography
+              variant="caption"
+              sx={{ display: "block", mb: 1.5, color: lastGen ? "text.secondary" : "warning.main" }}
+            >
+              {lastGen
+                ? `Last AI-generated ${format(lastGen, "MMM d, yyyy · h:mm a")} (${formatDistanceToNow(lastGen, { addSuffix: true })}) — this run reconciles everything since then.`
+                : "Not yet AI-generated — this first run reconciles since the last meeting."}
+            </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               The assistant reconciles this meeting's agenda with everything since it last occurred — this
               client's meetings, internal Vistamar meetings, and recent Project Board activity. Pick the
