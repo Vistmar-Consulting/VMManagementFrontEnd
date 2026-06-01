@@ -182,17 +182,16 @@ function RecurringCard({ series, orgName, accentColor, userByEmail, onClick }) {
       onClick={onClick}
       sx={{
         ...CARD_SX,
-        borderLeft: `4px solid ${accent}`,
         "&:hover": { transform: "translateY(-2px)", boxShadow: `0 4px 16px ${hexToRgba(accent, 0.18)}` },
       }}
     >
+      <Box sx={{ bgcolor: accent, px: 1.5, py: 0.7, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Typography sx={{ fontFamily: t.sans, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: getContrastText(accent) }}>
+          {badge}
+        </Typography>
+        <ChevronRight sx={{ fontSize: 16, color: getContrastText(accent), opacity: 0.85 }} />
+      </Box>
       <Box sx={{ p: 1.5, flex: 1, display: "flex", flexDirection: "column" }}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
-          <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: getTextColor(accent) }}>
-            {badge}
-          </Typography>
-          <ChevronRight sx={{ fontSize: 16, color: t.cream3 }} />
-        </Box>
         <Typography sx={CARD_TITLE_SX}>{series.title || "(untitled)"}</Typography>
         <Typography sx={CARD_META_SX}>
           <Schedule sx={{ fontSize: 12 }} />
@@ -217,17 +216,16 @@ function AdHocCard({ meeting, orgName, accentColor, userByEmail, onClick }) {
       onClick={onClick}
       sx={{
         ...CARD_SX,
-        borderLeft: `4px solid ${accent}`,
         "&:hover": { transform: "translateY(-2px)", boxShadow: `0 4px 16px ${hexToRgba(accent, 0.18)}` },
       }}
     >
+      <Box sx={{ bgcolor: accent, px: 1.5, py: 0.7, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Typography sx={{ fontFamily: t.sans, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: getContrastText(accent) }}>
+          {badge}
+        </Typography>
+        <ChevronRight sx={{ fontSize: 16, color: getContrastText(accent), opacity: 0.85 }} />
+      </Box>
       <Box sx={{ p: 1.5, flex: 1, display: "flex", flexDirection: "column" }}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
-          <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: getTextColor(accent) }}>
-            {badge}
-          </Typography>
-          <ChevronRight sx={{ fontSize: 16, color: t.cream3 }} />
-        </Box>
         <Typography sx={CARD_TITLE_SX}>{meeting.title || "(untitled)"}</Typography>
 
         <Typography sx={CARD_META_SX}>
