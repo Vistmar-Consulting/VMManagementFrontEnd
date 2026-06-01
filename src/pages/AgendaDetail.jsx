@@ -136,8 +136,8 @@ function ViewToggle({ value, onChange }) {
   );
   return (
     <Box sx={{ display: "inline-flex", gap: 0.5, p: 0.5, background: t.cream3, borderRadius: 2 }}>
-      {cell("working", "Working")}
       {cell("overview", "Overview")}
+      {cell("working", "Working")}
     </Box>
   );
 }
