@@ -28,7 +28,6 @@ import {
 } from "@mui/material";
 import {
   ArrowDropDown as ArrowDropDownIcon,
-  CalendarTodayOutlined as CalendarIcon,
   Check,
   ChevronRight as ChevronRightIcon,
   Description as DescriptionIcon,
@@ -144,9 +143,9 @@ export default function TaskBoardRow({
       <TableRow
         sx={{
           "&:hover": { backgroundColor: "action.hover" },
-          // Compact (Mini Project Board): tight vertical padding so rows read
-          // as a dense list, not a spread-out table.
-          ...(compact && { "& > td": { py: 0.25 } }),
+          // Compact (Mini Project Board): tight rows — minimal vertical padding
+          // (chip height drives the ~22px row) so it reads as a dense list.
+          ...(compact && { "& > td": { py: 0, lineHeight: 1.2 } }),
         }}
       >
         {/* Expand chevron */}
@@ -221,12 +220,13 @@ export default function TaskBoardRow({
               backgroundColor: getPillBg(priority?.color),
               color: getTextColor(priority?.color),
               cursor: canUpdate ? "pointer" : "default",
-              fontWeight: 600,
-              fontSize: "0.75rem",
+              fontWeight: compact ? 400 : 600,
+              fontSize: compact ? "0.68rem" : "0.75rem",
+              ...(compact && { height: 19, "& .MuiChip-label": { px: 0.6 }, "& .MuiChip-deleteIcon": { ml: "-3px", mr: "1px" } }),
             }}
             onClick={canUpdate ? (e) => setPriorityAnchor(e.currentTarget) : undefined}
             onDelete={canUpdate ? (e) => { e.stopPropagation(); setPriorityAnchor(e.currentTarget); } : undefined}
-            deleteIcon={canUpdate ? <ArrowDropDownIcon sx={{ fontSize: 16, color: `${getTextColor(priority?.color)} !important` }} /> : undefined}
+            deleteIcon={canUpdate ? <ArrowDropDownIcon sx={{ fontSize: compact ? 13 : 16, color: `${getTextColor(priority?.color)} !important` }} /> : undefined}
           />
           {canUpdate && (
             <Menu anchorEl={priorityAnchor} open={Boolean(priorityAnchor)} onClose={() => setPriorityAnchor(null)}>
@@ -255,12 +255,13 @@ export default function TaskBoardRow({
               backgroundColor: getPillBg(status?.color),
               color: getTextColor(status?.color),
               cursor: canUpdate ? "pointer" : "default",
-              fontWeight: 600,
-              fontSize: "0.75rem",
+              fontWeight: compact ? 400 : 600,
+              fontSize: compact ? "0.68rem" : "0.75rem",
+              ...(compact && { height: 19, "& .MuiChip-label": { px: 0.6 }, "& .MuiChip-deleteIcon": { ml: "-3px", mr: "1px" } }),
             }}
             onClick={canUpdate ? (e) => setStatusAnchor(e.currentTarget) : undefined}
             onDelete={canUpdate ? (e) => { e.stopPropagation(); setStatusAnchor(e.currentTarget); } : undefined}
-            deleteIcon={canUpdate ? <ArrowDropDownIcon sx={{ fontSize: 16, color: `${getTextColor(status?.color)} !important` }} /> : undefined}
+            deleteIcon={canUpdate ? <ArrowDropDownIcon sx={{ fontSize: compact ? 13 : 16, color: `${getTextColor(status?.color)} !important` }} /> : undefined}
           />
           {canUpdate && (
             <Menu anchorEl={statusAnchor} open={Boolean(statusAnchor)} onClose={() => setStatusAnchor(null)}>
@@ -504,17 +505,9 @@ export default function TaskBoardRow({
         </TableCell>
         )}
 
-        {/* Due Date — calendar icon hidden on the full board (it has a column
-            header); shown in compact (Mini Project Board) so the headerless
-            column reads clearly as the due date + stays clickable. */}
+        {/* Due Date — the date text itself opens the picker; empty shows a dash. */}
         <TableCell>
          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          {compact && (
-            <CalendarIcon
-              onClick={canUpdate ? () => setDuePickerOpen(true) : undefined}
-              sx={{ fontSize: 13, color: "text.disabled", flexShrink: 0, cursor: canUpdate ? "pointer" : "default" }}
-            />
-          )}
           {canUpdate ? (
             <DatePicker
               open={duePickerOpen}
