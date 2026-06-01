@@ -154,6 +154,10 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   // compute the NEXT upcoming occurrence from the live meetings API, the same
   // source the Calendar uses. One-time meetings just use agenda.meetingDatetime.
   const isRecurring = !!calendarSeries?.recurrence;
+  // The agenda references a series but it hasn't loaded yet → we don't know if
+  // it's recurring, so don't show the (possibly stale) stored date in the
+  // meantime. Prevents a flash of a past instance before the series resolves.
+  const seriesPending = !!agenda?.calendarSeriesId && !calendarSeries;
   const seriesMatchId = calendarSeries?.googleSeriesEventId || calendarSeries?.id || null;
   const { data: occData } = useQuery({
     queryKey: ["agenda-next-occ", seriesMatchId],
@@ -252,9 +256,10 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   // meetingDatetime (a frozen past instance) only drives one-time meetings.
   // For recurring meetings ONLY use the live next occurrence — never the stored
   // (frozen, often past) meetingDatetime, so the hero never flashes a stale
-  // date while the occurrence query is loading. One-time meetings use stored.
-  const occLoading = isRecurring && occData === undefined;
-  const meetingDt = isRecurring
+  // date. While the series doc or the occurrence query is still loading, show a
+  // loading placeholder rather than the stored date. One-time meetings use stored.
+  const occLoading = seriesPending || (isRecurring && occData === undefined);
+  const meetingDt = (seriesPending || isRecurring)
     ? (nextOccurrence?.start || null)
     : (agenda?.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null);
   const recurrenceLabel = calendarSeries?.recurrence
