@@ -207,6 +207,7 @@ service cloud.firestore {
       // visible "AI Gen activity" history).
       match /aiGenLog/{logId} {
         allow read, create: if isActiveUser();
+        allow delete: if isAdmin();
       }
     }
   }
