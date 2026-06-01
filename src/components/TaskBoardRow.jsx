@@ -28,6 +28,7 @@ import {
 } from "@mui/material";
 import {
   ArrowDropDown as ArrowDropDownIcon,
+  CalendarTodayOutlined as CalendarIcon,
   Check,
   ChevronRight as ChevronRightIcon,
   Description as DescriptionIcon,
@@ -496,8 +497,17 @@ export default function TaskBoardRow({
         </TableCell>
         )}
 
-        {/* Due Date — calendar icon hidden; the date text itself opens the picker */}
+        {/* Due Date — calendar icon hidden on the full board (it has a column
+            header); shown in compact (Mini Project Board) so the headerless
+            column reads clearly as the due date + stays clickable. */}
         <TableCell>
+         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          {compact && (
+            <CalendarIcon
+              onClick={canUpdate ? () => setDuePickerOpen(true) : undefined}
+              sx={{ fontSize: 13, color: "text.disabled", flexShrink: 0, cursor: canUpdate ? "pointer" : "default" }}
+            />
+          )}
           {canUpdate ? (
             <DatePicker
               open={duePickerOpen}
@@ -531,6 +541,7 @@ export default function TaskBoardRow({
               {dueDate ? dueDate.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—"}
             </Typography>
           )}
+         </Box>
         </TableCell>
 
         {/* Updated + Created — hidden in compact (Mini Project Board) mode. */}
@@ -643,6 +654,18 @@ export default function TaskBoardRow({
                     Add subtask
                   </MenuItem>
                 )}
+                {/* Compact (Mini Project Board) hides the Notes + Files columns,
+                    so surface their actions in the menu to keep the functionality. */}
+                {compact && (
+                  <MenuItem onClick={() => { setActionAnchor(null); onOpenComments?.(item); }}>
+                    <DescriptionIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> Notes
+                  </MenuItem>
+                )}
+                {compact && (
+                  <MenuItem onClick={() => { setActionAnchor(null); onOpenFiles?.(item); }}>
+                    <FileIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> Files
+                  </MenuItem>
+                )}
                 <MenuItem
                   onClick={() => { setActionAnchor(null); onRequestDelete?.(item, isSubitem); }}
                   sx={{ color: "error.main" }}
@@ -668,9 +691,11 @@ export default function TaskBoardRow({
           compact={compact}
           canUpdate={canUpdate}
           getCommentCount={getCommentCount}
+          getFileCount={getFileCount}
           onUpdate={onUpdate}
           onRequestDelete={onRequestDelete}
           onOpenComments={onOpenComments}
+          onOpenFiles={onOpenFiles}
         />
       ))}
 
