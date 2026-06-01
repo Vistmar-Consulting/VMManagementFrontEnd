@@ -59,7 +59,9 @@ import ScheduleCreateDialog from "../components/ScheduleCreateDialog.jsx";
 import SendInviteDialog from "../components/SendInviteDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
-import { format, formatDistanceToNow, parseISO } from "date-fns";
+import { format, formatDistanceToNow, parseISO, addDays } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
+import { listMeetings } from "../lib/meetingsApi.js";
 import {
   addDoc,
   collection,
@@ -147,6 +149,31 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [scheduleCreateOpen, setScheduleCreateOpen] = useState(false);
 
+  // Recurring agendas store a frozen meetingDatetime (the instance they were
+  // bound to — reconcile never rolls it forward), so the hero/reschedule must
+  // compute the NEXT upcoming occurrence from the live meetings API, the same
+  // source the Calendar uses. One-time meetings just use agenda.meetingDatetime.
+  const isRecurring = !!calendarSeries?.recurrence;
+  const seriesMatchId = calendarSeries?.googleSeriesEventId || calendarSeries?.id || null;
+  const { data: occData } = useQuery({
+    queryKey: ["agenda-next-occ", seriesMatchId],
+    queryFn: () => listMeetings({ start: new Date().toISOString(), end: addDays(new Date(), 120).toISOString() }),
+    enabled: isRecurring && !!seriesMatchId,
+    staleTime: 60 * 60_000,
+    gcTime: Infinity,
+    refetchOnWindowFocus: true,
+  });
+  const nextOccurrence = useMemo(() => {
+    if (!isRecurring || !seriesMatchId) return null;
+    const cutoff = Date.now() - 12 * 3600 * 1000; // keep today's meeting visible
+    const future = (occData?.meetings || [])
+      .filter((m) => (m.series_id || m.event_id) === seriesMatchId && m.date)
+      .map((m) => ({ start: new Date(m.date), end: m.end_date ? new Date(m.end_date) : null }))
+      .filter((x) => !isNaN(x.start) && x.start.getTime() >= cutoff)
+      .sort((a, b) => a.start - b.start);
+    return future[0] || null;
+  }, [occData, isRecurring, seriesMatchId]);
+
   // Build a "meeting" object in the same shape RescheduleDialog expects
   // (originally consumed the Calendar popover's API rows). The dialog reads
   // event_id / series_id / m365EventId / date / end_date / type / org_id and
@@ -154,10 +181,13 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   // API succeeds — `agenda` prop passes through for the Firestore write.
   const rescheduleMeeting = useMemo(() => {
     if (!agenda) return null;
-    const dt = agenda.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null;
-    const endDt = dt && agenda.durationMinutes
-      ? new Date(dt.getTime() + agenda.durationMinutes * 60000)
-      : null;
+    // Prefer the next live occurrence for recurring meetings (the stored
+    // meetingDatetime is a frozen past instance); fall back to the stored one.
+    const storedDt = agenda.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null;
+    const dt = (isRecurring && nextOccurrence?.start) ? nextOccurrence.start : storedDt;
+    const endDt = (isRecurring && nextOccurrence?.end)
+      ? nextOccurrence.end
+      : (dt && agenda.durationMinutes ? new Date(dt.getTime() + agenda.durationMinutes * 60000) : null);
     return {
       event_id: agenda.googleEventId || null,
       series_id: calendarSeries?.googleSeriesEventId || null,
@@ -218,9 +248,11 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
     });
   };
 
-  const meetingDt = agenda?.meetingDatetime?.toDate
-    ? agenda.meetingDatetime.toDate()
-    : null;
+  // Display the next upcoming occurrence for recurring meetings; the stored
+  // meetingDatetime (a frozen past instance) only drives one-time meetings.
+  const meetingDt = (isRecurring && nextOccurrence?.start)
+    ? nextOccurrence.start
+    : (agenda?.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null);
   const recurrenceLabel = calendarSeries?.recurrence
     ? calendarSeries.recurrence === "recurring"
       ? "Recurring meeting"
