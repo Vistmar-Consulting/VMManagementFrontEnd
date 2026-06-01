@@ -141,7 +141,14 @@ export default function TaskBoardRow({
 
   return (
     <>
-      <TableRow sx={{ "&:hover": { backgroundColor: "action.hover" } }}>
+      <TableRow
+        sx={{
+          "&:hover": { backgroundColor: "action.hover" },
+          // Compact (Mini Project Board): tight vertical padding so rows read
+          // as a dense list, not a spread-out table.
+          ...(compact && { "& > td": { py: 0.25 } }),
+        }}
+      >
         {/* Expand chevron */}
         <TableCell sx={{ width: 40, p: 0.5 }}>
           {!isSubitem && (hasSubitems || expanded) ? (
