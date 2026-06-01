@@ -305,6 +305,26 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
   return data.proposal;
 }
 
+// Refine an already-proposed agenda from a user instruction (no data sources —
+// just edits the current proposal). Returns the refined proposal in the same
+// shape as generateAgenda.
+export async function refineProposal({ proposal, instruction, categories, tagVocab, master, orgMeta }) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const token = await user.getIdToken();
+  const res = await fetch("/api/ai/refine", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Token": token },
+    body: JSON.stringify({ proposal, instruction, categories: categories || [], tagVocab: tagVocab || [], master: !!master, orgMeta: orgMeta || [] }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return data.proposal;
+}
+
 // Apply a reviewed proposal: overwrite the agenda's Pre-Brief + Open Floor and
 // replace the topic set (proposal topics have no ids → delete current, create
 // fresh; categoryIds/tagIds empty in 3a, Slice 3b adds them). Done as a single

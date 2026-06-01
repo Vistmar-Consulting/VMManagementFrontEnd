@@ -30,6 +30,7 @@ import {
   resolvePrompt,
   assembleGenInputs,
   generateAgenda,
+  refineProposal,
   applyProposal,
   setAgendaStyle,
 } from "../lib/aiAgenda.js";
@@ -67,6 +68,10 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
   const [proposal, setProposal] = useState(null);
   const [summary, setSummary] = useState(null);
   const [existingTags, setExistingTags] = useState(new Set());
+  // Refine loop (review step): edit the proposal with an instruction, no data sources.
+  const [refineText, setRefineText] = useState("");
+  const [refining, setRefining] = useState(false);
+  const [catCtx, setCatCtx] = useState({ categories: [], tagVocab: [], orgMeta: [] });
 
   const previewHtml = useMemo(
     () => (proposal ? composeAgendaHtml(proposal, proposal.topics || []) : ""),
@@ -94,6 +99,13 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
       const { transcripts, projectBoard, orgAgendas, categories, tagVocab, internal, orgMeta, summary: sum } = await assembleGenInputs(agenda, items, orgSlug, { master });
       setSummary(sum);
       setExistingTags(new Set((tagVocab || []).map((t) => (t.name || "").toLowerCase())));
+      // Stash the lightweight categorization context so Refine can re-validate
+      // categories/tags on any newly-added topics without re-assembling inputs.
+      setCatCtx({
+        categories: (categories || []).map((c) => ({ slug: c.slug, name: c.name })),
+        tagVocab,
+        orgMeta,
+      });
 
       const result = await generateAgenda({
         prompt,
@@ -129,6 +141,30 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
     }
   };
 
+  const refine = async () => {
+    const instruction = refineText.trim();
+    if (!instruction || !proposal) return;
+    setRefining(true);
+    setError(null);
+    try {
+      const result = await refineProposal({
+        proposal,
+        instruction,
+        categories: catCtx.categories,
+        tagVocab: catCtx.tagVocab,
+        master,
+        orgMeta: catCtx.orgMeta,
+      });
+      setProposal(result);
+      setExistingTags(new Set((catCtx.tagVocab || []).map((t) => (t.name || "").toLowerCase())));
+      setRefineText("");
+    } catch (err) {
+      setError(err.message || "Refine failed");
+    } finally {
+      setRefining(false);
+    }
+  };
+
   const apply = async () => {
     setBusy(true);
     setError(null);
@@ -153,6 +189,34 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
 
         {step === "review" && proposal ? (
           <Box>
+            {/* Refine — edit the proposed draft with an instruction (no data
+                sources). Sits above the proposal per design. */}
+            <Box sx={{ mb: 2, p: 1.5, border: "1px solid", borderColor: "divider", borderRadius: 1, bgcolor: "action.hover" }}>
+              <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
+                Refine this draft with AI
+              </Typography>
+              <Stack direction="row" spacing={1} alignItems="flex-start">
+                <TextField
+                  multiline
+                  minRows={5}
+                  maxRows={5}
+                  fullWidth
+                  size="small"
+                  placeholder="Tell the AI how to refine this draft — e.g. “Add these two blogs: …”, “Drop the GBP topic”, “Tighten the Unio section.” Only this draft is edited; no other data is pulled in."
+                  value={refineText}
+                  onChange={(e) => setRefineText(e.target.value)}
+                  disabled={refining}
+                />
+                <Button
+                  variant="contained"
+                  onClick={refine}
+                  disabled={refining || !refineText.trim()}
+                  sx={{ minWidth: 96, alignSelf: "stretch" }}
+                >
+                  {refining ? <CircularProgress size={18} color="inherit" /> : "Refine"}
+                </Button>
+              </Stack>
+            </Box>
             <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
               Proposed agenda — review before applying
             </Typography>
@@ -268,11 +332,11 @@ export default function AIGenDialog({ agendaId, agenda, topics, items, orgSlug, 
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={busy}>
+        <Button onClick={onClose} disabled={busy || refining}>
           {step === "review" ? "Discard" : "Cancel"}
         </Button>
         {step === "review" ? (
-          <Button variant="contained" onClick={apply} disabled={busy}>
+          <Button variant="contained" onClick={apply} disabled={busy || refining}>
             {busy ? "Applying…" : "Apply"}
           </Button>
         ) : (
