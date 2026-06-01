@@ -78,6 +78,15 @@ export default function FirefliesMeetings() {
   // All agendas (Firestore) — to resolve which agendas each title is mapped to
   // and to power the "map to agenda" autocomplete.
   const { data: agendas } = useCollection("agendas");
+  // calendar_series — to keep the "map to agenda" dropdown to ACTIVE meetings
+  // only (drop archived/cancelled series + orphaned agendas whose series was
+  // deleted; dedupe per meeting).
+  const { data: seriesDocs } = useCollection("calendar_series");
+  const seriesById = useMemo(() => {
+    const m = {};
+    for (const s of seriesDocs || []) m[s.id] = s;
+    return m;
+  }, [seriesDocs]);
 
   // Reverse index: lowercased title -> [{ agendaId, agendaTitle, storedTitle }].
   // storedTitle is the EXACT string in the agenda's array (needed for an exact
@@ -117,12 +126,26 @@ export default function FirefliesMeetings() {
       .sort((a, b) => (b.latest || 0) - (a.latest || 0));
   }, [listData]);
 
-  const agendaOptions = useMemo(
-    () => (agendas || [])
-      .map((a) => ({ id: a.id, label: a.title || "(untitled)", organizationId: a.organizationId || null }))
-      .sort((x, y) => x.label.localeCompare(y.label)),
-    [agendas]
-  );
+  // Active agendas only: a non-empty title + a resolvable series that isn't
+  // archived or cancelled (orphaned agendas whose series was deleted are also
+  // dropped). Deduped per meeting (title + org) so recurring base/_R doubles
+  // collapse to one option. Junk test agendas should be deleted at the source;
+  // this just keeps the picker usable.
+  const agendaOptions = useMemo(() => {
+    const byMeeting = new Map();
+    for (const a of agendas || []) {
+      const label = (a.title || "").trim();
+      if (!label) continue;
+      const s = seriesById[a.calendarSeriesId || a.id];
+      if (!s) continue; // orphaned (series deleted) → not an active meeting
+      if (s.archived || s.status === "cancelled") continue;
+      const key = `${label.toLowerCase()}|${a.organizationId || s.organizationId || ""}`;
+      if (!byMeeting.has(key)) {
+        byMeeting.set(key, { id: a.id, label, organizationId: a.organizationId || s.organizationId || null });
+      }
+    }
+    return [...byMeeting.values()].sort((x, y) => x.label.localeCompare(y.label));
+  }, [agendas, seriesById]);
 
   const rows = useMemo(() => {
     const q = search.toLowerCase().trim();
