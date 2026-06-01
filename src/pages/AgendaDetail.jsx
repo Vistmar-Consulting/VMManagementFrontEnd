@@ -45,7 +45,7 @@ import {
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
 import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
-import { getContrastText, hexToRgba } from "../theme/pillColors.js";
+import { getContrastText, getTextColor, hexToRgba } from "../theme/pillColors.js";
 import AIGenDialog from "../components/AIGenDialog.jsx";
 import SuggestTasksDialog from "../components/SuggestTasksDialog.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
