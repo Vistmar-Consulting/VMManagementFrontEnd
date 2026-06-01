@@ -354,6 +354,15 @@ export default function Calendar() {
     return map;
   }, [calendarSeriesDocs]);
 
+  // Retired meetings (e.g. a departed team member's leftover Google event that
+  // can't be deleted): calendar_series flagged `archived` are hidden from the
+  // calendar everywhere. The reconcile preserves the flag (its drift-update
+  // touches only specific fields, never `archived`).
+  const archivedSeries = useMemo(
+    () => new Set((calendarSeriesDocs || []).filter((s) => s.archived).map((s) => s.id)),
+    [calendarSeriesDocs],
+  );
+
   // For each API meeting, resolve its slug org id in this order:
   //   1. Firestore calendar_series.organizationId (canonical post-reconcile).
   //   2. Numeric Console-era org_id → consoleOrgLookup (legacy fallback).
@@ -367,10 +376,11 @@ export default function Calendar() {
   };
 
   const filtered = useMemo(() => {
-    if (orgFilter === "all") return meetings;
-    return meetings.filter((m) => orgSlugFor(m) === orgFilter);
+    const base = meetings.filter((m) => !archivedSeries.has(m.series_id || m.event_id));
+    if (orgFilter === "all") return base;
+    return base.filter((m) => orgSlugFor(m) === orgFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meetings, orgFilter, consoleOrgLookup, seriesOrgLookup]);
+  }, [meetings, orgFilter, consoleOrgLookup, seriesOrgLookup, archivedSeries]);
 
   // Recurring series — derived from filtered list
   const recurringSeries = useMemo(() => groupRecurringMeetings(filtered), [filtered]);
