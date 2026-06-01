@@ -262,12 +262,6 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   const meetingDt = (seriesPending || isRecurring)
     ? (nextOccurrence?.start || null)
     : (agenda?.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null);
-  const recurrenceLabel = calendarSeries?.recurrence
-    ? calendarSeries.recurrence === "recurring"
-      ? "Recurring meeting"
-      : calendarSeries.recurrence
-    : null;
-
   return (
     <Box sx={{ py: 5, px: 4, textAlign: "center" }}>
       <TextField
@@ -332,13 +326,8 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
                     ? "No upcoming instances"
                     : "Date not set"}
           </Typography>
-          {/* Recurrence label hidden in the Overview (the title denotes it);
-              kept in the Working view. */}
-          {viewMode !== "overview" && recurrenceLabel && (
-            <Typography sx={{ fontSize: 12, color: t.ink3, opacity: 0.7, ml: 1 }}>
-              · {recurrenceLabel}
-            </Typography>
-          )}
+          {/* Cadence label removed — the hero shows only the actual upcoming
+              meeting schedule (date/time), not the recurrence cadence. */}
         </Box>
       </Tooltip>
 
