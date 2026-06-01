@@ -52,6 +52,7 @@ import {
 } from "@mui/icons-material";
 
 import ColorPicker from "../components/ColorPicker.jsx";
+import { getContrastText } from "../theme/pillColors.js";
 import TaskBoardColumnHeader from "../components/TaskBoardColumnHeader.jsx";
 import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
 import TaskBoardModal from "../components/TaskBoardModal.jsx";
@@ -844,7 +845,7 @@ export default function TaskBoard() {
             sx={{
               ...(orgFilter === org.id && {
                 bgcolor: org.accentColor || "primary.main",
-                color: "#fff",
+                color: org.accentColor ? getContrastText(org.accentColor) : "#fff",
               }),
             }}
           />

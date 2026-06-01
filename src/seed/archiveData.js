@@ -154,8 +154,8 @@ export const ORG_SLUG_BY_LEGACY_ID = {
 export const CLIENT_ORG_SEEDS = [
   // sortOrder reserves 1 for Vistamar (internal, seeded separately at
   // bootstrap-time). Client orgs start at 2 in the order Andy picked.
-  { slug: "unio",          name: "Unio",          accentColor: "#1976d2", sortOrder: 2 },
-  { slug: "bryn-mawr",     name: "Bryn Mawr",     accentColor: "#7e57c2", sortOrder: 3 },
-  { slug: "golden-vision", name: "Golden Vision", accentColor: "#ef6c00", sortOrder: 4 },
-  { slug: "id-care",       name: "ID Care",       accentColor: "#2e7d32", sortOrder: 5 },
+  { slug: "unio",          name: "Unio",          accentColor: "#1B6E9A", sortOrder: 2 },
+  { slug: "bryn-mawr",     name: "Bryn Mawr",     accentColor: "#F29248", sortOrder: 3 },
+  { slug: "golden-vision", name: "Golden Vision", accentColor: "#89081C", sortOrder: 4 },
+  { slug: "id-care",       name: "ID Care",       accentColor: "#842162", sortOrder: 5 },
 ];

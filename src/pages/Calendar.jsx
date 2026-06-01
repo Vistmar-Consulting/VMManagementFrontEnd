@@ -55,6 +55,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { db } from "../firebase.js";
 import { listMeetings } from "../lib/meetingsApi.js";
 import { groupRecurringMeetings, detectCadence, visibleAttendees } from "../lib/meetingHelpers.js";
+import { getTextColor, getContrastText, hexToRgba } from "../theme/pillColors.js";
 import { reconcileMeetingsToFirestore } from "../lib/reconcileMeetings.js";
 import MemberAvatar from "../components/MemberAvatar.jsx";
 import NewMeetingDialog from "../components/NewMeetingDialog.jsx";
@@ -167,25 +168,27 @@ const CARD_FOOTER_SX = {
   minHeight: 32,
 };
 
-function RecurringCard({ series, orgName, userByEmail, onClick }) {
+function RecurringCard({ series, orgName, accentColor, userByEmail, onClick }) {
   const cadenceLabel = detectCadence(series.instanceCount);
   const nextDt = series.nextDate ? parseISO(series.nextDate) : null;
   // Badge leads with the organization name; cadence follows. Falls back to
   // "Recurring" when the series has no resolved org.
   const badge = `${orgName || "Recurring"}${cadenceLabel ? ` · ${cadenceLabel}` : ""}`;
+  // Card is colored by organization (falls back to copper when unresolved).
+  const accent = accentColor || t.copper;
 
   return (
     <Box
       onClick={onClick}
       sx={{
         ...CARD_SX,
-        borderLeft: `4px solid ${t.copper}`,
-        "&:hover": { transform: "translateY(-2px)", boxShadow: "0 4px 16px rgba(184,115,51,0.15)" },
+        borderLeft: `4px solid ${accent}`,
+        "&:hover": { transform: "translateY(-2px)", boxShadow: `0 4px 16px ${hexToRgba(accent, 0.18)}` },
       }}
     >
       <Box sx={{ p: 1.5, flex: 1, display: "flex", flexDirection: "column" }}>
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
-          <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper }}>
+          <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: getTextColor(accent) }}>
             {badge}
           </Typography>
           <ChevronRight sx={{ fontSize: 16, color: t.cream3 }} />
@@ -203,22 +206,24 @@ function RecurringCard({ series, orgName, userByEmail, onClick }) {
   );
 }
 
-function AdHocCard({ meeting, orgName, userByEmail, onClick }) {
+function AdHocCard({ meeting, orgName, accentColor, userByEmail, onClick }) {
   const dt = meeting.date ? parseISO(meeting.date) : null;
   // Badge leads with the organization name; "Ad Hoc" follows.
   const badge = orgName ? `${orgName} · Ad Hoc` : "Ad Hoc";
+  // Card is colored by organization (falls back to purple when unresolved).
+  const accent = accentColor || t.purple;
   return (
     <Box
       onClick={onClick}
       sx={{
         ...CARD_SX,
-        borderLeft: `4px solid ${t.purple}`,
-        "&:hover": { transform: "translateY(-2px)", boxShadow: "0 4px 16px rgba(94,53,177,0.15)" },
+        borderLeft: `4px solid ${accent}`,
+        "&:hover": { transform: "translateY(-2px)", boxShadow: `0 4px 16px ${hexToRgba(accent, 0.18)}` },
       }}
     >
       <Box sx={{ p: 1.5, flex: 1, display: "flex", flexDirection: "column" }}>
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
-          <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.purple }}>
+          <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: getTextColor(accent) }}>
             {badge}
           </Typography>
           <ChevronRight sx={{ fontSize: 16, color: t.cream3 }} />
@@ -393,6 +398,14 @@ export default function Calendar() {
   }, [orgs]);
   const orgNameFor = (m) => orgNameBySlug[orgSlugFor(m)] || null;
 
+  // Slug → accent color, for org-colored cards + calendar chips.
+  const orgAccentBySlug = useMemo(() => {
+    const map = {};
+    for (const o of orgs || []) if (o.accentColor) map[o.id] = o.accentColor;
+    return map;
+  }, [orgs]);
+  const orgAccentFor = (m) => orgAccentBySlug[orgSlugFor(m)] || null;
+
   const filtered = useMemo(() => {
     const base = meetings.filter((m) => !archivedSeries.has(m.series_id || m.event_id));
     if (orgFilter === "all") return base;
@@ -547,7 +560,7 @@ export default function Calendar() {
               sx={{
                 ...(orgFilter === org.id && {
                   bgcolor: org.accentColor || "primary.main",
-                  color: "#fff",
+                  color: org.accentColor ? getContrastText(org.accentColor) : "#fff",
                 }),
               }}
             />
@@ -566,6 +579,7 @@ export default function Calendar() {
               key={series.seriesKey}
               series={series}
               orgName={orgNameFor(nextInstance || series.instances?.[0] || {})}
+              accentColor={orgAccentFor(nextInstance || series.instances?.[0] || {})}
               userByEmail={userByEmail}
               onClick={(e) => nextInstance && openCardPopover(e, nextInstance)}
             />
@@ -586,6 +600,7 @@ export default function Calendar() {
             key={m.event_id}
             meeting={m}
             orgName={orgNameFor(m)}
+            accentColor={orgAccentFor(m)}
             userByEmail={userByEmail}
             onClick={(e) => openCardPopover(e, m)}
           />
@@ -633,6 +648,7 @@ export default function Calendar() {
               key={m.event_id}
               meeting={m}
               orgName={orgNameFor(m)}
+              accentColor={orgAccentFor(m)}
               userByEmail={userByEmail}
               onClick={(e) => openCardPopover(e, m)}
             />
@@ -748,7 +764,9 @@ export default function Calendar() {
 
                 {dayMeetings.map((m) => {
                   const isRecurring = m.type === "recurring";
-                  const chipColor = isRecurring ? t.copper : t.purple;
+                  // Chip is colored by organization (falls back to the old
+                  // copper/purple-by-type when the org is unresolved).
+                  const accent = orgAccentFor(m) || (isRecurring ? t.copper : t.purple);
                   const pastMeeting = m.date && isBefore(parseISO(m.date), today);
                   return (
                     <Box
@@ -759,14 +777,14 @@ export default function Calendar() {
                         px: 0.8,
                         py: 0.3,
                         borderRadius: "4px",
-                        borderLeft: `3px solid ${chipColor}`,
-                        background: isRecurring ? "rgba(184,115,51,0.1)" : "rgba(94,53,177,0.08)",
+                        borderLeft: `3px solid ${accent}`,
+                        background: hexToRgba(accent, 0.1),
                         cursor: "pointer",
                         opacity: pastMeeting ? 0.45 : 1,
                         transition: "opacity 0.15s, background 0.15s",
                         "&:hover": {
                           opacity: pastMeeting ? 0.7 : 1,
-                          background: isRecurring ? "rgba(184,115,51,0.18)" : "rgba(94,53,177,0.15)",
+                          background: hexToRgba(accent, 0.18),
                         },
                         overflow: "hidden",
                       }}
@@ -775,7 +793,7 @@ export default function Calendar() {
                         sx={{
                           fontSize: 9,
                           fontWeight: 600,
-                          color: chipColor,
+                          color: getTextColor(accent),
                           lineHeight: 1.3,
                           whiteSpace: "nowrap",
                           overflow: "hidden",

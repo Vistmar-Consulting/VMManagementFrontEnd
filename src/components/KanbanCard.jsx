@@ -2,6 +2,7 @@ import { Box, Chip, Stack, Typography } from "@mui/material";
 import { Calendar, PauseCircle } from "lucide-react";
 
 import { useCollection } from "../hooks/useCollection.js";
+import { getContrastText } from "../theme/pillColors.js";
 
 function formatDue(dueDate) {
   if (!dueDate) return null;
@@ -46,7 +47,7 @@ export default function ItemCard({ item, orgLookup, userLookup }) {
               label={org.name}
               sx={{
                 bgcolor: org.accentColor || "#888",
-                color: "rgba(0,0,0,0.78)",
+                color: getContrastText(org.accentColor || "#888"),
                 fontWeight: 600,
                 fontSize: 11,
                 height: 20,

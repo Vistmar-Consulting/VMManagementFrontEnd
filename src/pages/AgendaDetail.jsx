@@ -45,6 +45,7 @@ import {
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
 import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
+import { getContrastText } from "../theme/pillColors.js";
 import AIGenDialog from "../components/AIGenDialog.jsx";
 import SuggestTasksDialog from "../components/SuggestTasksDialog.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
@@ -317,7 +318,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
             label={seriesOrgId ? orgName : "Unassigned — click to assign"}
             sx={{
               bgcolor: seriesOrgId ? (orgAccent || "primary.main") : "rgba(239,108,0,0.12)",
-              color: seriesOrgId ? "#fff" : "#ef6c00",
+              color: seriesOrgId ? (orgAccent ? getContrastText(orgAccent) : "#fff") : "#ef6c00",
               fontWeight: 600,
               fontSize: 12,
               height: 26,

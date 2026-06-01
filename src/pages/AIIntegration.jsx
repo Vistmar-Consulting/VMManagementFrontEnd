@@ -22,6 +22,7 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { doc, setDoc, updateDoc, deleteField, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
+import { getContrastText } from "../theme/pillColors.js";
 import { useDoc } from "../hooks/useDoc.js";
 import { useCollection } from "../hooks/useCollection.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -233,7 +234,7 @@ export default function AIIntegration() {
               onClick={() => setScope(org.id)}
               variant={scope === org.id ? "filled" : "outlined"}
               size="small"
-              sx={{ ...(scope === org.id && { bgcolor: org.accentColor || "primary.main", color: "#fff" }) }}
+              sx={{ ...(scope === org.id && { bgcolor: org.accentColor || "primary.main", color: org.accentColor ? getContrastText(org.accentColor) : "#fff" }) }}
             />
           ))}
       </Stack>

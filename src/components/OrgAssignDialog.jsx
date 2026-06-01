@@ -21,6 +21,7 @@ import {
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
 import { db } from "../firebase.js";
+import { getContrastText } from "../theme/pillColors.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 export default function OrgAssignDialog({ seriesId, currentOrgId, orgs, onClose }) {
@@ -66,7 +67,7 @@ export default function OrgAssignDialog({ seriesId, currentOrgId, orgs, onClose 
                 disabled={busy}
                 sx={{
                   bgcolor: active ? (o.accentColor || "#b87333") : "#f5f3ee",
-                  color: active ? "#fff" : "#3d3d5c",
+                  color: active ? getContrastText(o.accentColor || "#b87333") : "#3d3d5c",
                   fontWeight: active ? 600 : 500,
                   cursor: "pointer",
                   "&:hover": { opacity: 0.85 },
