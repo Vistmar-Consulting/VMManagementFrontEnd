@@ -167,9 +167,12 @@ const CARD_FOOTER_SX = {
   minHeight: 32,
 };
 
-function RecurringCard({ series, userByEmail, onClick }) {
+function RecurringCard({ series, orgName, userByEmail, onClick }) {
   const cadenceLabel = detectCadence(series.instanceCount);
   const nextDt = series.nextDate ? parseISO(series.nextDate) : null;
+  // Badge leads with the organization name; cadence follows. Falls back to
+  // "Recurring" when the series has no resolved org.
+  const badge = `${orgName || "Recurring"}${cadenceLabel ? ` · ${cadenceLabel}` : ""}`;
 
   return (
     <Box
@@ -183,7 +186,7 @@ function RecurringCard({ series, userByEmail, onClick }) {
       <Box sx={{ p: 1.5, flex: 1, display: "flex", flexDirection: "column" }}>
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
           <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper }}>
-            Recurring{cadenceLabel ? ` · ${cadenceLabel}` : ""}
+            {badge}
           </Typography>
           <ChevronRight sx={{ fontSize: 16, color: t.cream3 }} />
         </Box>
@@ -200,8 +203,10 @@ function RecurringCard({ series, userByEmail, onClick }) {
   );
 }
 
-function AdHocCard({ meeting, userByEmail, onClick }) {
+function AdHocCard({ meeting, orgName, userByEmail, onClick }) {
   const dt = meeting.date ? parseISO(meeting.date) : null;
+  // Badge leads with the organization name; "Ad Hoc" follows.
+  const badge = orgName ? `${orgName} · Ad Hoc` : "Ad Hoc";
   return (
     <Box
       onClick={onClick}
@@ -214,7 +219,7 @@ function AdHocCard({ meeting, userByEmail, onClick }) {
       <Box sx={{ p: 1.5, flex: 1, display: "flex", flexDirection: "column" }}>
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
           <Typography sx={{ fontFamily: t.sans, fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.purple }}>
-            Ad Hoc
+            {badge}
           </Typography>
           <ChevronRight sx={{ fontSize: 16, color: t.cream3 }} />
         </Box>
@@ -379,6 +384,14 @@ export default function Calendar() {
     if (m.org_id != null) return consoleOrgLookup[String(m.org_id)] || null;
     return null;
   };
+
+  // Slug → display name, for the card badges ("Unio · Weekly", "Unio · Ad Hoc").
+  const orgNameBySlug = useMemo(() => {
+    const map = {};
+    for (const o of orgs || []) map[o.id] = o.name || o.id;
+    return map;
+  }, [orgs]);
+  const orgNameFor = (m) => orgNameBySlug[orgSlugFor(m)] || null;
 
   const filtered = useMemo(() => {
     const base = meetings.filter((m) => !archivedSeries.has(m.series_id || m.event_id));
@@ -552,6 +565,7 @@ export default function Calendar() {
             <RecurringCard
               key={series.seriesKey}
               series={series}
+              orgName={orgNameFor(nextInstance || series.instances?.[0] || {})}
               userByEmail={userByEmail}
               onClick={(e) => nextInstance && openCardPopover(e, nextInstance)}
             />
@@ -571,6 +585,7 @@ export default function Calendar() {
           <AdHocCard
             key={m.event_id}
             meeting={m}
+            orgName={orgNameFor(m)}
             userByEmail={userByEmail}
             onClick={(e) => openCardPopover(e, m)}
           />
@@ -617,6 +632,7 @@ export default function Calendar() {
             <AdHocCard
               key={m.event_id}
               meeting={m}
+              orgName={orgNameFor(m)}
               userByEmail={userByEmail}
               onClick={(e) => openCardPopover(e, m)}
             />
