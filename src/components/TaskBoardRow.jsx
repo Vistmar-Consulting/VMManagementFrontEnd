@@ -53,6 +53,9 @@ export default function TaskBoardRow({
   users = [],
   categories = [],
   tags = [],
+  // Compact mode (embedded Mini Project Board on the agenda Working view):
+  // hide the Category + Comments cells and keep each row to a single line.
+  compact = false,
   canUpdate = true,
   expanded = false,
   onSetExpanded = () => {},
@@ -185,6 +188,7 @@ export default function TaskBoardRow({
                 color: (titleValue || item.title) ? "inherit" : "text.disabled",
                 fontStyle: (titleValue || item.title) ? "normal" : "italic",
                 "&:hover": canUpdate ? { textDecoration: "underline" } : {},
+                ...(compact && { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 320 }),
               }}
               onClick={() => canUpdate && setEditingTitle(true)}
             >
@@ -315,7 +319,9 @@ export default function TaskBoardRow({
         {/* Category (subitems inherit — render empty). Linear-style:
             colored dot + plain text. No chip border/caret so full names
             like "Provider Onboarding" fit; wraps to two lines if cell
-            is narrow rather than truncating with ellipsis. */}
+            is narrow rather than truncating with ellipsis.
+            Hidden in compact (Mini Project Board) mode. */}
+        {!compact && (
         <TableCell>
           {isSubitem ? null : (
             <>
@@ -387,6 +393,7 @@ export default function TaskBoardRow({
             </>
           )}
         </TableCell>
+        )}
 
         {/* Tags (multi-select). Linear-style: stack of colored-dot + name
             rows, one per tag. Empty state shows "—". */}
@@ -402,8 +409,12 @@ export default function TaskBoardRow({
                   onClick={canUpdate ? (e) => setTagsAnchor(e.currentTarget) : undefined}
                   sx={{
                     display: "flex",
-                    flexDirection: "column",
-                    gap: 0.5,
+                    // Compact (Mini Board): tags inline on one line; full board stacks.
+                    flexDirection: compact ? "row" : "column",
+                    flexWrap: "nowrap",
+                    overflow: compact ? "hidden" : "visible",
+                    gap: compact ? 1 : 0.5,
+                    alignItems: compact ? "center" : "stretch",
                     cursor: canUpdate ? "pointer" : "default",
                     minHeight: 24,
                     "&:hover .tag-name": canUpdate ? { color: "primary.main" } : {},
@@ -531,7 +542,8 @@ export default function TaskBoardRow({
           </Typography>
         </TableCell>
 
-        {/* Comments */}
+        {/* Comments — hidden in compact (Mini Project Board) mode. */}
+        {!compact && (
         <TableCell sx={{ overflow: "hidden", textAlign: "center", p: 0.5 }}>
           {commentCount > 0 ? (
             <Tooltip title={`${commentCount} comment${commentCount > 1 ? "s" : ""}`} enterDelay={500} placement="top">
@@ -566,6 +578,7 @@ export default function TaskBoardRow({
             </Tooltip>
           )}
         </TableCell>
+        )}
 
         {/* Files — URL links only in V1 (actual uploads land with Blaze). */}
         <TableCell sx={{ overflow: "hidden", textAlign: "center", p: 0.5 }}>
@@ -644,6 +657,7 @@ export default function TaskBoardRow({
           users={users}
           categories={categories}
           tags={tags}
+          compact={compact}
           canUpdate={canUpdate}
           getCommentCount={getCommentCount}
           onUpdate={onUpdate}
@@ -655,7 +669,7 @@ export default function TaskBoardRow({
       {/* + Add subitem row */}
       {!isSubitem && expanded && canUpdate && (
         <TableRow>
-          <TableCell colSpan={14} sx={{ borderBottom: "none", py: 0.5, pl: 7 }}>
+          <TableCell colSpan={compact ? 12 : 14} sx={{ borderBottom: "none", py: 0.5, pl: 7 }}>
             <Typography
               variant="caption"
               onClick={() => onAddSubitem?.(item)}

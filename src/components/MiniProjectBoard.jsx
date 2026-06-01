@@ -312,6 +312,7 @@ export default function MiniProjectBoard({
                       users={users || []}
                       categories={categories || []}
                       tags={tags || []}
+                      compact
                       onUpdate={handleUpdate}
                       onRequestDelete={handleRequestDelete}
                       onAddSubitem={handleAddSubitem}
