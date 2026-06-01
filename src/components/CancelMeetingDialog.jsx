@@ -25,6 +25,7 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import { format } from "date-fns";
@@ -33,16 +34,24 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useQueryClient } from "@tanstack/react-query";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { cancelMeeting } from "../lib/meetingsApi.js";
+import { cancelMeeting, sendMeetingMessage } from "../lib/meetingsApi.js";
+import { visibleAttendees } from "../lib/meetingHelpers.js";
 
-export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, onClose }) {
+export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, attendees, onClose }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isRecurring = !!calendarSeries?.recurrence;
   const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
 
+  // Human recipients for the optional custom note (proxies/bots filtered out).
+  const recipients = useMemo(
+    () => visibleAttendees(attendees || calendarSeries?.attendees || agenda?.attendees || []),
+    [attendees, calendarSeries?.attendees, agenda?.attendees],
+  );
+
   const [mode, setMode] = useState(isRecurring ? "instance" : "series");
   const [notify, setNotify] = useState(true);
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -80,25 +89,47 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
       // Clear the meeting binding so isBound flips to false and the Action
       // Bar morphs the red button to "Cancel agenda". The agenda doc itself
       // stays accessible — meetingCancelledAt records when this happened.
-      await updateDoc(doc(db, "agendas", agendaId), {
-        graphEventId: null,
-        googleEventId: null,
-        iCalUID: null,
-        teamsUrl: null,
-        calendarSeriesId: null,
-        meetingCancelledAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        updatedByUid: user?.uid || null,
-      });
-
-      // For series-scope cancel, mark the calendar_series doc too so the
-      // Calendar page can filter out the cancelled series.
-      if (mode === "series" && calendarSeries?.id) {
-        await updateDoc(doc(db, "calendar_series", calendarSeries.id), {
-          status: "cancelled",
+      // Series-scope cancel (= "cancel all future") also archives the agenda
+      // so it migrates out of the active set into the archived view.
+      if (agendaId) {
+        await updateDoc(doc(db, "agendas", agendaId), {
+          graphEventId: null,
+          googleEventId: null,
+          iCalUID: null,
+          teamsUrl: null,
+          calendarSeriesId: null,
+          meetingCancelledAt: serverTimestamp(),
+          ...(mode === "series" ? { archived: true } : {}),
           updatedAt: serverTimestamp(),
           updatedByUid: user?.uid || null,
         });
+      }
+
+      // For series-scope cancel, mark the calendar_series doc too so the
+      // Calendar page filters out the cancelled series (status + archived).
+      if (mode === "series" && calendarSeries?.id) {
+        await updateDoc(doc(db, "calendar_series", calendarSeries.id), {
+          status: "cancelled",
+          archived: true,
+          updatedAt: serverTimestamp(),
+          updatedByUid: user?.uid || null,
+        });
+      }
+
+      // Optional custom note to the human attendees — supplements the native
+      // Google cancellation (which has no message slot). Best-effort: a send
+      // failure must not roll back the cancel that already happened.
+      if (message.trim() && recipients.length) {
+        try {
+          await sendMeetingMessage({
+            title: agenda?.title || calendarSeries?.title || "Meeting",
+            kind: "cancel",
+            message: message.trim(),
+            attendees: recipients,
+          });
+        } catch (msgErr) {
+          console.error("[CancelMeetingDialog] custom note send failed (cancel already done):", msgErr);
+        }
       }
 
       // Refresh the Calendar's cached meeting list so the cancelled meeting
@@ -152,6 +183,20 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
                   Notify attendees (send cancellation)
                 </Typography>
               }
+            />
+          )}
+
+          {recipients.length > 0 && (
+            <TextField
+              label="Add a note to attendees (optional)"
+              placeholder="e.g. We're cancelling this week — back on the regular cadence next time."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              multiline
+              minRows={2}
+              size="small"
+              fullWidth
+              helperText={`Emails a short note to the ${recipients.length} attendee${recipients.length !== 1 ? "s" : ""} alongside the cancellation.`}
             />
           )}
 

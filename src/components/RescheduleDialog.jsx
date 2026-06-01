@@ -24,6 +24,7 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
@@ -31,7 +32,8 @@ import { TimePicker } from "@mui/x-date-pickers/TimePicker";
 import { format } from "date-fns";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
-import { rescheduleMeeting } from "../lib/meetingsApi.js";
+import { rescheduleMeeting, sendMeetingMessage } from "../lib/meetingsApi.js";
+import { visibleAttendees } from "../lib/meetingHelpers.js";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
@@ -63,7 +65,14 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
   const [mode, setMode] = useState("instance");
   const [newDate, setNewDate] = useState(originalStart);
   const [newTime, setNewTime] = useState(originalStart);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState(null);
+
+  // Human recipients for the optional custom note (proxies/bots filtered out).
+  const recipients = useMemo(
+    () => visibleAttendees(meeting?.attendees || []),
+    [meeting?.attendees],
+  );
 
   // Dual-write: call API, then mirror the new meetingDatetime to the
   // matching Firestore agenda doc. Failure to update Firestore doesn't roll
@@ -83,6 +92,22 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
           });
         } catch (firestoreErr) {
           console.error("[RescheduleDialog] Firestore agenda update failed (Graph + Google succeeded):", firestoreErr);
+        }
+      }
+
+      // Optional custom note to the human attendees — supplements the native
+      // Outlook reschedule invite (which has no message slot). Best-effort.
+      if (vars.message?.trim() && recipients.length) {
+        try {
+          await sendMeetingMessage({
+            title: meeting?.title || "Meeting",
+            kind: "reschedule",
+            dateFormatted: format(new Date(vars.new_date_iso), "EEE MMM d, h:mm a"),
+            message: vars.message.trim(),
+            attendees: recipients,
+          });
+        } catch (msgErr) {
+          console.error("[RescheduleDialog] custom note send failed (reschedule already done):", msgErr);
         }
       }
       return apiResult;
@@ -134,6 +159,7 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
       durationMinutes: originalDurationMinutes,
       orgId: meeting.org_id || null,
       new_date_iso: newDateIso,  // passed through for Firestore write only
+      message,                   // passed through for the optional note email
     });
   };
 
@@ -186,6 +212,20 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
             Attendees will be notified automatically via Outlook (Microsoft Graph fans the
             updated invite to every attendee); the Google Calendar mirror is updated silently.
           </Typography>
+
+          {recipients.length > 0 && (
+            <TextField
+              label="Add a note to attendees (optional)"
+              placeholder="e.g. Moving this so it doesn't clash with your QBR — same agenda, new time."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              multiline
+              minRows={2}
+              size="small"
+              fullWidth
+              helperText={`Emails a short note to the ${recipients.length} attendee${recipients.length !== 1 ? "s" : ""} alongside the updated invite.`}
+            />
+          )}
 
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>

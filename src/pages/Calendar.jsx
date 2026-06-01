@@ -48,14 +48,18 @@ import {
   startOfDay,
 } from "date-fns";
 
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+
 import { useCollection } from "../hooks/useCollection.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { db } from "../firebase.js";
 import { listMeetings } from "../lib/meetingsApi.js";
 import { groupRecurringMeetings, detectCadence, visibleAttendees } from "../lib/meetingHelpers.js";
 import { reconcileMeetingsToFirestore } from "../lib/reconcileMeetings.js";
 import MemberAvatar from "../components/MemberAvatar.jsx";
 import NewMeetingDialog from "../components/NewMeetingDialog.jsx";
 import RescheduleDialog from "../components/RescheduleDialog.jsx";
+import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 
 // Design tokens — local to this page since Management's global palette
 // excludes cream/copper. Ported verbatim from archive Agenda.jsx lines 86-107.
@@ -246,6 +250,7 @@ export default function Calendar() {
   const [popoverAnchor, setPopoverAnchor] = useState(null);
   const [popoverMeeting, setPopoverMeeting] = useState(null);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const [pastExpanded, setPastExpanded] = useState(false);
   const [newMeetingOpen, setNewMeetingOpen] = useState(false);
 
@@ -440,6 +445,31 @@ export default function Calendar() {
   const closePopover = () => {
     setPopoverAnchor(null);
     setPopoverMeeting(null);
+  };
+
+  // Retire a meeting: flag its calendar_series `archived: true`. The Calendar's
+  // archivedSeries set is derived live from the calendar_series subscription,
+  // so the meeting drops off everywhere as soon as the write lands — no API
+  // call and no list invalidation needed. Used for retired/replaced series
+  // (e.g. a renamed biweekly) and legacy events that can't be rescheduled.
+  const handleRetire = async (meeting) => {
+    const seriesId = meeting?.series_id || meeting?.event_id;
+    if (!seriesId) return;
+    if (!window.confirm(
+      `Retire "${meeting.title || "this meeting"}"?\n\nIt'll be hidden from the calendar everywhere. ` +
+      `Nothing is emailed and the event is left untouched in Google/Outlook — use this for replaced or stale series.`
+    )) return;
+    try {
+      await setDoc(
+        doc(db, "calendar_series", seriesId),
+        { archived: true, updatedAt: serverTimestamp(), updatedByUid: user?.uid || null },
+        { merge: true },
+      );
+      closePopover();
+    } catch (err) {
+      console.error("[Calendar] retire failed:", err);
+      window.alert(`Retire failed: ${err.message}`);
+    }
   };
 
   // Card click → open popover anchored to the card. For RecurringCard we
@@ -792,6 +822,24 @@ export default function Calendar() {
           const isRecurring = m.type === "recurring";
           const canReschedule = !!m.m365EventId;
 
+          // Resolve the Firestore docs backing this meeting for the cancel
+          // flow. Agenda doc id == series_id (recurring) / event_id (ad-hoc),
+          // same key the Open Agenda route uses.
+          const seriesId = m.series_id || m.event_id;
+          const seriesDoc = (calendarSeriesDocs || []).find((s) => s.id === seriesId) || null;
+          const agendaForMeeting =
+            agendaByExternalId[m.event_id]
+            || agendaByExternalId[m.m365EventId]
+            || agendaByExternalId[m.series_id]
+            || (agendaDocs || []).find((a) => a.id === seriesId)
+            || null;
+          // Only offer Cancel when the meeting is actually API-cancellable
+          // (has a Graph binding the cancel dialog can act on). An unbound
+          // legacy meeting would otherwise get a Firestore-only "cancel" that
+          // reports success while the real Google/Outlook event lives on —
+          // for those, Retire is the correct path (see the legacy note below).
+          const canCancel = !!(seriesDoc?.graphSeriesEventId || agendaForMeeting?.graphEventId);
+
           return (
             <Box>
               <IconButton
@@ -926,9 +974,66 @@ export default function Calendar() {
               >
                 Reschedule
               </Box>
+
+              {/* Cancel + Retire — meeting lifecycle actions. Cancel routes
+                  through CancelMeetingDialog (next / all-future + emails;
+                  all-future archives the agenda). Retire just hides a
+                  replaced/stale series from the calendar (no emails). */}
+              <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+                {canCancel && (
+                  <Box
+                    component="button"
+                    onClick={() => {
+                      setCancelTarget({
+                        agenda: agendaForMeeting,
+                        agendaId: agendaForMeeting?.id || seriesId,
+                        calendarSeries: seriesDoc,
+                        attendees: m.attendees || [],
+                      });
+                      closePopover();
+                    }}
+                    sx={{
+                      flex: 1,
+                      py: 0.8,
+                      border: "1px solid #e9c4c4",
+                      borderRadius: "8px",
+                      background: "transparent",
+                      color: "#b3261e",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      transition: "background 0.15s, border-color 0.15s",
+                      "&:hover": { background: "#fbedec", borderColor: "#b3261e" },
+                    }}
+                  >
+                    Cancel meeting
+                  </Box>
+                )}
+                <Box
+                  component="button"
+                  onClick={() => handleRetire(m)}
+                  sx={{
+                    flex: 1,
+                    py: 0.8,
+                    border: `1px solid ${t.cream3}`,
+                    borderRadius: "8px",
+                    background: "transparent",
+                    color: t.ink3,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    transition: "background 0.15s, border-color 0.15s",
+                    "&:hover": { background: t.cream2, borderColor: t.ink3 },
+                  }}
+                >
+                  Retire
+                </Box>
+              </Box>
+
               {!canReschedule && (
-                <Typography sx={{ fontSize: 11, color: t.ink3, mt: 0.8, textAlign: "center" }}>
-                  This meeting was created before the new system — cancel and recreate to migrate.
+                <Typography sx={{ fontSize: 11, color: t.ink3, mt: 0.8, textAlign: "center", lineHeight: 1.4 }}>
+                  Reschedule isn’t available — this meeting predates the new system.
+                  Use <strong>Retire</strong> to hide it, then recreate it via <strong>+ New Meeting</strong>.
                 </Typography>
               )}
             </Box>
@@ -947,6 +1052,16 @@ export default function Calendar() {
           }
           onClose={() => setRescheduleTarget(null)}
           onSuccess={() => setRescheduleTarget(null)}
+        />
+      )}
+
+      {cancelTarget && (
+        <CancelMeetingDialog
+          agenda={cancelTarget.agenda}
+          agendaId={cancelTarget.agendaId}
+          calendarSeries={cancelTarget.calendarSeries}
+          attendees={cancelTarget.attendees}
+          onClose={() => setCancelTarget(null)}
         />
       )}
 
