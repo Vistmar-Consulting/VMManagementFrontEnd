@@ -271,7 +271,11 @@ export default async function handler(req, res) {
 
   try {
     const client = new Anthropic({ apiKey });
-    const message = await client.messages.create({
+    // Stream + finalMessage(): the master agenda's higher max_tokens crosses the
+    // SDK's non-streaming 10-minute guard, which throws on messages.create().
+    // Streaming lifts that guard; the call still completes well under the
+    // function's maxDuration (300s). Same params, same structured output.
+    const message = await client.messages.stream({
       model: MODEL,
       // Master spans every org — give it more output room than a single-org agenda.
       max_tokens: master ? 24000 : 16000,
@@ -282,7 +286,7 @@ export default async function handler(req, res) {
       // keeping the call well under timeout without a quality hit.
       output_config: { effort: "medium", format: { type: "json_schema", schema: buildSchema(!!master) } },
       messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, extraContext, !!master, orgMeta || []) }],
-    });
+    }).finalMessage();
 
     if (message.stop_reason === "max_tokens") {
       return res.status(502).json({ error: "Generation was cut off (hit token limit). Try again." });
