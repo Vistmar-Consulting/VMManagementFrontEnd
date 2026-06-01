@@ -1437,6 +1437,48 @@ function OrgSectionHeader({ org }) {
   );
 }
 
+// Master Touch Base: "+ New Topic" at the bottom of an org section. Creates a
+// topic tagged with that section's org, slotted at the end of the org's group
+// (midpoint sortOrder between the group's last topic and the next group's
+// first) so it stays within the section.
+function AddOrgTopicButton({ agendaId, org, prevSort, nextSort }) {
+  const { user } = useAuth();
+  const accent = org?.accentColor || t.copper;
+  const handleAdd = async (e) => {
+    e.stopPropagation();
+    const sortOrder = (prevSort != null && nextSort != null)
+      ? (prevSort + nextSort) / 2
+      : (prevSort ?? 0) + 1;
+    await addDoc(collection(db, "agendas", agendaId, "topics"), {
+      name: "New Topic",
+      bodyHtml: "",
+      sortOrder,
+      organizationId: org?.id || null,
+      categoryIds: [],
+      tagIds: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      createdByUid: user?.uid || null,
+    });
+  };
+  return (
+    <Box
+      onClick={handleAdd}
+      onMouseDown={(e) => e.stopPropagation()}
+      sx={{
+        display: "inline-flex", alignItems: "center", gap: 0.5,
+        ml: "11px", mt: 0.5, mb: 1.5, px: 1.5, py: 0.6,
+        border: `1.5px dashed ${accent}`, borderRadius: 1.5, cursor: "pointer",
+        color: getTextColor(accent), fontSize: 11, fontWeight: 600,
+        transition: "background 0.15s",
+        "&:hover": { background: hexToRgba(accent, 0.08) },
+      }}
+    >
+      ＋ New Topic
+    </Box>
+  );
+}
+
 export default function AgendaDetail() {
   const { agendaId } = useParams();
   const navigate = useNavigate();
@@ -1728,6 +1770,14 @@ export default function AgendaDetail() {
                                   agendaId={agendaId}
                                   dragHandleProps={dragProvided.dragHandleProps}
                                 />
+                                {isMaster && topic.organizationId !== (topics[idx + 1]?.organizationId) && (
+                                  <AddOrgTopicButton
+                                    agendaId={agendaId}
+                                    org={orgById[topic.organizationId]}
+                                    prevSort={topic.sortOrder}
+                                    nextSort={topics[idx + 1]?.sortOrder}
+                                  />
+                                )}
                               </Box>
                             )}
                           </Draggable>
@@ -1737,7 +1787,7 @@ export default function AgendaDetail() {
                     )}
                   </Droppable>
                 </DragDropContext>
-                <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
+                {!isMaster && <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />}
                 <OpenFloorSection agendaId={agendaId} agenda={agenda} />
               </Box>
             </Box>
@@ -1799,6 +1849,14 @@ export default function AgendaDetail() {
                                 focusFilter={meetingFocusFilter}
                                 attendeeFilter={attendeeFilter}
                               />
+                              {isMaster && topic.organizationId !== (topics[idx + 1]?.organizationId) && (
+                                <AddOrgTopicButton
+                                  agendaId={agendaId}
+                                  org={orgById[topic.organizationId]}
+                                  prevSort={topic.sortOrder}
+                                  nextSort={topics[idx + 1]?.sortOrder}
+                                />
+                              )}
                             </Box>
                           )}
                         </Draggable>
@@ -1808,9 +1866,11 @@ export default function AgendaDetail() {
                   )}
                 </Droppable>
               </DragDropContext>
-              <Box sx={{ mt: 2 }}>
-                <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
-              </Box>
+              {!isMaster && (
+                <Box sx={{ mt: 2 }}>
+                  <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
+                </Box>
+              )}
               <OpenFloorSection agendaId={agendaId} agenda={agenda} />
               {agenda?.firefliesTitles?.length > 0 && (
                 <PastMeetingsCard firefliesTitles={agenda.firefliesTitles} />
