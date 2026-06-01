@@ -215,7 +215,7 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
     summary: {
       windowStart,
       anchoredToGen,
-      usedFallbackWindow: !anchoredToGen && lastOccurrence === 0,
+      usedFallbackWindow: !anchoredToGen && !meetingAnchor && !orgAnchor,
       orgAgendaCount: orgAgendas.length,
       orgCount: transcripts.filter((t) => t.scope === "this-org").length,
       internalCount: transcripts.filter((t) => t.scope === "vistamar-internal").length,
