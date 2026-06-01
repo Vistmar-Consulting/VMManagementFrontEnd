@@ -250,8 +250,12 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
 
   // Display the next upcoming occurrence for recurring meetings; the stored
   // meetingDatetime (a frozen past instance) only drives one-time meetings.
-  const meetingDt = (isRecurring && nextOccurrence?.start)
-    ? nextOccurrence.start
+  // For recurring meetings ONLY use the live next occurrence — never the stored
+  // (frozen, often past) meetingDatetime, so the hero never flashes a stale
+  // date while the occurrence query is loading. One-time meetings use stored.
+  const occLoading = isRecurring && occData === undefined;
+  const meetingDt = isRecurring
+    ? (nextOccurrence?.start || null)
     : (agenda?.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null);
   const recurrenceLabel = calendarSeries?.recurrence
     ? calendarSeries.recurrence === "recurring"
@@ -315,9 +319,13 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
           <Typography sx={{ fontSize: 14, color: canScheduleCreate ? t.copper : t.ink3, fontWeight: canScheduleCreate ? 600 : 400 }}>
             {meetingDt
               ? format(meetingDt, "EEEE, MMMM d 'at' h:mm a")
-              : canScheduleCreate
-                ? "Schedule this meeting"
-                : "Date not set"}
+              : occLoading
+                ? "Loading next date…"
+                : canScheduleCreate
+                  ? "Schedule this meeting"
+                  : isRecurring
+                    ? "No upcoming instances"
+                    : "Date not set"}
           </Typography>
           {/* Recurrence label hidden in the Overview (the title denotes it);
               kept in the Working view. */}
