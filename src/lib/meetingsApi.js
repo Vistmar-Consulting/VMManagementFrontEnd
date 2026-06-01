@@ -149,22 +149,6 @@ export function sendMeetingPrep({ title, dateFormatted, topics, openFloor, atten
   });
 }
 
-// POST /api/meetings/send-message
-// Sends a custom note to attendees alongside a cancel/reschedule (the native
-// Google notice has no message slot). kind: "cancel" | "reschedule".
-export function sendMeetingMessage({ title, kind, dateFormatted, message, attendees }) {
-  return call("send-message", {
-    method: "POST",
-    body: {
-      title,
-      kind,
-      dateFormatted: dateFormatted || null,
-      message,
-      attendees: attendees || [],
-    },
-  });
-}
-
 // POST /api/meetings/send-schedule
 // Sends the schedule confirmation email per attendee.
 export function sendScheduleEmail({ title, dateFormatted, teamsUrl, isReschedule, attendees }) {

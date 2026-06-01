@@ -988,7 +988,6 @@ export default function Calendar() {
                         agenda: agendaForMeeting,
                         agendaId: agendaForMeeting?.id || seriesId,
                         calendarSeries: seriesDoc,
-                        attendees: m.attendees || [],
                       });
                       closePopover();
                     }}
@@ -1060,7 +1059,6 @@ export default function Calendar() {
           agenda={cancelTarget.agenda}
           agendaId={cancelTarget.agendaId}
           calendarSeries={cancelTarget.calendarSeries}
-          attendees={cancelTarget.attendees}
           onClose={() => setCancelTarget(null)}
         />
       )}

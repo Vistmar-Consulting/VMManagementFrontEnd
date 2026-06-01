@@ -25,7 +25,6 @@ import {
   Radio,
   RadioGroup,
   Stack,
-  TextField,
   Typography,
 } from "@mui/material";
 import { format } from "date-fns";
@@ -34,24 +33,16 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useQueryClient } from "@tanstack/react-query";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { cancelMeeting, sendMeetingMessage } from "../lib/meetingsApi.js";
-import { visibleAttendees } from "../lib/meetingHelpers.js";
+import { cancelMeeting } from "../lib/meetingsApi.js";
 
-export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, attendees, onClose }) {
+export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, onClose }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isRecurring = !!calendarSeries?.recurrence;
   const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
 
-  // Human recipients for the optional custom note (proxies/bots filtered out).
-  const recipients = useMemo(
-    () => visibleAttendees(attendees || calendarSeries?.attendees || agenda?.attendees || []),
-    [attendees, calendarSeries?.attendees, agenda?.attendees],
-  );
-
   const [mode, setMode] = useState(isRecurring ? "instance" : "series");
   const [notify, setNotify] = useState(true);
-  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -116,22 +107,6 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
         });
       }
 
-      // Optional custom note to the human attendees — supplements the native
-      // Google cancellation (which has no message slot). Best-effort: a send
-      // failure must not roll back the cancel that already happened.
-      if (message.trim() && recipients.length) {
-        try {
-          await sendMeetingMessage({
-            title: agenda?.title || calendarSeries?.title || "Meeting",
-            kind: "cancel",
-            message: message.trim(),
-            attendees: recipients,
-          });
-        } catch (msgErr) {
-          console.error("[CancelMeetingDialog] custom note send failed (cancel already done):", msgErr);
-        }
-      }
-
       // Refresh the Calendar's cached meeting list so the cancelled meeting
       // drops off when the user returns there.
       queryClient.invalidateQueries({ queryKey: ["meetings-list"] });
@@ -183,20 +158,6 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
                   Notify attendees (send cancellation)
                 </Typography>
               }
-            />
-          )}
-
-          {recipients.length > 0 && (
-            <TextField
-              label="Add a note to attendees (optional)"
-              placeholder="e.g. We're cancelling this week — back on the regular cadence next time."
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              multiline
-              minRows={2}
-              size="small"
-              fullWidth
-              helperText={`Emails a short note to the ${recipients.length} attendee${recipients.length !== 1 ? "s" : ""} alongside the cancellation.`}
             />
           )}
 
