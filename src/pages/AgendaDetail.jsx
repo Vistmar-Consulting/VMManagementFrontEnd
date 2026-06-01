@@ -348,33 +348,9 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
         <ViewToggle value={viewMode} onChange={setViewMode} />
       </Box>
 
-      {/* Organization row — hidden in the Overview (the title denotes the org;
-          keep the document clean). Kept in the Working view because this Chip is
-          also the only control to assign/change the agenda's organization, which
-          the embedded MiniProjectBoard depends on. */}
-      {viewMode !== "overview" && (
-        <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mt: 2 }}>
-          <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.ink3 }}>
-            Organization
-          </Typography>
-          <Chip
-            onClick={() => setOrgPickerOpen(true)}
-            size="small"
-            label={seriesOrgId ? orgName : "Unassigned — click to assign"}
-            sx={{
-              bgcolor: seriesOrgId ? (orgAccent || "primary.main") : "rgba(239,108,0,0.12)",
-              color: seriesOrgId ? (orgAccent ? getContrastText(orgAccent) : "#fff") : "#ef6c00",
-              fontWeight: 600,
-              fontSize: 12,
-              height: 26,
-              px: 0.5,
-              cursor: "pointer",
-              border: seriesOrgId ? "none" : "1.5px dashed #ef6c00",
-              "&:hover": { opacity: 0.85, boxShadow: "0 2px 6px rgba(0,0,0,0.08)" },
-            }}
-          />
-        </Box>
-      )}
+      {/* Organization row removed from the hero (org is set via the
+          calendar_series; the Working hero stays clean). OrgAssignDialog
+          retained below but no longer triggered from the hero. */}
 
       {orgPickerOpen && seriesId && (
         <OrgAssignDialog
