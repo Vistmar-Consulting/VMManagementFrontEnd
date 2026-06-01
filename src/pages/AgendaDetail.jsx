@@ -81,7 +81,7 @@ import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
 import RichBodyEditor from "../components/editor/RichBodyEditor.jsx";
 import { EditorFocusProvider } from "../components/editor/editorFocus.jsx";
 import SharedEditorToolbar from "../components/editor/SharedEditorToolbar.jsx";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { t } from "../theme/tokens.js";
 
 const inputBase = {
@@ -380,8 +380,34 @@ function OverviewTopic({ topic, agendaId, dragHandleProps }) {
     });
   };
 
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete topic "${topic.name || "Untitled"}"? This removes the whole topic and its notes.`)) return;
+    await deleteDoc(doc(db, "agendas", agendaId, "topics", topic.id)).catch(() => {});
+  };
+
   return (
-    <Box sx={{ position: "relative", mb: 2.5 }}>
+    <Box sx={{ position: "relative", mb: 2.5, "&:hover .topic-del": { opacity: 0.55 } }}>
+      {/* Delete — right gutter, revealed on row hover (mirrors the drag grip). */}
+      <Box
+        className="topic-del"
+        onClick={handleDelete}
+        sx={{
+          position: "absolute",
+          right: "-22px",
+          top: "3px",
+          display: "flex",
+          alignItems: "center",
+          color: "#c62828",
+          opacity: 0,
+          transition: "opacity 0.12s",
+          cursor: "pointer",
+          "&:hover": { opacity: 1 },
+        }}
+        aria-label="Delete topic"
+        title="Delete topic"
+      >
+        <Trash2 size={15} />
+      </Box>
       {/* Drag handle — only the grip drags, so the heading + body stay freely
           editable. Lives in the left gutter, revealed on row hover. */}
       <Box
