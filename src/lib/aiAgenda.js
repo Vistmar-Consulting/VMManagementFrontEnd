@@ -85,17 +85,34 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
   //     robust, intuitive default once the agenda has been generated once.
   //  2. The meeting's most recent PAST Fireflies occurrence (first-gen fallback).
   //  3. A flat lookback (unmapped agenda).
+  // Window anchor, in priority order:
+  //  1. lastAgendaGenAt / lastSuggestTasksAt — "since I last reconciled".
+  //  2. This meeting's PREVIOUS occurrence (by firefliesTitles) — first gen of
+  //     a meeting that has Fireflies history + a title mapping.
+  //  3. The ORG's previous meeting of ANY kind — new / imported / unmapped
+  //     meetings ("since this client last met us"), cadence-aligned.
+  //  4. Flat 21-day lookback — cold start (org has no Fireflies history).
+  // For (2) and (3): if the latest occurrence JUST happened (gen right after a
+  // meeting), reach back to the one before it so we span the full last cycle
+  // rather than a near-empty window.
   const anchorMs = toMs(agenda?.[anchorField]);
   const titleSet = new Set((agenda?.firefliesTitles || []).map((s) => (s || "").toLowerCase().trim()));
-  let lastOccurrence = 0;
-  for (const t of list) {
-    if (!titleSet.has((t.title || "").toLowerCase().trim())) continue;
-    const d = toMs(t.date);
-    if (d > 0 && d < now && d > lastOccurrence) lastOccurrence = d;
-  }
+  const pickAnchor = (occ) => {
+    if (!occ.length) return 0;
+    return (occ.length > 1 && now - occ[0] < 2 * DAY_MS) ? occ[1] : occ[0];
+  };
+  const pastMs = (t) => { const d = toMs(t.date); return d > 0 && d < now ? d : 0; };
+  const meetingOcc = list.filter((t) => titleSet.has((t.title || "").toLowerCase().trim()))
+    .map(pastMs).filter(Boolean).sort((a, b) => b - a);
+  const orgOcc = targetOrg
+    ? list.filter((t) => resolveOrgFromAttendees(t.meeting_attendees) === targetOrg)
+        .map(pastMs).filter(Boolean).sort((a, b) => b - a)
+    : [];
+  const meetingAnchor = pickAnchor(meetingOcc);
+  const orgAnchor = pickAnchor(orgOcc);
   const windowStart = anchorMs > 0
     ? anchorMs
-    : (lastOccurrence > 0 ? lastOccurrence : now - FALLBACK_WINDOW_MS);
+    : (meetingAnchor || orgAnchor || now - FALLBACK_WINDOW_MS);
   const anchoredToGen = anchorMs > 0;
 
   // In-window transcripts classified as this org or internal Vistamar.
