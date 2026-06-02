@@ -39,17 +39,21 @@ The model is given each current topic tagged with its Firestore doc id (`ref`), 
 ### 3.2 Change sites
 
 **`api/ai/prepare.js`**
-- `buildSchema(master)` (line 38): add `ref: { type: "string" }` to `topicProps` and `"ref"` to `topicRequired` (applies to both master and non-master; `ref` is required, empty string `""` means "brand-new topic"). Structured-outputs can't express "optional," so `""`-as-sentinel is used (consistent with the codebase's flat-string schema constraints).
-- Current-agenda topic rendering: in `buildUserMessage` ("## Current agenda" block, ~line 295) and `buildMasterUserMessage` (line 232-233), render each current topic as `[ref:<docId>] <title>` (and `[org:<slug>]` for master) so the model sees the id to echo. Requires the current topics to arrive **with their doc id** (see dialog change below).
-- Output contract / system prompt (~lines 185-210): add a **TOPIC IDENTITY** section: *"The current agenda's topics are listed below, each tagged `[ref:<id>]`. For every topic you carry forward from the current agenda, set its `ref` to that exact id and keep its title unchanged (the title is fixed by the system; do not reword it). Only a genuinely new topic may have a new title — set its `ref` to an empty string `""`. You may reorder topics and you may omit a topic whose work is fully complete."*
+- `buildSchema(master)` (line 38): add `ref: { type: "string" }` to `topicProps` and `"ref"` to `topicRequired` (applies to both master and non-master; `ref` is required, empty string `""` means "brand-new topic"). Structured-outputs can't express "optional," so `""`-as-sentinel is used and `ref` goes in `required` (consistent with this file's pattern — every property is in `required`, `additionalProperties:false`, line 45/57).
+- Current-agenda topic rendering: in `buildUserMessage` ("## Current agenda" block at line 295; per-topic loop at **298-301**) and `buildMasterUserMessage` (loop at **232-235**), render each current topic as `[ref:<docId>] <title>` (and `[org:<slug>]` for master) so the model sees the id to echo. Requires the current topics to arrive **with their doc id** (see dialog change below).
+- Output contract / system prompt (**lines 184-211**): add a **TOPIC IDENTITY** section: *"The current agenda's topics are listed below, each tagged `[ref:<id>]`. For every topic you carry forward from the current agenda, set its `ref` to that exact id and keep its title unchanged (the title is fixed by the system; do not reword it). Only a genuinely new topic may have a new title — set its `ref` to an empty string `""`. You may reorder topics and you may omit a topic whose work is fully complete."*
+- **Handler reshape (the topics `.map`, ~lines 408-417):** the returned topic object does NOT currently carry `ref`. Add `ref: t?.ref ? String(t.ref) : ""` to the mapped object, or the dialog and `applyUnified` never see it. (The `topicId: \`t${i}\`` minting stays — independent.) **This is a required change site.**
 
-**`api/ai/refine.js`**
-- Whatever schema the refine endpoint uses for topics must include `ref` and instruct the model to **preserve each topic's `ref` verbatim** through refinement (a refine pass must never strip identity). If `refine.js` reuses `buildSchema`, the schema change is automatic; verify and add the preserve-instruction.
-- `refineProposal` in `aiAgenda.js` (line 320) currently mints `topicId` for topics lacking one — leave that as is; it must additionally pass `ref` through untouched (it already spreads `...t`, so `ref` survives; confirm and test).
+**`api/ai/refine.js`** — refine has its **OWN** `buildSchema` (line 16), **not** shared with prepare; it must be edited separately:
+- `buildSchema(master)` (line 16): add `ref: { type: "string" }` to `topicProps` and `"ref"` to `topicRequired`. (Note: `topicId` is in this schema's props but currently omitted from `topicRequired` (line 24) — the same not-required anti-pattern. Add `ref` to `topicRequired`; consider also adding `topicId` for consistency, but at minimum `ref` must be required to honor the `""`-sentinel contract.)
+- `buildSystem` already carries a "PRESERVE TOPIC IDS" instruction (~line 69) — extend it to also **preserve each topic's `ref` verbatim**.
+- `buildUserMessage` (~lines 77-95): render the proposal's topics with their `[ref:…]` tag so the model echoes it back.
+- **Handler reshape (~lines 136-145):** the refined topic object must carry `ref` through — add `ref: t?.ref ? String(t.ref) : ""` to the mapped object (mirrors the existing `topicId` passthrough at line 138).
+- `refineProposal` in `aiAgenda.js` (line 320) mints `topicId` for topics lacking one — leave as is; `ref` rides through untouched once the refine handler returns it.
 
-**`src/lib/aiAgenda.js` — `applyUnified` (lines 451-540)**
-- After reading `curTopics` (line 452-456), build `const curNameById = new Map(curTopics.docs.map((d) => [d.id, d.data().name || ""]))` and (master) `curOrgById` similarly.
-- In the recreate loop (line 526-540), replace `name: String(t.name || "")` (line 531) with:
+**`src/lib/aiAgenda.js` — `applyUnified` (function starts line 402; topic recreate loop 524-542)**
+- After reading `curTopics` (line 452-456, via `Promise.all` **outside** the transaction), build `const curNameById = new Map(curTopics.docs.map((d) => [d.id, d.data().name || ""]))` and (master) `curOrgById` similarly. **Reading these outside the tx is intentional and correct** — they're plain Maps consumed in the writes phase, not `tx.get` calls, so no reads-before-writes violation. A few-ms-stale name is acceptable here: Sync Meeting is single-admin, so no concurrent rename of the same doc mid-apply. Do NOT "fix" this by moving the read into the tx (it would add N pointless reads-before-writes).
+- In the recreate loop (524-542), replace `name: String(t.name || "")` (line 531) with:
   ```js
   const retained = t.ref && curNameById.has(t.ref);
   // … name field:
@@ -58,10 +62,10 @@ The model is given each current topic tagged with its Firestore doc id (`ref`), 
     ? curOrgById.get(t.ref)
     : (t.organizationId || null),
   ```
-  So a retained topic keeps its canonical title (and, for master, its org); a new topic uses the model's. Everything else in the loop is unchanged.
+  So a retained topic keeps its canonical title (and, for master, its org); a new topic uses the model's. Everything else in the loop is unchanged. (Topic docs store the title in **`name`** — confirmed `aiAgenda.js:261,531,536` — not `title`; items use `title`, topics use `name`.)
 
 **`src/components/SyncMeetingDialog.jsx`**
-- Line 201: change `topics: (topics || []).map((t) => ({ name: t.name || "", bodyHtml: t.bodyHtml || "" }))` to include the id: `({ id: t.id, name: t.name || "", bodyHtml: t.bodyHtml || "" })`. (The dialog already receives `topics` with ids as a prop, line 78.)
+- Line 201: change `topics: (topics || []).map((t) => ({ name: t.name || "", bodyHtml: t.bodyHtml || "" }))` to include the id: `({ id: t.id, name: t.name || "", bodyHtml: t.bodyHtml || "" })`. **Verified safe:** `topics` reaches the dialog from `AgendaDetail.jsx:1553` `useCollection("agendas/{id}/topics")` (which returns `{id, ...data}` per doc) → passed `topics={topics}` at `:1962-1965`, so `t.id` is present.
 - Review section (~lines 413-435): compute and render a **Retained / New / Dropped** diff:
   - For each `proposal.topics[i]`: `ref && currentIds.has(ref)` → **Retained** (title-locked badge); else → **New**.
   - For each current topic whose id is not referenced by any `proposal.topics[].ref` → **Dropped** (listed separately so a human can catch a mis-mapped rename surfacing as drop+add).
