@@ -1226,6 +1226,20 @@ function AgendaTopicCard({
     });
   }, [items, organizationId, topic.categoryIds, topic.tagIds]);
 
+  // Subitems whose parent matched this topic, mirroring MiniProjectBoard's
+  // subitem surfacing. The Meeting Focus / Attendees filter-coupling below
+  // must see these — Done/Review/overdue work lives mostly at the subitem
+  // level, so matching only on parents leaves every card collapsed when a
+  // focus cell is clicked.
+  const filterScopeItems = useMemo(() => {
+    if (matchedItems.length === 0) return matchedItems;
+    const ids = new Set(matchedItems.map((it) => it.id));
+    const subs = (items || []).filter(
+      (it) => it.parentId && it.organizationId === organizationId && ids.has(it.parentId)
+    );
+    return subs.length ? [...matchedItems, ...subs] : matchedItems;
+  }, [matchedItems, items, organizationId]);
+
   // V2.2.2e.2 filter coupling. Decide whether this card has any items that
   // match the active page-level filter (Meeting Focus from sidebar or
   // Attendees from sidebar). Used to auto-expand/collapse on filter change.
@@ -1237,7 +1251,7 @@ function AgendaTopicCard({
       const u = userByEmail[attendeeFilter.toLowerCase?.() || ""];
       if (u) attendeeUid = u.id;
     }
-    for (const it of matchedItems) {
+    for (const it of filterScopeItems) {
       // attendeeFilter requires the item's assigneeIds to include the filter's uid.
       if (attendeeFilter && attendeeUid && !(Array.isArray(it.assigneeIds) && it.assigneeIds.includes(attendeeUid))) {
         continue;
@@ -1254,7 +1268,7 @@ function AgendaTopicCard({
       }
     }
     return false;
-  }, [matchedItems, focusFilter, attendeeFilter, userByEmail]);
+  }, [filterScopeItems, focusFilter, attendeeFilter, userByEmail]);
 
   useEffect(() => {
     if (focusFilter || attendeeFilter) {
