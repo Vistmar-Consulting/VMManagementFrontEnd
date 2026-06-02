@@ -63,7 +63,11 @@ Brain-dump triage: Andy is rattling off to-dos rapid-fire. Capture each as a one
 
 ## Tasks (this session)
 
-_(none started yet — awaiting Andy's pick)_
+### Sticky Topic Titles (Sync Meeting) — SPEC + PLAN DONE, ready to build
+Hard rule: AI Sync Meeting must never rename existing topics; titles canonical (user-editable only). Approach: topic identity via `ref` (Firestore doc id) round-tripped through the model; at apply, a `ref`'d topic keeps its Firestore `name` (model name discarded — structural lock); review modal shows Retained/New/Dropped diff. AI may still reorder/drop (human-reviewed). Destroy-recreate kept (keeps collab slice's clean reset).
+- **Spec:** `docs/superpowers/specs/2026-06-02-sync-meeting-sticky-topic-titles-design.md` (reviewer-APPROVED iter 2, commit 9017682).
+- **Plan:** `docs/superpowers/plans/2026-06-02-sync-meeting-sticky-topic-titles.md` (reviewer-APPROVED iter 2). 7 tasks: (1-2) pure helpers normalizeTopicRefs + classifyTopicChanges + vitest; (3) prepare.js schema/prompt/render/reshape; (4) refine.js own-schema/preserve/reshape; (5) aiAgenda.js applyUnified title-lock; (6) SyncMeetingDialog id-passthrough+normalize+diff UI; (7) build+prod-verify (incl. adversarial rename-via-refine test).
+- **NEXT:** execute via subagent-driven-development (or inline executing-plans).
 
 ## Files Modified
 

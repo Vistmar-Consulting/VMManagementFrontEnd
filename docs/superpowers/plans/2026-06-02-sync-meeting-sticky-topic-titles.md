@@ -31,11 +31,15 @@
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `src/lib/__tests__/syncMeeting.test.js` (add the import for `normalizeTopicRefs` to the existing import from `../syncMeeting.js`):
+First, **extend the existing import line** at `src/lib/__tests__/syncMeeting.test.js:2` (do NOT add a second `import` from the same module) so it reads:
 
 ```js
-import { normalizeTopicRefs } from "../syncMeeting.js";
+import { mintTopicIds, validateProposal, inheritKeysForCreate, normalizeTopicRefs, classifyTopicChanges } from "../syncMeeting.js";
+```
 
+(Both this task and Task 2 use that one extended line — `classifyTopicChanges` is unused until Task 2, which is fine.) Then add the test block:
+
+```js
 describe("normalizeTopicRefs", () => {
   const current = ["docA", "docB"];
 
@@ -110,11 +114,9 @@ git commit -m "feat(sync-meeting): normalizeTopicRefs helper (downgrade unknown 
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `src/lib/__tests__/syncMeeting.test.js` (extend the import to include `classifyTopicChanges`):
+The import line was already extended to include `classifyTopicChanges` in Task 1 Step 1 — no import change needed here. Add the test block to `src/lib/__tests__/syncMeeting.test.js`:
 
 ```js
-import { classifyTopicChanges } from "../syncMeeting.js";
-
 describe("classifyTopicChanges", () => {
   const current = [
     { id: "docA", name: "Alpha" },
@@ -413,11 +415,13 @@ tx.set(ref, {
   sortOrder: i + 1,
   categoryIds,
   tagIds,
-  organizationId: retained ? curOrgById.get(t.ref) : (t.organizationId || null),
+  organizationId: retained && curOrgById.has(t.ref) ? curOrgById.get(t.ref) : (t.organizationId || null),
   ...
 ```
 
-(Note: the loop variable is named `ref` for the new topic doc ref — `const ref = doc(collection(...))` at line 529. The topic's identity field is `t.ref`. They don't collide, but read carefully; do NOT rename the doc-ref variable.)
+Notes:
+- The loop variable is named `ref` for the new topic doc ref — `const ref = doc(collection(...))` at line 529. The topic's identity field is `t.ref`. They don't collide, but read carefully; **do NOT rename the doc-ref variable.**
+- This `retained = t.ref && curNameById.has(t.ref)` guard **IS** the "at-apply normalization" the spec (§3.2/§3.3) calls for: an unknown/hallucinated `ref` fails `.has()`, so the topic falls through to the model's name and is treated as new. No separate normalizer call is needed in `applyUnified`.
 
 - [ ] **Step 3: Build check**
 
@@ -454,21 +458,36 @@ topics: (topics || []).map((t) => ({ id: t.id, name: t.name || "", bodyHtml: t.b
 
 - [ ] **Step 2: Normalize received refs against the current topics**
 
-Import the helpers at the top of the file:
+`SyncMeetingDialog.jsx` already imports `validateProposal` from `../lib/syncMeeting.js` (line ~44) — **extend that existing line** (do NOT add a second import from the same module):
 
 ```js
-import { normalizeTopicRefs, classifyTopicChanges } from "../lib/syncMeeting.js";
+import { validateProposal, normalizeTopicRefs, classifyTopicChanges } from "../lib/syncMeeting.js";
 ```
 
-Where `prepareMeeting` returns its `result` and the proposal is stored into state (around line 194-205, before `setProposal(...)`), normalize the topic refs so a hallucinated ref can't masquerade as Retained:
+There are **two** sites that put topics into proposal state; normalize at both so a hallucinated ref can't masquerade as Retained:
+
+**(a) `generate()`** — currently calls `setProposal(result)` (line ~216) then `applyValidation(result, …)` (line ~217). Insert before them and pass `normalized` to BOTH:
 
 ```js
 const currentTopicIds = (topics || []).map((t) => t.id);
 const normalized = { ...result, topics: normalizeTopicRefs(result.topics, currentTopicIds) };
-// …then store `normalized` wherever `result` was being stored as the proposal.
+setProposal(normalized);
+applyValidation(normalized, /* …existing remaining args… */);
 ```
 
-Apply the same normalization to the refine result wherever Refine updates the proposal topics (search for where `refineProposal`'s return updates state, ~line 241) so refine output is also normalized.
+**(b) `refine()`** — currently builds `const merged = { ...result, boardChanges: proposal.boardChanges }` (line ~243) then `setProposal(merged)` (~244) / `applyValidation(merged, …)` (~249). Normalize `result.topics` into `merged` (recompute `currentTopicIds` here — it's not in this function's scope):
+
+```js
+const currentTopicIds = (topics || []).map((t) => t.id);
+const merged = {
+  ...result,
+  topics: normalizeTopicRefs(result.topics, currentTopicIds),
+  boardChanges: proposal.boardChanges,
+};
+// setProposal(merged) / applyValidation(merged, …) stay as-is.
+```
+
+(Normalizing is harmless to the board-create join — that keys on `topicId`, which `normalizeTopicRefs` preserves via `...t`.)
 
 - [ ] **Step 3: Render the Retained / New / Dropped diff**
 
@@ -491,7 +510,7 @@ In the review section (the "Proposed agenda — review before applying" area, ~l
         ))}
       </Stack>
       {dropped.length > 0 && (
-        <Typography variant="caption" sx={{ color: t.ink3 }}>
+        <Typography variant="caption" color="text.secondary">
           Dropped: {dropped.map((d) => d.name).join(", ")}
         </Typography>
       )}
@@ -500,7 +519,10 @@ In the review section (the "Proposed agenda — review before applying" area, ~l
 })()}
 ```
 
-Ensure `Box`, `Stack`, `Chip`, `Typography` are imported (MUI) and `t` is imported from `../theme/tokens.js` — check the file's existing imports and add only what's missing. Match the surrounding styling conventions if they differ from this snippet.
+Notes:
+- `Box`, `Stack`, `Chip`, `Typography` are **already imported** in this file (lines ~11-32) — no import edit needed for them.
+- **Do NOT import `../theme/tokens.js`.** This file styles via MUI theme strings (`color="text.secondary"`, `borderColor: "divider"`), not the `t` token object — and `t` is already used as a pervasive `.map`/`.find` loop variable throughout the file, so a module-level `t` import would be confusing. The snippet above uses `color="text.secondary"` to match the file's convention. The loop var in the diff is `tp` (avoids clashing with the file's `t` callbacks).
+- `proposal` and `topics` are both in scope in the review section (`step === "review" && proposal`).
 
 - [ ] **Step 4: Build check**
 
