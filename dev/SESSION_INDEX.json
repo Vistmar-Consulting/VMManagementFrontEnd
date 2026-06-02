@@ -47,6 +47,17 @@
       "summary": "Long-running session (2026-05-29 → 06-02). Agenda rich-text Phase 1, full AI Integration engine (agenda gen + suggest-tasks + categorization slices 1/2/3a/3a.2/3b/5a/5b), data foundation (categories+SOPs, tags, 200 real items), Master Touch Base, org colors + meeting lifecycle — ALL shipped + prod-verified (see context.md). Then two headline features: (1) SYNC MEETING — unified single-pass AI op replacing AI Gen + Suggest Tasks (one snapshot → one streamed /api/ai/prepare call → combined review → one atomic applyUnified; retired suggest-tasks.js/AIGenDialog/SuggestTasksDialog/aiTasks.js + lastAgendaGenAt/lastSuggestTasksAt). Live E2E found+fixed: prepareMeeting data.proposal shape, cycle-based transcript window + mapping-driven inclusion, no-backdrop-dismiss. Master Sync Meeting deferred. (2) ORGANIZATIONS SETTINGS — accent banners + content-deliverables card + org-scoped member directory auto-captured from the scheduler at save (realizes the deferred external-attendee→org persistence); backfilled (Unio 16/IDCare 11/BMD 3/GV 1); fixed fireflies-bot capture. Also recovered an accidentally hard-deleted topic (Provider Profile, Biweekly Marketing Updates). All on origin/dev → vm-management-front-end.vercel.app (alias heen8sogj). version_end v0.3.0 is a best-guess bump for the two major features — adjust if your scheme differs.",
       "folder": "dev/sessions/v0_2_4_Andrew_AGENDA_RICHTEXT/",
       "status": "closed"
+    },
+    {
+      "session_id": "SES-20260602-Andrew-v0.3.0-backlog-triage",
+      "developer": "Andrew",
+      "date": "2026-06-02",
+      "version_start": "v0.3.0",
+      "version_end": "(pending)",
+      "commit_start": "3a33213",
+      "summary": "Backlog-triage session: brain-dump capture of Andy's to-dos, then full rigor on one picked item. Carried forward v0.2.4 deferred list as a backlog.",
+      "folder": "dev/sessions/v0_3_0_Andrew_BACKLOG_TRIAGE/",
+      "status": "active"
     }
   ]
 }
