@@ -15,16 +15,20 @@ import {
   getDocs,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
+import { generateKeyBetween } from "fractional-indexing";
 import { auth, db } from "../firebase.js";
 import { firefliesQuery, GQL_MEETING_LIST, GQL_MEETING_DETAIL } from "./fireflies.js";
 import { sanitizeHtml } from "./agendaHtml.js";
 import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
+import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
+import { validateProposal, inheritKeysForCreate } from "./syncMeeting.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_WINDOW_MS = 21 * DAY_MS; // used only when this agenda has no mapped past meeting yet
@@ -467,4 +471,286 @@ export async function applyProposal(agendaId, proposal, uid = null, { style = nu
   } catch (e) {
     console.warn("aiGenLog (agenda) write skipped:", e?.message);
   }
+}
+
+// Sync Meeting (unified): POST the assembled inputs to /api/ai/prepare and get
+// back ONE proposal covering both the agenda (preBriefHtml/topics/openFloorHtml)
+// and the project-board changes (boardChanges: { creates, moves, notes }).
+// Topics already carry topicId; creates already carry topicId (set server-side).
+// Mirrors generateAgenda's fetch contract.
+export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts, projectBoard, existingTasks, orgAgendas, extraContext, categories, tagVocab, internal, master, orgMeta }) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const token = await user.getIdToken();
+
+  const res = await fetch("/api/ai/prepare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Token": token },
+    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, existingTasks, orgAgendas, extraContext, categories, tagVocab, internal: !!internal, master: !!master, orgMeta: orgMeta || [] }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return data.proposal;
+}
+
+// Sync Meeting (unified): apply the reviewed proposal — agenda content + topic
+// set + the user-accepted board changes — in ONE Firestore transaction. Either
+// everything commits or nothing does; the time anchor (lastUnifiedGenAt) only
+// advances on full success, inside the same atomic commit.
+//
+// `accepted` = the dialog's review selections, indexes into
+// proposal.boardChanges.{creates,moves,notes}:
+//   { createIdxs:number[], moveIdxs:number[], noteIdxs:number[],
+//     promotions:{ [createIdx]: { statusId, assigneeIds } } }
+//
+// Firestore requires ALL reads before ANY write within a transaction, so the
+// body is split into a reads phase (org counters + note target items) and a
+// writes phase. Coined-tag and counter state is rebuilt fresh on each attempt
+// (transactions auto-retry) so a retry never double-writes.
+export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = null, { master = false } = {}) {
+  if (!agendaId) throw new Error("Missing agendaId");
+  if (!master && !orgSlug) throw new Error("Missing org");
+
+  const sel = accepted || {};
+  const createIdxs = sel.createIdxs || [];
+  const moveIdxs = sel.moveIdxs || [];
+  const noteIdxs = sel.noteIdxs || [];
+  const promotions = sel.promotions || {};
+
+  const bc = proposal.boardChanges || {};
+  const allCreates = bc.creates || [];
+  const allMoves = bc.moves || [];
+  const allNotes = bc.notes || [];
+
+  // The user-accepted subset (kept paired with original index for promotions).
+  const acceptedCreates = createIdxs.map((i) => ({ idx: i, create: allCreates[i] })).filter((x) => x.create);
+  const acceptedMoves = moveIdxs.map((i) => allMoves[i]).filter(Boolean);
+  const acceptedNotes = noteIdxs.map((i) => allNotes[i]).filter(Boolean);
+
+  // Topics keyed by topicId (creates inherit their owning topic's keys).
+  const topicsById = Object.fromEntries((proposal.topics || []).map((t) => [t.topicId, t]));
+
+  // Backstop validation over the ACCEPTED subset only. The dialog should have
+  // prevented an accepted-but-invalid item (e.g. a create whose topic was
+  // refined away); if one slips through, throw rather than silently drop.
+  const acceptedBoardChanges = {
+    creates: acceptedCreates.map((x) => x.create),
+    moves: acceptedMoves,
+    notes: acceptedNotes,
+  };
+  // existingTasks source: the proposal if it carries one (the prepare inputs are
+  // echoed back), else the dialog-supplied set. Falling back to the accepted
+  // moves'/notes' own item ids keeps the create-side backstop strict (topic
+  // refined away → reject) without falsely dropping a valid move/note when no
+  // board snapshot was threaded through.
+  const existingTasks = proposal.existingTasks
+    || sel.existingTasks
+    || [...new Set([...acceptedMoves, ...acceptedNotes].map((x) => x.itemId).filter(Boolean))].map((id) => ({ id, title: id }));
+  const v = validateProposal({ topics: proposal.topics, boardChanges: acceptedBoardChanges, existingTasks });
+  if (v.hasRejections) {
+    const reasons = [
+      ...v.rejectedCreates.map((c) => `create "${c.title || c.topicId}": ${c.reason}`),
+      ...v.droppedMoves.map((m) => `move ${m.itemId}: ${m.reason}`),
+      ...v.droppedNotes.map((n) => `note ${n.itemId}: ${n.reason}`),
+    ];
+    throw new Error(`Accepted board changes failed validation: ${reasons.join("; ")}`);
+  }
+
+  // Reference data for slug/tag resolution — safe to read outside the tx.
+  const [catSnap, tagSnap, curTopics] = await Promise.all([
+    getDocs(collection(db, "categories")),
+    getDocs(collection(db, "tags")),
+    getDocs(collection(db, "agendas", agendaId, "topics")),
+  ]);
+  const catBySlug = new Set(catSnap.docs.map((d) => d.id));
+  const catByName = new Map(catSnap.docs.map((d) => [(d.data().name || "").toLowerCase(), d.id]));
+  const resolveCat = (c) => {
+    const val = String(c || "").trim();
+    if (catBySlug.has(val)) return val;
+    return catByName.get(val.toLowerCase()) || null;
+  };
+  const existingTagIds = new Set(tagSnap.docs.map((d) => d.id));
+  const existingTagByName = new Map(tagSnap.docs.map((d) => [(d.data().name || d.id).toLowerCase(), d.id]));
+  const tagSort = tagSnap.size;
+
+  // Resolve which org each accepted create belongs to (master = per-create org;
+  // single = orgSlug). Collect the distinct set so we read every counter up front.
+  const orgOfCreate = (create) => {
+    if (!master) return orgSlug;
+    const t = topicsById[create?.topicId];
+    return create?.organizationId || t?.organizationId || orgSlug || null;
+  };
+  const createOrgs = acceptedCreates.map((x) => orgOfCreate(x.create));
+  const distinctOrgs = [...new Set(createOrgs.filter(Boolean))];
+
+  // Note targets: need each item's current description (read phase).
+  const noteItemIds = [...new Set(acceptedNotes.map((n) => n.itemId).filter(Boolean))];
+
+  let createdCount = 0;
+  let movedCount = 0;
+  let notedCount = 0;
+  let newTagCount = 0;
+
+  await runTransaction(db, async (tx) => {
+    // ---- READS PHASE (all tx.get before any write) ----
+    const orgRefs = new Map(distinctOrgs.map((o) => [o, doc(db, "organizations", o)]));
+    const orgSnaps = new Map();
+    for (const [o, ref] of orgRefs) {
+      orgSnaps.set(o, await tx.get(ref));
+    }
+    const noteRefs = new Map(noteItemIds.map((id) => [id, doc(db, "items", id)]));
+    const noteSnaps = new Map();
+    for (const [id, ref] of noteRefs) {
+      noteSnaps.set(id, await tx.get(ref));
+    }
+
+    // ---- WRITES PHASE ----
+    // Fresh-per-attempt coined-tag accumulator (retries must not double-append).
+    const newTagWrites = [];
+    const resolveTag = (t) => {
+      const name = String(t || "").trim();
+      if (!name) return null;
+      if (existingTagIds.has(name)) return name;
+      const byName = existingTagByName.get(name.toLowerCase());
+      if (byName) return byName;
+      const id = tagSlug(name);
+      if (!id) return null;
+      if (existingTagIds.has(id)) return id;
+      if (!newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name });
+      return id;
+    };
+
+    // Agenda doc: pre-brief + open floor + the anchor (advances only here).
+    tx.update(doc(db, "agendas", agendaId), {
+      preBriefHtml: sanitizeHtml(proposal.preBriefHtml || ""),
+      openFloorHtml: sanitizeHtml(proposal.openFloorHtml || ""),
+      updatedAt: serverTimestamp(),
+      updatedByUid: uid,
+      lastUnifiedGenAt: serverTimestamp(),
+    });
+
+    // Replace the topic set.
+    curTopics.docs.forEach((d) => tx.delete(d.ref));
+    (proposal.topics || []).forEach((t, i) => {
+      const categoryIds = [...new Set((t.categories || []).map(resolveCat).filter(Boolean))];
+      const tagIds = [...new Set((t.tags || []).map(resolveTag).filter(Boolean))];
+      const ref = doc(collection(db, "agendas", agendaId, "topics"));
+      tx.set(ref, {
+        name: String(t.name || ""),
+        bodyHtml: sanitizeHtml(t.bodyHtml || ""),
+        sortOrder: i + 1,
+        categoryIds,
+        tagIds,
+        organizationId: t.organizationId || null,
+        createdAt: serverTimestamp(),
+        createdByUid: uid,
+        updatedAt: serverTimestamp(),
+        updatedByUid: uid,
+      });
+    });
+
+    // Accepted creates → new items. itemNumber from each org's counter.
+    const orgNum = new Map();
+    for (const [o, snap] of orgSnaps) {
+      orgNum.set(o, snap.data()?.nextItemNumber ?? 1);
+    }
+    let order = null;
+    acceptedCreates.forEach(({ idx, create }) => {
+      const org = orgOfCreate(create);
+      const promo = promotions[idx];
+      const statusId = promo?.statusId ?? AI_GEN_STATUS;
+      const assigneeIds = Array.isArray(promo?.assigneeIds) ? promo.assigneeIds : [];
+      const { categoryId, tagIds } = inheritKeysForCreate(create, topicsById);
+      let num = orgNum.get(org) ?? 1;
+      order = generateKeyBetween(order, null);
+      const ref = doc(collection(db, "items"));
+      tx.set(ref, {
+        organizationId: org,
+        parentId: null,
+        hasChildren: false,
+        type: "task",
+        title: String(create.title || ""),
+        description: String(create.note || ""),
+        statusId,
+        priorityId: null,
+        categoryId,
+        tagIds,
+        onHold: false,
+        dueDate: null,
+        completedAt: null,
+        assigneeIds,
+        itemNumber: num,
+        createdBy: uid || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        order,
+      });
+      orgNum.set(org, num + 1);
+    });
+
+    // Accepted moves → status change.
+    acceptedMoves.forEach((m) => {
+      const sid = STATUS_MAP[m.toStatus];
+      if (!sid || !m.itemId) return;
+      tx.update(doc(db, "items", m.itemId), {
+        statusId: sid,
+        completedAt: sid === STATUS_MAP.Done ? serverTimestamp() : null,
+        updatedAt: serverTimestamp(),
+        updatedByUid: uid,
+      });
+    });
+
+    // Accepted notes → append to description (skip if the raw note is already
+    // present in the current description). Matches aiTasks.js's format.
+    acceptedNotes.forEach((n) => {
+      const snap = noteSnaps.get(n.itemId);
+      if (!snap?.exists() || !n.note) return;
+      const cur = snap.data().description || "";
+      if (cur.includes(n.note)) return;
+      tx.update(doc(db, "items", n.itemId), {
+        description: `${cur ? `${cur}\n` : ""}— ${n.note}`,
+        updatedAt: serverTimestamp(),
+        updatedByUid: uid,
+      });
+    });
+
+    // Coined tags (layer-3 client-proprietary).
+    newTagWrites.forEach((w, i) => {
+      tx.set(doc(db, "tags", w.id), {
+        name: w.name,
+        color: "#8b5cf6",
+        layer: 3,
+        sortOrder: tagSort + i + 1,
+        createdAt: serverTimestamp(),
+        createdByUid: uid,
+      });
+    });
+
+    // Write each org's final counter back.
+    for (const [o, num] of orgNum) {
+      tx.set(orgRefs.get(o), { nextItemNumber: num }, { merge: true });
+    }
+
+    createdCount = acceptedCreates.length;
+    movedCount = acceptedMoves.length;
+    notedCount = acceptedNotes.length;
+    newTagCount = newTagWrites.length;
+  });
+
+  // Best-effort gen-history log, outside the tx so it never gates the apply.
+  try {
+    await addDoc(collection(db, "agendas", agendaId, "aiGenLog"), {
+      at: serverTimestamp(),
+      byUid: uid,
+      kind: "unified",
+      counts: { created: createdCount, moved: movedCount, noted: notedCount, newTags: newTagCount },
+    });
+  } catch (e) {
+    console.warn("aiGenLog (unified) write skipped:", e?.message);
+  }
+
+  return { created: createdCount, moved: movedCount, noted: notedCount, newTags: newTagCount };
 }
