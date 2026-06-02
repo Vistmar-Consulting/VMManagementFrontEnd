@@ -61,6 +61,13 @@ service cloud.firestore {
     match /organizations/{orgId} {
       allow read: if isActiveUser();
       allow write: if isAdmin();
+
+      // Client member directory — read+write for ANY active user (NOT admin-only
+      // like the org doc), so non-admins' meeting scheduling can auto-capture
+      // contacts. Deliberate divergence from the parent's admin-only write.
+      match /members/{memberId} {
+        allow read, write: if isActiveUser();
+      }
     }
 
     // AI feature prompts: aiPrompts/default + aiPrompts/{orgSlug} overrides.
