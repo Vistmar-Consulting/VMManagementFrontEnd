@@ -60,3 +60,14 @@ export function validateProposal({ topics, boardChanges, existingTasks }) {
     hasRejections: rejectedCreates.length > 0 || droppedMoves.length > 0 || droppedNotes.length > 0,
   };
 }
+
+// Downgrade any topic whose `ref` is non-empty but NOT among the current
+// agenda's topic ids to a brand-new topic (ref ""). Guards the title-lock and
+// the review diff against a hallucinated/stale ref. Pure.
+export function normalizeTopicRefs(topics, currentTopicIds) {
+  const valid = new Set(currentTopicIds || []);
+  return (topics || []).map((t) => {
+    const ref = typeof t?.ref === "string" ? t.ref : "";
+    return { ...t, ref: ref && valid.has(ref) ? ref : "" };
+  });
+}

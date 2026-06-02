@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mintTopicIds, validateProposal, inheritKeysForCreate } from "../syncMeeting.js";
+import { mintTopicIds, validateProposal, inheritKeysForCreate, normalizeTopicRefs, classifyTopicChanges } from "../syncMeeting.js";
 
 const topics = [
   { name: "Website", categoryIds: ["website"], tagIds: ["t-hours"] },
@@ -84,5 +84,64 @@ describe("inheritKeysForCreate", () => {
     const byId = Object.fromEntries(withIds.map((t) => [t.topicId, t]));
     const keys = inheritKeysForCreate({ topicId: "t1" }, byId);
     expect(keys).toEqual({ categoryId: "gbp-directories", tagIds: ["t-hours", "t-photos"] });
+  });
+});
+
+describe("normalizeTopicRefs", () => {
+  const current = ["docA", "docB"];
+
+  it("keeps a ref that matches a current topic id", () => {
+    const out = normalizeTopicRefs([{ ref: "docA", name: "x" }], current);
+    expect(out[0].ref).toBe("docA");
+  });
+
+  it("downgrades an unknown ref to empty string", () => {
+    const out = normalizeTopicRefs([{ ref: "ghost", name: "x" }], current);
+    expect(out[0].ref).toBe("");
+  });
+
+  it("treats empty/missing ref as new (empty string)", () => {
+    const out = normalizeTopicRefs([{ name: "x" }, { ref: "", name: "y" }], current);
+    expect(out[0].ref).toBe("");
+    expect(out[1].ref).toBe("");
+  });
+
+  it("preserves other topic fields (e.g. topicId)", () => {
+    const out = normalizeTopicRefs([{ ref: "docB", topicId: "t3", name: "z" }], current);
+    expect(out[0]).toMatchObject({ ref: "docB", topicId: "t3", name: "z" });
+  });
+
+  it("returns [] for empty input", () => {
+    expect(normalizeTopicRefs(undefined, current)).toEqual([]);
+  });
+});
+
+describe("classifyTopicChanges", () => {
+  const current = [
+    { id: "docA", name: "Alpha" },
+    { id: "docB", name: "Beta" },
+  ];
+
+  it("marks a ref'd proposal topic as retained and a ref-less one as new", () => {
+    const { statuses } = classifyTopicChanges(current, [
+      { ref: "docA", name: "Alpha" },
+      { ref: "", name: "Gamma" },
+    ]);
+    expect(statuses).toEqual(["retained", "new"]);
+  });
+
+  it("lists current topics not referenced by any proposal topic as dropped", () => {
+    const { dropped } = classifyTopicChanges(current, [{ ref: "docA", name: "Alpha" }]);
+    expect(dropped).toEqual([{ id: "docB", name: "Beta" }]);
+  });
+
+  it("treats an unknown ref as new (not retained) and the real topic as dropped", () => {
+    const { statuses, dropped } = classifyTopicChanges(current, [{ ref: "ghost", name: "X" }]);
+    expect(statuses).toEqual(["new"]);
+    expect(dropped.map((d) => d.id).sort()).toEqual(["docA", "docB"]);
+  });
+
+  it("handles empty inputs", () => {
+    expect(classifyTopicChanges([], [])).toEqual({ statuses: [], dropped: [] });
   });
 });
