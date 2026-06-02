@@ -20,10 +20,22 @@ export function memberIdFromEmail(email) {
   return e;
 }
 
-// Client = a valid email NOT on the Vistamar domain.
+// Silent bots/proxies that join meetings but are NOT real client contacts —
+// the Fireflies notetaker (fred@fireflies.ai / any @fireflies.ai) and the
+// scheduling proxies. Mirrors orgMapping.js's isSilentProxy so they never land
+// in the member directory.
+const BOT_PROXIES = new Set([
+  "meetings@vistamarconsulting.com",
+  "seo@vistamarconsulting.com",
+]);
+function isBotOrProxy(id) {
+  return id.endsWith("@fireflies.ai") || BOT_PROXIES.has(id);
+}
+
+// Client = a valid email that is NOT on the Vistamar domain and NOT a bot/proxy.
 export function isClientEmail(email) {
   const id = memberIdFromEmail(email);
-  return !!id && !id.endsWith(`@${VM_DOMAIN}`);
+  return !!id && !id.endsWith(`@${VM_DOMAIN}`) && !isBotOrProxy(id);
 }
 
 // One-line summary for the deliverables card header: the labels of deliverables

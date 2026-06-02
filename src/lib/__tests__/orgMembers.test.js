@@ -24,6 +24,12 @@ describe("isClientEmail", () => {
   it("false for malformed", () => {
     expect(isClientEmail("nope")).toBe(false);
   });
+  it("false for the Fireflies notetaker and scheduling proxies", () => {
+    expect(isClientEmail("fred@fireflies.ai")).toBe(false);
+    expect(isClientEmail("anything@fireflies.ai")).toBe(false);
+    expect(isClientEmail("meetings@vistamarconsulting.com")).toBe(false);
+    expect(isClientEmail("seo@vistamarconsulting.com")).toBe(false);
+  });
 });
 
 describe("deliverablesSummary", () => {
