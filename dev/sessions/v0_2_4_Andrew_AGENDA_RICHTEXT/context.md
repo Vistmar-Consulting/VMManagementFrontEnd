@@ -304,3 +304,45 @@ Enumerate remaining V1 items from the spec (`docs/superpowers/specs/2026-05-12-v
 ### Quick wins (any time)
 - Fix the AIGenDialog Vistamar summary-label wording.
 - Decide/fix the Postmark relay delivery (ErrorCode check + dashboard).
+
+## 2026-06-02 — Master Touch Base SHIPPED + validated (P0 done)
+Built + deployed Slices A/B/C (commits d5b09dc + a73f685): Touch Base flagged masterAgenda on its calendar_series (fin1psha42g36a1rba6l08iefd_R20260209T190000); topics carry organizationId; assembleGenInputs(master) gathers ALL orgs; aiPrompts/master seeded; generate.js master branch (org-by-org, per-topic organizationId, schema) — STREAMS the request (fix: 24000 max_tokens tripped the SDK non-streaming 10-min guard → client.messages.stream().finalMessage()); applyProposal persists topic org; Working+Overview render OrgSectionHeader bands + org-colored card accents.
+VALIDATED LIVE: ran master gen on the real Touch Base → read 10 meetings (7 client + 3 Vistamar internal), 25 agendas, 120 board items since May 18 → per-org Pre-Brief + client-by-client topics (Unio/BMD/GV/ID Care/Vistamar) with owners, this-week focus → Applied → Working view renders org-colored sections correctly (screenshot sent). DEMO-READY.
+DEFERRED: Slice D — master prompt editor in Settings → AI Integration (prompt is live + editable via Claude; only the in-UI editor is pending). Add a "Master" scope chip to AIIntegration editing aiPrompts/master.
+
+---
+
+## ════ SESSION CLOSE — 2026-06-02 (Sync Meeting + Organizations Settings) ════
+
+This session ran very long and shipped two major features after the Master Touch Base. **Closing v0.2.4 here → next session starts fresh.** Everything below is on `origin/dev` → `vm-management-front-end.vercel.app` (alias `heen8sogj`), prod-verified live.
+
+### 1. Meeting Focus card fixes (Working view)
+- `feat`/`fix` (commits `07fc696`, `328053e`): the sidebar Meeting Focus counts were all "—" because `allMatchedItems` (and the per-topic `hasMatchingForFilter`) only counted PARENT items, but Done/Review work lives at the SUBITEM level. Now include subitems whose parent matched. Clicking a focus cell now expands/collapses the topic cards holding those items (same subitem fix in `hasMatchingForFilter` → `filterScopeItems`). Verified live (Unio Weekly: Done 3 / Review 2; click Done → 6 cards expand → click again collapse).
+
+### 2. SYNC MEETING — unified AI op (the headline feature) ✅ SHIPPED + PROD-VERIFIED
+Replaces the two separate ops (AI Gen + Suggest Tasks) with ONE single-pass operation so the agenda and board changes are always generated in sync. Full brainstorm → spec → plan → subagent-build → live E2E.
+- **Spec:** `docs/superpowers/specs/2026-06-01-sync-meeting-design.md`; **Plan:** `docs/superpowers/plans/2026-06-01-sync-meeting.md`.
+- **Built:** `src/lib/syncMeeting.js` (pure: mintTopicIds/validateProposal/inheritKeysForCreate + vitest) + `src/lib/itemStatusMap.js`; `api/ai/prepare.js` (one streamed structured-output call → `{preBriefHtml, topics[], openFloorHtml, boardChanges{creates,moves,notes}}`); `applyUnified()` in `aiAgenda.js` (ONE Firestore transaction, anchor `lastUnifiedGenAt` advances only on full commit); `SyncMeetingDialog.jsx` (combined review: agenda + Refine + checkable New/Moves/Notes + inline promote + warning banner); single "Sync Meeting" button in AgendaDetail. **Retired:** `suggest-tasks.js`, `SuggestTasksDialog.jsx`, `AIGenDialog.jsx`, `aiTasks.js`, `lastAgendaGenAt`/`lastSuggestTasksAt`. (refine.js kept; topicId round-trip added.)
+- **The join guarantee:** creates carry a session-local `topicId` and INHERIT their owning topic's category/tags at apply → guaranteed to show under that topic. (Honest limit: a task can still appear under sibling topics sharing a key — existing OR-join behavior; topics regenerate each cycle so the join can't be a stored topic-id.)
+- **Bugs found+fixed in live E2E:** (a) `prepareMeeting` read `data.proposal` but `/api/ai/prepare` returns the body at top level → "Cannot read properties of undefined (reading topics)" → `return res.json()` (`8d4bcc8`); (b) "no transcript" when one clearly existed → rewrote the transcript window to be **meeting-cycle-based** (previous ACTUAL occurrence → upcoming, ±1 day buffers; move/cancel-tolerant; NOT anchored to lastUnifiedGenAt) AND made the explicit Fireflies→agenda mapping (`firefliesTitles`) DRIVE inclusion, not the attendee-domain heuristic (`f2e54d7`); (c) backdrop/Esc dismissing the dialog threw away an ~80s paid proposal → only Discard/Apply close it (`f030cd2`).
+- **DEFERRED (master only):** `api/ai/prepare.js` `buildSystem` gates the Vistamar boardScope on `internal || master` — wrong for master (master creates should route per-client-org). Master Sync Meeting + the master Working-view per-topic-org scoping are NOT fixed. Client/internal flows are correct. Revisit when master comes into scope.
+
+### 3. ORGANIZATIONS SETTINGS ✅ SHIPPED + PROD-VERIFIED — closes the "external-attendee → org persistence" deferred item
+Full brainstorm → spec → plan → subagent-build → live E2E.
+- **Spec:** `docs/superpowers/specs/2026-06-02-organizations-settings-design.md`; **Plan:** `docs/superpowers/plans/2026-06-02-organizations-settings.md`. Commits `d0cc958 → 717cfc9`.
+- **(1) Accent banners** on each org row (expandable accordion, `getContrastText`). **(2) Content Deliverables card** — `organizations/{slug}.deliverables[]` (`{label,quantity,cadence,note?}`) + `deliverablesNote`, config-card style (title·summary·Edit, hides empty rows). **(3) Member directory** — `organizations/{slug}/members/{emailId}` subcollection (`useOrgMembers`, `OrgMembersCard`), auto-captured AT SAVE in `NewMeetingDialog`/`ManageGuestsDialog` (non-Vistamar attendees → that org), client-attendee Autocomplete mirroring the Vistamar one. Master agenda skipped (mixed orgs). `firestore.rules`: nested `members` block, read+write for any active user (NOT admin-only — so non-admin scheduling can capture). **Backfilled** from existing agendas (Unio 16, ID Care 11, BMD 3, GV 1; skipped master).
+- **Bug found+fixed in live E2E:** `isClientEmail` only excluded `@vistamarconsulting.com` → captured the Fireflies notetaker `fred@fireflies.ai` as a contact → added `@fireflies.ai` + proxy exclusion (mirrors `orgMapping.isSilentProxy`), redeployed, deleted the 2 bot entries (`717cfc9`).
+- **Minor polish DEFERRED (Andy's call):** nameless members render their email twice (bold + gray) — show once when no name; directory captured non-person resource calendars (e.g. "Master Calendar - C-Suite") — ✕ removes them or filter resource addresses; full org-identity CRUD (rename/color/type/archive) still deferred.
+
+### 4. Data recovery — Provider Profile topic (Biweekly Marketing Updates)
+Andy accidentally hard-deleted the "Provider Profile" topic. Learning: **topic deletes are HARD deletes** (no trash; aiGenLog stores counts only) and there is **ONE agenda doc per series** (no prior-occurrence to copy from). Reconstructed the topic at its original sortOrder 6 from the Unio Weekly's "Provider Profiles + NPI / Credentialing Cleanup" topic (closest source) via in-page Firestore write. Worth a future "confirm before delete topic" / soft-delete guard.
+
+### Carry-forward deferred (still open going into the next session)
+- **Agenda rich-text Phase 1** original task: T5–T8 were marked done earlier in this file; docx→HTML population of the 5 real agendas was BLOCKED on agenda-doc matching (Andy decision) — verify status.
+- **Sync Meeting master** boardScope prompt + master Working-view per-topic-org scoping (see §2 DEFERRED).
+- **Org Settings polish** (see §3): email-shown-twice, resource-address capture, org CRUD.
+- **Pre-Brief structured redesign + interactive checkboxes**; **Overview first-name attendee pills** (still deferred, design later).
+- **Slice D** — master prompt editor in Settings → AI Integration.
+- Fireflies: finish mapping ambiguous titles; dedupe base+`_R` agenda docs; preview env var for `VITE_FIREFLIES_KEY`; re-auth `personal-gmail` MCP.
+- Postmark relay delivery (custom-note emails never delivered — feature was dropped; underlying relay still suspect for send-prep/send-schedule).
+- V1 finish audit; Blaze-gated items (Storage, auth onCreate trigger, task file uploads).
