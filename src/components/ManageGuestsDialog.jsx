@@ -34,11 +34,20 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
+import { isClientEmail, upsertOrgMember } from "../lib/orgMembers.js";
+import { useOrgMembers } from "../hooks/useOrgMembers.js";
 import MemberAvatar from "./MemberAvatar.jsx";
 
 export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, users, onClose }) {
   const { user } = useAuth();
   const isBound = !!(agenda?.graphEventId || calendarSeries?.graphSeriesEventId);
+
+  // Resolve the meeting's org + whether this is the cross-org master agenda.
+  // The master spans many orgs, so its attendees must NOT be captured into any
+  // single org directory (they'd be misfiled), and the client dropdown stays
+  // empty/disabled for it.
+  const orgSlug = calendarSeries?.organizationId || agenda?.organizationId || null;
+  const isMaster = !!(calendarSeries?.masterAgenda || agenda?.masterAgenda);
 
   // Original attendee set — visible (proxies hidden). Stable reference for the
   // diff computation against lastSentAttendees.
@@ -48,6 +57,7 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
   // Working list state — what the user is editing.
   const [working, setWorking] = useState(originalVisible);
   const [internalPick, setInternalPick] = useState(null);
+  const [clientPick, setClientPick] = useState(null);
   const [externalEmail, setExternalEmail] = useState("");
   const [externalName, setExternalName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -67,6 +77,16 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
       }));
   }, [users, workingEmails]);
 
+  // Per-org client directory (organizations/{orgSlug}/members). Pass null for
+  // the master agenda so it stays empty (useOrgMembers(null) short-circuits).
+  // Same dedup against the current attendee roster as the Vistamar dropdown.
+  const { data: orgMembers } = useOrgMembers(isMaster ? null : orgSlug);
+  const clientOptions = useMemo(() => {
+    return (orgMembers || [])
+      .filter((m) => m.email && !workingEmails.has(m.email.toLowerCase()))
+      .map((m) => ({ email: m.email, name: m.name || m.email }));
+  }, [orgMembers, workingEmails]);
+
   const addAttendee = (att) => {
     if (!att?.email) return;
     if (workingEmails.has(att.email.toLowerCase())) return;
@@ -80,6 +100,12 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
     if (internalPick) {
       addAttendee(internalPick);
       setInternalPick(null);
+    }
+  };
+  const handleAddClient = () => {
+    if (clientPick) {
+      addAttendee(clientPick);
+      setClientPick(null);
     }
   };
   const handleAddExternal = () => {
@@ -121,6 +147,22 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
       }
 
       await updateDoc(doc(db, "agendas", agendaId), patch);
+
+      // Auto-capture non-Vistamar attendees into the org's member directory
+      // (best-effort). Skip the cross-org master agenda — its attendees span
+      // many orgs and would be misfiled into a single directory.
+      if (orgSlug && !isMaster) {
+        try {
+          await Promise.all(
+            working
+              .filter((a) => isClientEmail(a.email))
+              .map((a) => upsertOrgMember(orgSlug, { name: a.name, email: a.email, source: "scheduler" })),
+          );
+        } catch {
+          // best-effort: directory capture must never fail the save; idempotent, re-captured next save
+        }
+      }
+
       onClose();
     } catch (err) {
       setError(err.message || "Save failed");
@@ -192,6 +234,36 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
                 variant="outlined"
                 onClick={handleAddInternal}
                 disabled={!internalPick}
+              >
+                Add
+              </Button>
+            </Stack>
+          </Box>
+
+          {/* Add client — autocomplete from the org's member directory */}
+          <Box>
+            <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#6b6b8a", mb: 0.5 }}>
+              Add client attendee
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Autocomplete
+                size="small"
+                fullWidth
+                value={clientPick}
+                onChange={(_, v) => setClientPick(v)}
+                options={clientOptions}
+                getOptionLabel={(o) => o.name || o.email}
+                isOptionEqualToValue={(a, b) => a.email === b.email}
+                disabled={!orgSlug || isMaster}
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Add client attendee…" size="small" />
+                )}
+              />
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleAddClient}
+                disabled={!clientPick}
               >
                 Add
               </Button>
