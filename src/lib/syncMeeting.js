@@ -71,3 +71,26 @@ export function normalizeTopicRefs(topics, currentTopicIds) {
     return { ...t, ref: ref && valid.has(ref) ? ref : "" };
   });
 }
+
+// Classify proposal topics against the current agenda topics for the review
+// diff. Returns { statuses, dropped }:
+//   statuses[i] = "retained" (proposal topic i's ref matches a current id)
+//                 | "new"
+//   dropped     = current topics whose id no proposal topic references
+// Pure. Pass current topics as [{ id, name }, ...].
+export function classifyTopicChanges(currentTopics, proposalTopics) {
+  const currentById = new Map((currentTopics || []).map((t) => [t.id, t]));
+  const referenced = new Set();
+  const statuses = (proposalTopics || []).map((t) => {
+    const ref = typeof t?.ref === "string" ? t.ref : "";
+    if (ref && currentById.has(ref)) {
+      referenced.add(ref);
+      return "retained";
+    }
+    return "new";
+  });
+  const dropped = (currentTopics || [])
+    .filter((t) => !referenced.has(t.id))
+    .map((t) => ({ id: t.id, name: t.name || "" }));
+  return { statuses, dropped };
+}
