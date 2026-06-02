@@ -324,7 +324,19 @@ export default function SyncMeetingDialog({
   const totalBoardChanges = creates.length + moves.length + notes.length;
 
   return (
-    <Dialog open onClose={busy ? undefined : onClose} maxWidth="md" fullWidth>
+    <Dialog
+      open
+      onClose={(_e, reason) => {
+        // Never dismiss on backdrop click or Escape — a stray click would throw
+        // away an expensive (paid, ~80s) generated proposal and force a re-run.
+        // The dialog closes only via the explicit Discard / Cancel / Apply
+        // actions (which call onClose directly).
+        if (reason === "backdropClick" || reason === "escapeKeyDown") return;
+        onClose();
+      }}
+      maxWidth="md"
+      fullWidth
+    >
       <DialogTitle sx={{ pb: 1 }}>Sync meeting with AI</DialogTitle>
       <DialogContent dividers>
         {error && (
