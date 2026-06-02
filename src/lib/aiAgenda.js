@@ -82,7 +82,7 @@ export async function resolvePrompt(orgSlug, { master = false } = {}) {
 // when this agenda has no mapped past meeting yet. Detail fetches are parallel
 // and partial-failure tolerant (allSettled) — one flaky transcript can't kill
 // the whole run, but the gap is surfaced via summary.failedCount.
-export async function assembleGenInputs(agenda, items = [], orgSlug = null, { anchorField = "lastUnifiedGenAt", master = false } = {}) {
+export async function assembleGenInputs(agenda, items = [], orgSlug = null, { master = false } = {}) {
   const now = Date.now();
   // Org lives on the calendar_series (the agenda doc's organizationId is often
   // null); the caller passes the resolved slug. Fall back to the agenda field.
@@ -104,24 +104,24 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
   const listData = await firefliesQuery(GQL_MEETING_LIST, { limit: 50, skip: 0 });
   const list = listData?.transcripts || [];
 
-  // Window start, in priority order:
-  //  1. The last AI-Gen anchor for this flow ("since I last reconciled") — the
-  //     robust, intuitive default once the agenda has been generated once.
-  //  2. The meeting's most recent PAST Fireflies occurrence (first-gen fallback).
-  //  3. A flat lookback (unmapped agenda).
-  // Window anchor, in priority order:
-  //  1. lastUnifiedGenAt — "since I last ran Sync Meeting".
-  //  2. This meeting's PREVIOUS occurrence (by firefliesTitles) — first gen of
-  //     a meeting that has Fireflies history + a title mapping.
-  //  3. The ORG's previous meeting of ANY kind — new / imported / unmapped
-  //     meetings ("since this client last met us"), cadence-aligned.
-  //  4. Flat 21-day lookback — cold start (org has no Fireflies history).
-  // For (2) and (3): if the latest occurrence JUST happened (gen right after a
-  // meeting), reach back to the one before it so we span the full last cycle
-  // rather than a near-empty window.
-  const anchorMs = toMs(agenda?.[anchorField]);
+  // Transcript window = the MEETING CYCLE being prepared — from this meeting's
+  // PREVIOUS occurrence to its UPCOMING one — with a ±1 day buffer on each end
+  // so a transcript timestamped at the meeting boundary (time-of-day / timezone
+  // skew, date-vs-datetime fuzziness) is never missed.
+  //
+  // We deliberately do NOT anchor to lastUnifiedGenAt: preparing a meeting must
+  // always see the last session's transcript, even if a prior Sync already ran
+  // (otherwise re-running right after a sync wrongly reports "no transcript").
+  //
+  // Previous-occurrence resolution, in priority order:
+  //  1. This meeting's most recent PAST Fireflies occurrence (by firefliesTitles).
+  //  2. The org's most recent past meeting of any kind (attendee-domain classified).
+  //  3. Cadence-derived: the upcoming meeting date minus a flat lookback.
+  //  4. Flat 21-day lookback — cold start.
+  // For (1)/(2): if the latest occurrence essentially JUST happened (sync right
+  // after a meeting), reach back to the one before so we span the whole cycle.
   const titleSet = new Set((agenda?.firefliesTitles || []).map((s) => (s || "").toLowerCase().trim()));
-  const pickAnchor = (occ) => {
+  const pickPrev = (occ) => {
     if (!occ.length) return 0;
     return (occ.length > 1 && now - occ[0] < 2 * DAY_MS) ? occ[1] : occ[0];
   };
@@ -132,26 +132,37 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
     ? list.filter((t) => resolveOrgFromAttendees(t.meeting_attendees) === targetOrg)
         .map(pastMs).filter(Boolean).sort((a, b) => b - a)
     : [];
-  const meetingAnchor = pickAnchor(meetingOcc);
-  const orgAnchor = pickAnchor(orgOcc);
-  const windowStart = anchorMs > 0
-    ? anchorMs
-    : (meetingAnchor || orgAnchor || now - FALLBACK_WINDOW_MS);
-  const anchoredToGen = anchorMs > 0;
+  const meetingAnchor = pickPrev(meetingOcc);
+  const orgAnchor = pickPrev(orgOcc);
+  const upcomingMs = toMs(agenda?.meetingDatetime);
+  const prevOccurrence = meetingAnchor || orgAnchor
+    || (upcomingMs ? upcomingMs - FALLBACK_WINDOW_MS : 0)
+    || (now - FALLBACK_WINDOW_MS);
+  const windowStart = prevOccurrence - DAY_MS;            // −1 day buffer (previous end)
+  const windowEnd = Math.max(now, upcomingMs) + DAY_MS;   // +1 day buffer (upcoming end)
+  const usedFallbackWindow = !meetingAnchor && !orgAnchor;
 
-  // In-window transcripts. Per-org gen: this org + internal Vistamar.
-  // MASTER: every classified org (the whole week across all clients + Vistamar).
+  // In-window transcripts. The user's explicit mapping (firefliesTitles) is the
+  // source of truth: a transcript mapped to THIS agenda is always this meeting's
+  // context, regardless of what the attendee-domain heuristic infers. The domain
+  // heuristic stays, demoted to auto-finding UNMAPPED context (this org's other
+  // meetings + internal Vistamar meetings) within the cycle window.
+  // MASTER: not a single agenda's mapping, so it stays classifier-driven.
   const included = [];
   for (const t of list) {
     const d = toMs(t.date);
-    if (d < windowStart || d > now) continue;
+    if (d <= 0 || d < windowStart || d > windowEnd) continue;
+    const mapped = titleSet.has((t.title || "").toLowerCase().trim());
     const cls = resolveOrgFromAttendees(t.meeting_attendees);
-    if (!cls) continue;
     if (master) {
+      if (!cls) continue;
       included.push({ ...t, _ms: d, org: cls, scope: cls === "vistamar" ? "vistamar-internal" : "this-org" });
-    } else {
-      if (cls !== targetOrg && cls !== "vistamar") continue;
-      included.push({ ...t, _ms: d, org: cls, scope: cls === targetOrg ? "this-org" : "vistamar-internal" });
+    } else if (mapped) {
+      included.push({ ...t, _ms: d, org: targetOrg, scope: "this-org" });
+    } else if (cls === targetOrg) {
+      included.push({ ...t, _ms: d, org: targetOrg, scope: "this-org" });
+    } else if (cls === "vistamar") {
+      included.push({ ...t, _ms: d, org: "vistamar", scope: "vistamar-internal" });
     }
   }
   included.sort((a, b) => b._ms - a._ms);
@@ -278,9 +289,8 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
     orgMeta,
     summary: {
       windowStart,
-      anchoredToGen,
       master: !!master,
-      usedFallbackWindow: !anchoredToGen && !meetingAnchor && !orgAnchor,
+      usedFallbackWindow,
       orgAgendaCount: orgAgendas.length,
       orgCount: transcripts.filter((t) => t.scope === "this-org").length,
       internalCount: transcripts.filter((t) => t.scope === "vistamar-internal").length,
