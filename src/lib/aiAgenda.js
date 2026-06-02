@@ -322,7 +322,7 @@ export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts
 
 // Refine an already-proposed agenda from a user instruction (no data sources —
 // just edits the current proposal). Returns the refined proposal in the same
-// shape as generateAgenda.
+// shape as generateAgenda, with every topic guaranteed to carry a topicId.
 export async function refineProposal({ proposal, instruction, categories, tagVocab, master, orgMeta }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
@@ -337,7 +337,29 @@ export async function refineProposal({ proposal, instruction, categories, tagVoc
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   const data = await res.json();
-  return data.proposal;
+  const refined = data.proposal;
+
+  // Guarantee every returned topic has a topicId. The model preserves ids for
+  // retained/edited topics; brand-new topics it adds come back without one.
+  // Mint fresh ids continuing past the highest numeric suffix seen in the
+  // current proposal's topics (e.g. if t0–t6 exist, new topics get t7, t8…).
+  const existingIds = (proposal?.topics || [])
+    .map((t) => t.topicId)
+    .filter(Boolean);
+  const maxSuffix = existingIds.reduce((max, id) => {
+    const m = /^t(\d+)$/.exec(id);
+    return m ? Math.max(max, parseInt(m[1], 10)) : max;
+  }, -1);
+  let nextSuffix = maxSuffix + 1;
+
+  const topicsWithIds = (refined?.topics || []).map((t) => {
+    if (t.topicId) return t;
+    const assigned = `t${nextSuffix}`;
+    nextSuffix += 1;
+    return { ...t, topicId: assigned };
+  });
+
+  return { ...refined, topics: topicsWithIds };
 }
 
 // Apply a reviewed proposal: overwrite the agenda's Pre-Brief + Open Floor and

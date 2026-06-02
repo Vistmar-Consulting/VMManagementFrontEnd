@@ -15,6 +15,7 @@ export const config = { maxDuration: 300 };
 // Same proposal schema as generate.js (master adds per-topic organizationId).
 function buildSchema(master) {
   const topicProps = {
+    topicId: { type: "string" },
     name: { type: "string" },
     bodyHtml: { type: "string" },
     categories: { type: "array", items: { type: "string" } },
@@ -65,6 +66,8 @@ Apply ONLY what the instruction asks — add, edit, remove, or reorder as reques
 
 PRESERVE HYPERLINKS: keep every existing <a href="…"> verbatim (exact href + text). If the instruction adds a link/URL, include it as an <a href> too.
 
+PRESERVE TOPIC IDS: each input topic carries a topicId (e.g. "t0", "t2"). For every topic you keep or edit, copy its topicId exactly into the output. Do NOT invent or change topicIds. Omit topicId only for a brand-new topic you add — the caller will assign a fresh id.
+
 HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise.
 ${master ? `\nThis is the MASTER Touch Base agenda — organized org by org. EVERY topic must keep/set its organizationId (slug from the list). Place any new topic under the right org and keep org grouping intact.\n\n## Organizations (use these slugs for organizationId)\n${orgListBlock(orgMeta)}\n` : ""}
 ## Output
@@ -77,7 +80,9 @@ function buildUserMessage(proposal, instruction, master) {
   lines.push("## Current draft agenda");
   if (p.preBriefHtml) lines.push(`Pre-Brief (HTML): ${p.preBriefHtml}`);
   (p.topics || []).forEach((t, i) => {
-    lines.push(`Topic ${i + 1}: ${t.name || ""}${master && t.organizationId ? ` [organizationId: ${t.organizationId}]` : ""}`);
+    const idPart = t.topicId ? ` [topicId: ${t.topicId}]` : "";
+    const orgPart = master && t.organizationId ? ` [organizationId: ${t.organizationId}]` : "";
+    lines.push(`Topic ${i + 1}: ${t.name || ""}${idPart}${orgPart}`);
     if (t.bodyHtml) lines.push(`  Body (HTML): ${t.bodyHtml}`);
     if (t.categories?.length) lines.push(`  categories: ${t.categories.join(", ")}`);
     if (t.tags?.length) lines.push(`  tags: ${t.tags.join(", ")}`);
@@ -130,6 +135,7 @@ export default async function handler(req, res) {
       preBriefHtml: String(parsed.preBriefHtml || ""),
       topics: Array.isArray(parsed.topics)
         ? parsed.topics.map((t) => ({
+            topicId: t?.topicId ? String(t.topicId) : null,
             name: String(t?.name || ""),
             bodyHtml: String(t?.bodyHtml || ""),
             categories: Array.isArray(t?.categories) ? t.categories.map((c) => String(c)) : [],
