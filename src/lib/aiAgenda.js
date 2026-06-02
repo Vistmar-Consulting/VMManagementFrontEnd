@@ -78,7 +78,7 @@ export async function resolvePrompt(orgSlug, { master = false } = {}) {
 // when this agenda has no mapped past meeting yet. Detail fetches are parallel
 // and partial-failure tolerant (allSettled) — one flaky transcript can't kill
 // the whole run, but the gap is surfaced via summary.failedCount.
-export async function assembleGenInputs(agenda, items = [], orgSlug = null, { anchorField = "lastAgendaGenAt", master = false } = {}) {
+export async function assembleGenInputs(agenda, items = [], orgSlug = null, { anchorField = "lastUnifiedGenAt", master = false } = {}) {
   const now = Date.now();
   // Org lives on the calendar_series (the agenda doc's organizationId is often
   // null); the caller passes the resolved slug. Fall back to the agenda field.
@@ -192,6 +192,20 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
     orgName: orgNameOf(it.organizationId),
   }));
 
+  // Full unwindowed board — moves/notes may target items outside the gen window.
+  // Org filtering matches projectBoard/recentItems: master = all orgs, per-org = targetOrg only.
+  const existingTasks = (items || [])
+    .filter((it) => !it.parentId)
+    .filter((it) => (master ? it.organizationId != null : it.organizationId === targetOrg))
+    .map((it) => ({
+      id: it.id,
+      title: it.title || "",
+      status: statusLabel(it.statusId),
+      category: it.categoryId || null,
+      organizationId: it.organizationId || null,
+    }))
+    .filter((t) => t.title);
+
   // Org-wide agenda awareness: the CURRENT content of this client's OTHER
   // meeting agendas (what's planned across the org's meetings, regardless of
   // stage / whether they've been AI-generated). Complements transcripts (what
@@ -247,6 +261,7 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
   return {
     transcripts,
     projectBoard,
+    existingTasks,
     orgAgendas,
     categories,
     tagVocab,
