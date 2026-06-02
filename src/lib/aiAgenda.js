@@ -369,8 +369,10 @@ export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts
     const data = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(data.error || `HTTP ${res.status}`);
   }
-  const data = await res.json();
-  return data.proposal;
+  // /api/ai/prepare returns the proposal fields at the top level
+  // ({ preBriefHtml, topics, openFloorHtml, boardChanges }) — no { proposal }
+  // wrapper — so return the body directly.
+  return res.json();
 }
 
 // Sync Meeting (unified): apply the reviewed proposal — agenda content + topic
