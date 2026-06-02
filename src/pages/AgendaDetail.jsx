@@ -46,8 +46,7 @@ import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 
 import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
 import { getContrastText, getTextColor, hexToRgba } from "../theme/pillColors.js";
-import AIGenDialog from "../components/AIGenDialog.jsx";
-import SuggestTasksDialog from "../components/SuggestTasksDialog.jsx";
+import SyncMeetingDialog from "../components/SyncMeetingDialog.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
 import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
@@ -1542,8 +1541,7 @@ export default function AgendaDetail() {
   const [attendeeFilter, setAttendeeFilter] = useState(null);
   const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [aiGenOpen, setAiGenOpen] = useState(false);
-  const [suggestTasksOpen, setSuggestTasksOpen] = useState(false);
+  const [syncMeetingOpen, setSyncMeetingOpen] = useState(false);
 
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
     agendaId ? `agendas/${agendaId}` : null
@@ -1742,30 +1740,21 @@ export default function AgendaDetail() {
           </IconButton>
         </Tooltip>
         <Stack direction="row" alignItems="center" spacing={0.5}>
-          {isAdmin && agenda?.lastAgendaGenAt?.toDate && (
-            <Tooltip title={`Last AI-generated ${format(agenda.lastAgendaGenAt.toDate(), "MMM d, yyyy · h:mm a")}`}>
+          {isAdmin && agenda?.lastUnifiedGenAt?.toDate && (
+            <Tooltip title={`Last synced ${format(agenda.lastUnifiedGenAt.toDate(), "MMM d, yyyy · h:mm a")}`}>
               <Typography variant="caption" sx={{ color: t.ink3, mr: 0.5 }}>
-                gen {formatDistanceToNow(agenda.lastAgendaGenAt.toDate(), { addSuffix: true })}
+                synced {formatDistanceToNow(agenda.lastUnifiedGenAt.toDate(), { addSuffix: true })}
               </Typography>
             </Tooltip>
           )}
           {isAdmin && (
             <Button
-              onClick={() => setAiGenOpen(true)}
+              onClick={() => setSyncMeetingOpen(true)}
               size="small"
               startIcon={<AutoAwesomeIcon fontSize="small" />}
               sx={{ color: t.ink3, textTransform: "none" }}
             >
-              AI Gen
-            </Button>
-          )}
-          {isAdmin && (
-            <Button
-              onClick={() => setSuggestTasksOpen(true)}
-              size="small"
-              sx={{ color: t.ink3, textTransform: "none" }}
-            >
-              Suggest tasks
+              Sync Meeting
             </Button>
           )}
           <Tooltip title="Version history">
@@ -1969,24 +1958,18 @@ export default function AgendaDetail() {
       {historyOpen && (
         <AgendaHistoryDialog agendaId={agendaId} onClose={() => setHistoryOpen(false)} />
       )}
-      {aiGenOpen && (
-        <AIGenDialog
+      {syncMeetingOpen && (
+        <SyncMeetingDialog
           agendaId={agendaId}
           agenda={agenda}
           topics={topics}
           items={allItems}
           orgSlug={organizationId}
           master={isMaster}
-          onClose={() => setAiGenOpen(false)}
-        />
-      )}
-      {suggestTasksOpen && (
-        <SuggestTasksDialog
-          agendaId={agendaId}
-          agenda={agenda}
-          items={allItems}
-          orgSlug={organizationId}
-          onClose={() => setSuggestTasksOpen(false)}
+          users={users}
+          categories={categories}
+          tags={tags}
+          onClose={() => setSyncMeetingOpen(false)}
         />
       )}
     </Box>
