@@ -1604,6 +1604,16 @@ export default function AgendaDetail() {
         }
       }
     }
+    // Include subitems whose parent matched (mirrors MiniProjectBoard, where
+    // subitems inherit their parent's topic visibility). Done/Review/overdue
+    // work often lives at the subitem level, so the Meeting Focus counts must
+    // reach into children — otherwise the card reads as all-dashes even when
+    // the board has completed/in-review subitems.
+    for (const it of allItems) {
+      if (it.parentId && it.organizationId === organizationId && seen.has(it.parentId)) {
+        out.push(it);
+      }
+    }
     return out;
   }, [allItems, organizationId, topics]);
 
