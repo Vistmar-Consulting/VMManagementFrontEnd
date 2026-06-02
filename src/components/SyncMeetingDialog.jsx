@@ -1,7 +1,6 @@
-// Sync Meeting dialog (Task 6). ONE AI pass produces a meeting agenda AND the
-// project-board changes (creates / moves / notes); the user reviews both
-// together and applies them in a single transaction. Replaces the two prior
-// dialogs (AIGenDialog = agenda + Refine, SuggestTasksDialog = board changes).
+// Sync Meeting dialog. ONE AI pass produces a meeting agenda AND the project-board
+// changes (creates / moves / notes); the user reviews both together and applies
+// them in a single transaction.
 //
 // Flow: choose working/executive + optional context → snapshot agenda
 // (pre-ai-gen, revertible) → assembleGenInputs → prepareMeeting → review
@@ -52,7 +51,7 @@ import { STATUS_MAP } from "../lib/itemStatusMap.js";
 const PROMOTE_STATUSES = STATUS_OPTIONS.filter((s) => Object.prototype.hasOwnProperty.call(STATUS_MAP, s.name));
 
 // One-line summary of what fed the model — so the user always sees the actual
-// input set (no silent caps / dropped data). Mirrors AIGenDialog.
+// input set (no silent caps / dropped data).
 function summaryText(s) {
   if (!s) return "";
   const since = s.usedFallbackWindow

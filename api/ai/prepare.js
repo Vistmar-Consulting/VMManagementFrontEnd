@@ -1,11 +1,9 @@
 // api/ai/prepare.js
 //
 // Sync Meeting — ONE AI operation that generates a meeting agenda AND project-
-// board changes in a single model pass. Merges api/ai/generate.js (agenda) and
-// api/ai/suggest-tasks.js (board changes) so a created task is guaranteed to
-// land under the agenda topic it belongs to: the model emits an integer
-// `topicIndex` on each create, and this endpoint converts it to a stable
-// `topicId` (and, for master, stamps the topic's organizationId) afterward.
+// board changes in a single model pass. The model emits an integer `topicIndex`
+// on each board-create, and this endpoint converts it to a stable `topicId`
+// (and, for master, stamps the topic's organizationId) afterward.
 //
 // Auth: requireAuth (Firebase ID token) gates on @vistamarconsulting.com — the
 // FE additionally shows the trigger to admins only. A finer per-user admin

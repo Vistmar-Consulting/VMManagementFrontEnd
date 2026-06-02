@@ -2,10 +2,11 @@
 //
 // Slice 3a — FE helpers for AI Meeting Agenda generation. Resolves the stored
 // prompt, assembles the current agenda's mapped Fireflies transcripts, POSTs
-// to /api/ai/generate, and applies the reviewed proposal back onto the agenda.
+// to /api/ai/prepare (unified Sync Meeting), and applies the reviewed proposal
+// back onto the agenda + project board in one atomic transaction.
 //
-// The AIGenDialog orchestrates: snapshotAgenda("pre-ai-gen") → resolvePrompt →
-// assembleTranscripts → generateAgenda → (review) → applyProposal. Apply is
+// SyncMeetingDialog orchestrates: snapshotAgenda("pre-ai-gen") → resolvePrompt
+// → assembleGenInputs → prepareMeeting → (review) → applyUnified. Apply is
 // reversible via the pre-ai-gen version snapshot (Slice 2).
 import {
   addDoc,
@@ -19,7 +20,6 @@ import {
   serverTimestamp,
   updateDoc,
   where,
-  writeBatch,
 } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 import { auth, db } from "../firebase.js";
@@ -110,7 +110,7 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { an
   //  2. The meeting's most recent PAST Fireflies occurrence (first-gen fallback).
   //  3. A flat lookback (unmapped agenda).
   // Window anchor, in priority order:
-  //  1. lastAgendaGenAt / lastSuggestTasksAt — "since I last reconciled".
+  //  1. lastUnifiedGenAt — "since I last ran Sync Meeting".
   //  2. This meeting's PREVIOUS occurrence (by firefliesTitles) — first gen of
   //     a meeting that has Fireflies history + a title mapping.
   //  3. The ORG's previous meeting of ANY kind — new / imported / unmapped
@@ -304,29 +304,9 @@ export async function setAgendaStyle(agendaId, meetingStyle, uid = null) {
   });
 }
 
-// POST the assembled inputs to the Vercel function. Returns the proposal
-// { preBriefHtml, topics:[{name,bodyHtml}], openFloorHtml }.
-export async function generateAgenda({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal, master, orgMeta }) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-
-  const res = await fetch("/api/ai/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({ prompt, meetingStyle, agenda, transcripts, projectBoard, orgAgendas, extraContext, categories, tagVocab, internal: !!internal, master: !!master, orgMeta: orgMeta || [] }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-  const data = await res.json();
-  return data.proposal;
-}
-
 // Refine an already-proposed agenda from a user instruction (no data sources —
 // just edits the current proposal). Returns the refined proposal in the same
-// shape as generateAgenda, with every topic guaranteed to carry a topicId.
+// shape as prepareMeeting, with every topic guaranteed to carry a topicId.
 export async function refineProposal({ proposal, instruction, categories, tagVocab, master, orgMeta }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
@@ -366,118 +346,15 @@ export async function refineProposal({ proposal, instruction, categories, tagVoc
   return { ...refined, topics: topicsWithIds };
 }
 
-// Apply a reviewed proposal: overwrite the agenda's Pre-Brief + Open Floor and
-// replace the topic set (proposal topics have no ids → delete current, create
-// fresh; categoryIds/tagIds empty in 3a, Slice 3b adds them). Done as a single
-// writeBatch so apply is atomic — a mid-apply failure can't leave the agenda
-// with new content but missing/partial topics. The caller snapshots
-// "pre-ai-gen" first, so a successful apply is also reversible.
-// (Topic counts are far below Firestore's 500-op batch limit.)
 // slugify a coined tag name → a stable lowercase-hyphenated id.
 export function tagSlug(name) {
   return String(name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
-export async function applyProposal(agendaId, proposal, uid = null, { style = null } = {}) {
-  // Resolve categories/tags (Slice 3b): valid category slugs + existing tags,
-  // creating any coined (new) tags as layer-3 client-proprietary.
-  const [catSnap, tagSnap, cur] = await Promise.all([
-    getDocs(collection(db, "categories")),
-    getDocs(collection(db, "tags")),
-    getDocs(collection(db, "agendas", agendaId, "topics")),
-  ]);
-  // category resolution: accept slug (doc id) or lowercased name → slug.
-  const catBySlug = new Set(catSnap.docs.map((d) => d.id));
-  const catByName = new Map(catSnap.docs.map((d) => [(d.data().name || "").toLowerCase(), d.id]));
-  const resolveCat = (c) => {
-    const v = String(c || "").trim();
-    if (catBySlug.has(v)) return v;
-    return catByName.get(v.toLowerCase()) || null;
-  };
-  // tag resolution: existing by id(=name); new tags get created.
-  const existingTagIds = new Set(tagSnap.docs.map((d) => d.id));
-  const existingTagByName = new Map(tagSnap.docs.map((d) => [(d.data().name || d.id).toLowerCase(), d.id]));
-  let tagSort = tagSnap.size;
-  const newTagWrites = []; // {id, name}
-  const resolveTag = (t) => {
-    const name = String(t || "").trim();
-    if (!name) return null;
-    if (existingTagIds.has(name)) return name;
-    const byName = existingTagByName.get(name.toLowerCase());
-    if (byName) return byName;
-    const id = tagSlug(name);
-    if (!id) return null;
-    if (existingTagIds.has(id)) return id;
-    if (!newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name });
-    return id;
-  };
-
-  const batch = writeBatch(db);
-
-  batch.update(doc(db, "agendas", agendaId), {
-    preBriefHtml: sanitizeHtml(proposal.preBriefHtml || ""),
-    openFloorHtml: sanitizeHtml(proposal.openFloorHtml || ""),
-    updatedAt: serverTimestamp(),
-    updatedByUid: uid,
-    lastAgendaGenAt: serverTimestamp(), // window anchor + "last generated" record
-  });
-
-  cur.docs.forEach((d) => batch.delete(d.ref));
-
-  (proposal.topics || []).forEach((t, i) => {
-    const categoryIds = [...new Set((t.categories || []).map(resolveCat).filter(Boolean))];
-    const tagIds = [...new Set((t.tags || []).map(resolveTag).filter(Boolean))];
-    const ref = doc(collection(db, "agendas", agendaId, "topics"));
-    batch.set(ref, {
-      name: String(t.name || ""),
-      bodyHtml: sanitizeHtml(t.bodyHtml || ""),
-      sortOrder: i + 1,
-      categoryIds,
-      tagIds,
-      // Master Touch Base: each topic is tagged with the org it belongs to so
-      // the Working/Overview views group + color by org. null for normal agendas.
-      organizationId: t.organizationId || null,
-      createdAt: serverTimestamp(),
-      createdByUid: uid,
-      updatedAt: serverTimestamp(),
-      updatedByUid: uid,
-    });
-  });
-
-  // Create any coined tags (layer-3 client-proprietary).
-  newTagWrites.forEach((w, i) => {
-    batch.set(doc(db, "tags", w.id), {
-      name: w.name,
-      color: "#8b5cf6",
-      layer: 3,
-      sortOrder: tagSort + i + 1,
-      createdAt: serverTimestamp(),
-      createdByUid: uid,
-    });
-  });
-
-  await batch.commit();
-
-  // Record the gen event (visible AI-Gen activity history). Best-effort +
-  // outside the atomic batch so it never gates the core apply — and tolerates
-  // the aiGenLog rule not yet being deployed (logs as a warning if so).
-  try {
-    await addDoc(collection(db, "agendas", agendaId, "aiGenLog"), {
-      at: serverTimestamp(),
-      byUid: uid,
-      kind: "agenda",
-      style: style || null,
-    });
-  } catch (e) {
-    console.warn("aiGenLog (agenda) write skipped:", e?.message);
-  }
 }
 
 // Sync Meeting (unified): POST the assembled inputs to /api/ai/prepare and get
 // back ONE proposal covering both the agenda (preBriefHtml/topics/openFloorHtml)
 // and the project-board changes (boardChanges: { creates, moves, notes }).
 // Topics already carry topicId; creates already carry topicId (set server-side).
-// Mirrors generateAgenda's fetch contract.
 export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts, projectBoard, existingTasks, orgAgendas, extraContext, categories, tagVocab, internal, master, orgMeta }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
@@ -704,7 +581,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     });
 
     // Accepted notes → append to description (skip if the raw note is already
-    // present in the current description). Matches aiTasks.js's format.
+    // present in the current description).
     acceptedNotes.forEach((n) => {
       const snap = noteSnaps.get(n.itemId);
       if (!snap?.exists() || !n.note) return;
