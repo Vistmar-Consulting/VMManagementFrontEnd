@@ -55,6 +55,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { createMeeting } from "../lib/meetingsApi.js";
+import { isClientEmail, upsertOrgMember } from "../lib/orgMembers.js";
+import { useOrgMembers } from "../hooks/useOrgMembers.js";
 import MemberAvatar from "./MemberAvatar.jsx";
 
 const FREQUENCY_OPTIONS = [
@@ -94,6 +96,7 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
   const [orgId, setOrgId] = useState("");
   const [attendees, setAttendees] = useState([]); // {email, name}[]
   const [internalPick, setInternalPick] = useState(null);
+  const [clientPick, setClientPick] = useState(null);
   const [externalEmail, setExternalEmail] = useState("");
   const [externalName, setExternalName] = useState("");
   const [frequency, setFrequency] = useState("one-time");
@@ -124,6 +127,16 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
       }));
   }, [users, attendeeEmails]);
 
+  // Per-org client directory (organizations/{orgId}/members). Empty until an
+  // org is picked (useOrgMembers(null) short-circuits). Same dedup against the
+  // current attendee roster as the Vistamar dropdown.
+  const { data: orgMembers } = useOrgMembers(orgId);
+  const clientChoices = useMemo(() => {
+    return (orgMembers || [])
+      .filter((m) => m.email && !attendeeEmails.has(m.email.toLowerCase()))
+      .map((m) => ({ email: m.email, name: m.name || m.email }));
+  }, [orgMembers, attendeeEmails]);
+
   const addAttendee = (att) => {
     if (!att?.email) return;
     if (attendeeEmails.has(att.email.toLowerCase())) return;
@@ -136,6 +149,12 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
     if (internalPick) {
       addAttendee(internalPick);
       setInternalPick(null);
+    }
+  };
+  const handleAddClient = () => {
+    if (clientPick) {
+      addAttendee(clientPick);
+      setClientPick(null);
     }
   };
   const handleAddExternal = () => {
@@ -249,6 +268,17 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
           },
           { merge: true }
         );
+      }
+
+      // Auto-capture non-Vistamar attendees into the org's member directory (best-effort).
+      try {
+        await Promise.all(
+          attendees
+            .filter((a) => isClientEmail(a.email))
+            .map((a) => upsertOrgMember(orgId, { name: a.name, email: a.email, source: "scheduler" })),
+        );
+      } catch {
+        // best-effort: directory capture must never fail the meeting create; idempotent, re-captured next save
       }
 
       // 5. Refresh the Calendar's cached meeting list so the new meeting is
@@ -457,6 +487,25 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
                 )}
               />
               <Button size="small" variant="outlined" onClick={handleAddInternal} disabled={!internalPick}>
+                Add
+              </Button>
+            </Stack>
+
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+              <Autocomplete
+                size="small"
+                fullWidth
+                value={clientPick}
+                onChange={(_, v) => setClientPick(v)}
+                options={clientChoices}
+                getOptionLabel={(o) => o.name || o.email}
+                isOptionEqualToValue={(a, b) => a.email === b.email}
+                disabled={!orgId}
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Add client attendee…" size="small" />
+                )}
+              />
+              <Button size="small" variant="outlined" onClick={handleAddClient} disabled={!clientPick}>
                 Add
               </Button>
             </Stack>
