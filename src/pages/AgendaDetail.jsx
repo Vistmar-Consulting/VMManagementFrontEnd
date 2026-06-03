@@ -81,6 +81,10 @@ import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
 import RichBodyEditor from "../components/editor/RichBodyEditor.jsx";
 import { EditorFocusProvider } from "../components/editor/editorFocus.jsx";
+import { LiveblocksRoot, RoomProvider } from "../lib/liveblocks.js";
+import { CollabFlushRegistryProvider, useCollabFlushRegistry } from "../components/editor/CollabFlushRegistry.jsx";
+import CollabBodyEditor from "../components/editor/CollabBodyEditor.jsx";
+import AgendaPresence from "../components/AgendaPresence.jsx";
 import SharedEditorToolbar from "../components/editor/SharedEditorToolbar.jsx";
 import { GripVertical, Trash2 } from "lucide-react";
 import { t } from "../theme/tokens.js";
@@ -452,9 +456,12 @@ function OverviewTopic({ topic, agendaId, dragHandleProps }) {
         placeholder="New Topic"
         sx={{ ...inputBase, ...sectionTitleSx }}
       />
-      <RichBodyEditor
+      <CollabBodyEditor
         mode="shared"
         valueHtml={topic.bodyHtml || ""}
+        fragmentKey={topic.id}
+        seedDocPath={`agendas/${agendaId}/topics/${topic.id}`}
+        seedFlagField="collabSeeded"
         placeholder="Add talking points…"
         onChangeHtml={(html) =>
           updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
@@ -501,9 +508,12 @@ function OpenFloorSection({ agendaId, agenda }) {
   return (
     <Box sx={{ mt: 2.5 }}>
       <Typography sx={sectionTitleSx}>Open Floor</Typography>
-      <RichBodyEditor
+      <CollabBodyEditor
         mode="shared"
         valueHtml={agenda?.openFloorHtml || ""}
+        fragmentKey="openFloor"
+        seedDocPath={`agendas/${agendaId}`}
+        seedFlagField="openFloorCollabSeeded"
         placeholder="Add open-floor items…"
         onChangeHtml={(html) =>
           updateDoc(doc(db, "agendas", agendaId), {
@@ -1420,8 +1430,11 @@ function AgendaTopicCard({
             onChange={setTopicKpiFilter}
           />
 
-          <RichBodyEditor
+          <CollabBodyEditor
             valueHtml={topic.bodyHtml || ""}
+            fragmentKey={topic.id}
+            seedDocPath={`agendas/${agendaId}/topics/${topic.id}`}
+            seedFlagField="collabSeeded"
             placeholder="Add talking points…"
             onChangeHtml={(html) =>
               updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
@@ -1525,6 +1538,23 @@ function AddOrgTopicButton({ agendaId, org, prevSort, nextSort }) {
     >
       ＋ New Topic
     </Box>
+  );
+}
+
+// Rendered inside RoomProvider+FlushRegistry so useCollabFlushRegistry() gets
+// the real registry (AgendaDetail itself renders the providers and would only
+// see the no-op fallback if it called the hook directly).
+function SyncMeetingHeaderButton({ onOpen }) {
+  const { flushAll } = useCollabFlushRegistry();
+  return (
+    <Button
+      size="small"
+      startIcon={<AutoAwesomeIcon fontSize="small" />}
+      sx={{ color: t.ink3, textTransform: "none" }}
+      onClick={async () => { try { await flushAll(); } catch {} onOpen(); }}
+    >
+      Sync Meeting
+    </Button>
   );
 }
 
@@ -1727,6 +1757,9 @@ export default function AgendaDetail() {
 
   return (
     <Box sx={{ maxWidth: 1280, mx: "auto", pb: 8 }}>
+      <LiveblocksRoot>
+        <RoomProvider id={`agenda:${agendaId}`} initialPresence={{}}>
+          <CollabFlushRegistryProvider>
       <Box sx={{ pt: 2, px: 4, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Tooltip title="Back to Calendar">
           <IconButton
@@ -1747,16 +1780,8 @@ export default function AgendaDetail() {
               </Typography>
             </Tooltip>
           )}
-          {isAdmin && (
-            <Button
-              onClick={() => setSyncMeetingOpen(true)}
-              size="small"
-              startIcon={<AutoAwesomeIcon fontSize="small" />}
-              sx={{ color: t.ink3, textTransform: "none" }}
-            >
-              Sync Meeting
-            </Button>
-          )}
+          <AgendaPresence />
+          {isAdmin && <SyncMeetingHeaderButton onOpen={() => setSyncMeetingOpen(true)} />}
           <Tooltip title="Version history">
             <IconButton
               onClick={() => setHistoryOpen(true)}
@@ -1972,6 +1997,9 @@ export default function AgendaDetail() {
           onClose={() => setSyncMeetingOpen(false)}
         />
       )}
+          </CollabFlushRegistryProvider>
+        </RoomProvider>
+      </LiveblocksRoot>
     </Box>
   );
 }
