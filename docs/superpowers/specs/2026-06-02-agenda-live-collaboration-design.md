@@ -29,38 +29,42 @@ Agenda topic bodies are edited single-user: `RichBodyEditor` loads its HTML once
   - each topic body → fragment key = the topic's Firestore doc id (`topic.id`)
   - Open Floor → fragment key `openFloor`
 - Because Overview and Working mount **separate** editor instances for the same topic (`AgendaDetail.jsx:455` shared-mode, `:1423` inline-mode), and both will bind to the **same fragment key** (`topic.id`), edits sync across views and across users through the one Y.Doc.
+- **Load-bearing invariant:** binding *two* ProseMirror editors to one `Y.XmlFragment` *simultaneously* causes a documented awareness/cursor loop (yjs/y-prosemirror #85, tiptap #5271). We avoid it because the view toggle at `AgendaDetail.jsx:1782` is a `viewMode === "overview" ? (…) : (…)` **ternary that conditionally renders (unmounts)** the other view — so only ONE editor instance is ever live on a given fragment at a time. This must stay an unmount (never a CSS hide-both), and the collaboration-caret/awareness extension attaches only to the currently-mounted instance. Document this in code comments; cover it with the toggle-stress test in §6.
 - Sync Meeting destroy-recreates topics → new doc ids → new fragment keys → each new topic auto-seeds fresh (orphaned old fragments are harmless room storage; negligible for a 5-person team).
 
 ### 3.2 Canonical mirror (Firestore stays the source of record)
 The live source for the *editing experience* is the Y.Doc (persisted by Liveblocks). Firestore `topics/{id}.bodyHtml` / `agenda.openFloorHtml` remain the **canonical mirror** so AI Gen (`assembleGenInputs`/`prepare`), `composeAgendaHtml`, Overview's `RichBodyView`, and export keep working **unchanged**.
 - The collab editor writes `editor.getHTML()` → the existing Firestore `updateDoc` path (the current `onChangeHtml` handlers at `AgendaDetail.jsx:455-466`, `1423-1433`, `504-515` are reused verbatim), debounced.
-- **Mirror on LOCAL edits only.** TipTap's `onUpdate` fires for remote Yjs changes too; writing on remote changes would make all N clients write the same HTML repeatedly. The mirror must fire only when the local user originated the transaction (filter via the y-sync transaction meta / `transaction.local`). Result: exactly one client (the editor) writes each change; all clients converge so the HTML is identical regardless.
+- **Mirror on LOCAL edits only.** TipTap's `onUpdate` fires for remote Yjs changes too; writing on remote changes would make all N clients write the same HTML repeatedly. `onUpdate` hands a **ProseMirror** transaction (which has NO `.local` field — that's a Yjs `Transaction` property, a different object). The correct test: y-prosemirror tags transactions it applies *from a remote Yjs update* with meta under `ySyncPluginKey` carrying `{ isChangeOrigin: true }`. So mirror to Firestore **only when** `transaction.getMeta(ySyncPluginKey)?.isChangeOrigin` is falsy (a genuine local edit). Import `ySyncPluginKey` from `y-prosemirror`. (Undo/redo also carries `isUndoRedoOperation`; mirroring on undo is harmless since state converges.) Result: exactly one client (the editor) writes each change; all clients converge so the HTML is identical regardless.
 - **Operational consequence (document in code + the explainer):** once collab is live, an existing topic's body must be edited *through the app*. A raw out-of-band Firestore write to an existing topic's `bodyHtml` will NOT appear in the live Y.Doc (the fragment is already initialized) and will be overwritten by the next local mirror. Sync Meeting is unaffected (it creates new topic docs → new fragments).
 
 ### 3.3 Seeding (race-free)
 A fragment must be seeded from Firestore `bodyHtml` the first time a topic with existing content is opened (Sync-Meeting-created or migrated topics). Brand-new manual topics start empty (no seed). To avoid two simultaneous openers double-seeding:
-- Guard with a **Firestore transaction** on a new `topics/{id}.collabSeeded` boolean (and `agenda.openFloorCollabSeeded`). The client that wins the transaction seeds the Yjs fragment from `bodyHtml` via `editor.commands.setContent(html, false)` after the provider reports `synced`; losers skip seeding and receive the content via Yjs sync (sub-second). This serializes seeding through existing Firebase infra — no duplicate inserts.
-- Seed only when the fragment is empty AND the field has non-empty `bodyHtml`. (Empty body → nothing to seed.)
+- Guard with a **Firestore transaction** on a new `topics/{id}.collabSeeded` boolean (and `agenda.openFloorCollabSeeded`). The client that wins the transaction seeds; losers skip and receive the content via Yjs sync (sub-second). The Firestore transaction genuinely serializes the decision across simultaneous clients — no double-seed.
+- **The flag is necessary but not sufficient by itself** — combine it with a write-time empty-fragment check: only seed when `ydoc.get(fragmentKey, Y.XmlFragment).length === 0` AND the field has non-empty `bodyHtml` AND this client won the `collabSeeded` transaction AND the provider has reported `synced`. Seed via `editor.commands.setContent(html, false)` (documented here as the seed mechanism; it runs only on the empty-fragment + flag-winner path, so it initializes rather than races). Empty body → nothing to seed.
+- (A Liveblocks-native alternative — gating on a room `useStorage`/LiveObject flag instead of a Firestore round-trip — keeps the decision co-located with the doc and avoids cross-service latency; the Firestore approach is chosen for reusing existing infra. Either is acceptable.)
 
 ### 3.4 Auth
 New Vercel function **`api/liveblocks-auth.js`**:
 - `import { applyCors } from "../meetings/_lib/cors.js"` and `import { requireAuth } from "../meetings/_lib/auth.js"` (same helpers `api/ai/*` use). `applyCors` first; then `await requireAuth(req,res)` (Firebase ID token via `X-User-Token` + `@vistamarconsulting.com` + verified-email gate). `req.authUser` = `{uid,email,displayName}`.
-- Read `users/{uid}` (Firebase Admin, already initialized by the auth helper) for `displayName` + `avatarColor`.
-- `new Liveblocks({ secret: process.env.LIVEBLOCKS_SECRET_KEY })` → `liveblocks.prepareSession(uid, { userInfo: { name, color, avatarColor } })` → `session.allow("agenda:*", session.FULL_ACCESS)` → return `await session.authorize()`.
-- **Secret:** `LIVEBLOCKS_SECRET_KEY` in Vercel env (Andy provides the `sk_...`). The client uses the **auth-endpoint** pattern (no public key needed), so the `@vistamar` gate is enforced server-side.
+- **Identity source:** `requireAuth` does NOT use firebase-admin (it verifies the token via the identitytoolkit REST `accounts:lookup`; no Firestore handle, no `avatarColor`). So there is NO server-side Firestore read here. Instead, the **client POSTs its own `displayName` + `avatarColor`** (from `useAuth().profile`) in the request body; the server uses them for `userInfo` only AFTER the `@vistamar` gate passes (the values are display-only presence labels, not a trust boundary). Use `req.authUser.uid` as the Liveblocks user id.
+- `new Liveblocks({ secret: process.env.LIVEBLOCKS_SECRET_KEY })` → `liveblocks.prepareSession(uid, { userInfo: { name: <displayName from body, fallback req.authUser.displayName>, color: <avatarColor from body> } })` → `session.allow("agenda:*", session.FULL_ACCESS)` → `const { body, status } = await session.authorize(); return res.status(status).send(body)`.
+- **Secret:** `LIVEBLOCKS_SECRET_KEY` in Vercel env (Andy provides the `sk_...`). The client uses the **auth-endpoint** pattern (no public key needed), so the `@vistamar` gate is enforced server-side. (`cors.js` already allowlists the `X-User-Token` header.)
 
 ### 3.5 Client wiring
-- `createClient({ authEndpoint })` where `authEndpoint` is a function that attaches the Firebase token: `await auth.currentUser.getIdToken()` → `fetch("/api/liveblocks-auth", { method:"POST", headers:{ "X-User-Token": token }, body: JSON.stringify({ room }) })` → returns the Liveblocks token JSON.
+- `createClient({ authEndpoint })` where `authEndpoint` is a function that attaches the Firebase token + the user's display identity: `token = await auth.currentUser.getIdToken()`; `profile = useAuth().profile` (read at call time); → `fetch("/api/liveblocks-auth", { method:"POST", headers:{ "Content-Type":"application/json", "X-User-Token": token }, body: JSON.stringify({ room, name: profile.displayName, avatarColor: profile.avatarColor }) })` → returns the Liveblocks token JSON.
 - `@liveblocks/react` `createRoomContext(client)` → `RoomProvider`, `useRoom`, `useOthers`, `useSelf`.
-- `@liveblocks/yjs` provider bound to the room → the shared `Y.Doc` + awareness.
+- `@liveblocks/yjs`: get the room's Yjs provider via **`getYjsProviderForRoom(room)`** → `provider.getYDoc()` (the shared `Y.Doc`) + `provider.awareness`. (Use this, NOT the legacy `new LiveblocksYjsProvider(...)`, which Liveblocks discourages for room-switching/cleanup reasons; `getYjsProviderForRoom` auto-cleans on room destroy.)
 - **`RoomProvider` placement:** wrap the view-mode conditional in `AgendaDetail.jsx` (~line 1782) with `<RoomProvider id={`agenda:${agendaId}`} initialPresence={{}}>` so BOTH Overview and Working live in the room and presence persists across the view toggle. (The existing `EditorFocusProvider` at `:1786` stays Overview-only — unchanged.)
 
 ### 3.6 Collaborative editor component
 Add a dedicated **`CollabBodyEditor`** (sibling of `RichBodyEditor`; keeps `RichBodyEditor` for the soon-to-be-removed Pre-Brief and any non-collab use). It reuses the existing `proseBase` styles, `EditorToolbar`/shared-toolbar focus mechanism, placeholder CSS, and `linkHelper`. Differences from `RichBodyEditor`:
-- Extensions: `StarterKit.configure({ history: false, … })` (Yjs supplies undo) + `Collaboration.configure({ document: ydoc, field: fragmentKey })` + the v3 collaboration-cursor extension configured with the Liveblocks Yjs awareness + the current user's `{ name, color }`. **Verify the exact TipTap v3 package name** — in v3 the cursor extension is `@tiptap/extension-collaboration-caret` (renamed from `-collaboration-cursor`); confirm against installed `@tiptap/*@3.23.x` and use whichever resolves.
+- Extensions: `StarterKit.configure({ undoRedo: false, … })` — **`undoRedo: false`, NOT `history: false`.** StarterKit v3.23 bundles the `UndoRedo` extension (from `@tiptap/extensions`); the configure gate is `undoRedo` (verified in `@tiptap/starter-kit@3.23.6`). `history: false` is silently ignored → UndoRedo stays on → double-undo/cross-client undo desync. Collaboration brings its own history, so UndoRedo MUST be disabled here. (The single-user `RichBodyEditor` keeps UndoRedo on — correct, it has no Collaboration.)
+- `Collaboration.configure({ document: ydoc, field: fragmentKey })` (binds to `ydoc.getXmlFragment(fragmentKey)`).
+- `CollaborationCaret` from **`@tiptap/extension-collaboration-caret`** (v3 name, renamed from `-collaboration-cursor` — confirmed correct for v3), configured with `provider` (the `getYjsProviderForRoom` provider, whose `.awareness` it uses) and `user: { name: profile.displayName, color: profile.avatarColor }`.
 - No `content` prop / no `valueHtml`-once load (Yjs is the source); seeding per §3.3.
 - Keeps `mode` (`inline` for Working = own toolbar+border; `shared` for Overview = chromeless + `onFocus → setActiveEditor`).
-- Keeps the debounced `onChangeHtml(getHTML())` mirror, **gated to local-origin updates** (§3.2).
+- Keeps the debounced `onChangeHtml(getHTML())` mirror, **gated to local-origin updates** (§3.2), AND keeps `RichBodyEditor`'s **guarded unmount-flush** (flush a pending debounced save on unmount ONLY if one is pending — `RichBodyEditor.jsx:128-145` — so toggling views / unmounting a topic never writes spurious `<p></p>`). Per-editor debounce-timer cleanup remains; provider cleanup is automatic via `getYjsProviderForRoom`.
 - `Placeholder` extension retained.
 
 The three current collab consumers switch from `RichBodyEditor` to `CollabBodyEditor`, passing `fragmentKey` (topic.id or `"openFloor"`) instead of `valueHtml`:
@@ -70,9 +74,9 @@ The three current collab consumers switch from `RichBodyEditor` to `CollabBodyEd
 Each keeps its existing `onChangeHtml` Firestore-mirror handler.
 
 ### 3.7 Presence — avatars + cursors
-- **Avatars:** new `AgendaPresence` component using `useOthers()` + `useSelf()` → an avatar stack in the agenda header (near the Sync Meeting button, `AgendaDetail.jsx:~1745`). Each avatar uses `userInfo.name` + `avatarColor` (matching the app's existing `profile.avatarColor`).
+- **Avatars:** new `AgendaPresence` component using `useOthers()` + `useSelf()` → an avatar stack in the agenda header (near the Sync Meeting button, `AgendaDetail.jsx:~1745`). Each avatar uses `userInfo.name` + `userInfo.color`.
 - **Cursors:** the collaboration-caret extension renders remote carets/selections inside each editor, labeled with `userInfo.name` in `userInfo.color`.
-- User identity flows from the auth endpoint's `userInfo` (so others see correct names/colors) and from `useAuth().profile` locally.
+- **Identity field mapping:** `AuthContext` exposes `profile.{id, displayName, avatarColor}` — there is NO `profile.color`. Map `avatarColor → userInfo.color` (single source) and `displayName → userInfo.name` at the auth endpoint. Others see correct names/colors via `userInfo`; the local user's caret identity comes from `useAuth().profile` (also mapped `avatarColor → color`).
 
 ### 3.8 Sync Meeting integration
 Both pieces live in/around `SyncMeetingDialog` (rendered inside the RoomProvider at `AgendaDetail.jsx:1961`, so it can use Liveblocks hooks):
@@ -80,7 +84,7 @@ Both pieces live in/around `SyncMeetingDialog` (rendered inside the RoomProvider
 - **Presence-aware apply warning:** in `SyncMeetingDialog`, before `applyUnified`, read `useOthers()`. If others are present, show a confirm: *"N other people are editing this agenda right now. Applying replaces all topics. Continue?"* Admin-only (Sync Meeting is already admin-gated); no hard block. On apply, the destroy-recreate propagates via `onSnapshot`; new topic docs → new fragments → seed from the regenerated `bodyHtml`; all clients see the new agenda live.
 
 ## 4. Packages
-Add: `@liveblocks/client`, `@liveblocks/react`, `@liveblocks/yjs`, `@liveblocks/node` (server), `yjs`, `@tiptap/extension-collaboration`, and the v3 collaboration-caret extension (verify exact name §3.6). All client-side except `@liveblocks/node`.
+Add: `@liveblocks/client`, `@liveblocks/react`, `@liveblocks/yjs`, `@liveblocks/node` (server), `yjs`, `@tiptap/extension-collaboration`, `@tiptap/extension-collaboration-caret` (v3 — the caret/cursor extension; NOT the old `-collaboration-cursor`). All client-side except `@liveblocks/node`. (`y-prosemirror` is a transitive dep of `@tiptap/extension-collaboration`; `ySyncPluginKey` is imported from it for the local-origin mirror gate, §3.2.) Remember `undoRedo: false` in StarterKit for collab editors (§3.6).
 
 ## 5. Failure modes & mitigations
 - **Liveblocks unreachable / auth fails:** the editor should degrade to read-only-ish rather than crash the agenda page; surface a non-blocking "reconnecting" state. (Liveblocks reconnects automatically.) The Firestore mirror means no data is lost on the canonical side.
@@ -95,7 +99,8 @@ Add: `@liveblocks/client`, `@liveblocks/react`, `@liveblocks/yjs`, `@liveblocks/
   1. Open the same agenda in two contexts; type in topic A in context 1 → appears live in context 2 (both Overview and Working).
   2. Concurrent edit of the SAME topic body from both → character-level merge, no clobber.
   3. Presence: both contexts show each other's avatar; cursors/carets appear with correct names/colors.
-  4. Reload a context → content persists (from Liveblocks/Firestore); no duplication (seed guard).
+  4. Reload a context → content persists (from Liveblocks/Firestore); no duplication (seed guard). Open a brand-new Sync-Meeting-created topic from two contexts near-simultaneously → no double-seed.
+  4b. **Toggle-stress:** while context 2 is actively editing a topic, rapidly toggle Overview↔Working in context 1 → no cursor flicker / awareness storm / duplicate carets (validates the single-instance-per-fragment invariant, §3.1).
   5. Canonical mirror: after edits settle, Firestore `bodyHtml` matches; Overview `RichBodyView` (non-editor) renders it; AI Gen reads current content.
   6. Sync Meeting: with a second person present, Apply shows the presence warning; on apply, both clients see the regenerated agenda live; titles still sticky (prior slice) and board creates land.
 
