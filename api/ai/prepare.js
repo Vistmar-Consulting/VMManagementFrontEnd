@@ -194,7 +194,7 @@ HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>,
 
 PRESERVE HYPERLINKS: the current agenda and the inputs may contain <a href="…"> links (docs, sheets, dashboards, GBP listings, etc.). Carry every existing link forward into the new agenda VERBATIM — keep the exact href and link text on the topic it belongs to. Never strip a link or turn it into plain text. If a transcript or note surfaces a relevant URL, include it as a link too.
 
-TOPIC IDENTITY — DO NOT RENAME EXISTING TOPICS: the current agenda's topics are listed below, each tagged [ref:<id>]. For every topic you carry forward from the current agenda, set its "ref" to that exact id and keep its title unchanged — the title is fixed by the system and you may not reword it. Only a genuinely NEW topic may have a new title; set its "ref" to an empty string "". You may reorder topics and you may omit a topic whose work is fully complete.
+TOPIC IDENTITY — DO NOT RENAME EXISTING TOPICS: the current agenda's topics are listed below, each tagged [ref: <id>]. For every topic you carry forward from the current agenda, set its "ref" to that exact id and keep its title unchanged — the title is fixed by the system and you may not reword it. Only a genuinely NEW topic may have a new title; set its "ref" to an empty string "". You may reorder topics and you may omit a topic whose work is fully complete.
 
 ## Board changes output (boardChanges)
 Propose three kinds of Project Board updates a human will review, derived from the SAME record. You are given the existing board tasks each with an itemId.

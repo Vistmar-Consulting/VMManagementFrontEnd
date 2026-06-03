@@ -317,6 +317,9 @@ export async function setAgendaStyle(agendaId, meetingStyle, uid = null) {
 // Refine an already-proposed agenda from a user instruction (no data sources —
 // just edits the current proposal). Returns the refined proposal in the same
 // shape as prepareMeeting, with every topic guaranteed to carry a topicId.
+// Topic `ref`s pass through as-is; the CALLER is responsible for running
+// normalizeTopicRefs() against the live agenda topics (so a hallucinated ref
+// becomes "" = new) before applying — SyncMeetingDialog does this.
 export async function refineProposal({ proposal, instruction, categories, tagVocab, master, orgMeta }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
