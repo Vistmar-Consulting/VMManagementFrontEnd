@@ -96,3 +96,34 @@ Liveblocks + Yjs + TipTap, agenda-only (topic bodies + Open Floor; Pre-Brief ski
 
 - **✅ COLLAB RE-ENABLED + DATA-SAFE 2026-06-02 ~11:30pm.** Fix `7117270` (deploy `o8v2v9mu7`, prod alias set): (1) seeding is CONTENT-BASED/self-healing (reseed any empty Yjs fragment from Firestore bodyHtml; dropped the brittle collabSeeded flag that caused the blank-display incident); (2) all 3 editor write paths refuse to write a blank body (`isBlankHtml` guard) → an empty editor can NEVER overwrite real content. Verified on the real Biweekly agenda: topics reseed with content, reload persists, 0 blanks. **Warmed all 9 active agendas** (opened each once → Yjs docs populated + persisted to Liveblocks) so concurrent 8am opens won't hit the reseed duplication race. Team must hard-refresh to get the build.
 - **Remaining hardening (follow-up, not urgent):** replace content-based reseed's tiny duplicate-on-simultaneous-first-open window with a Yjs-doc-level single-writer marker (a Y.Map "seeded" set in the same transaction as setContent) — robust against concurrent first-seeds without the flag-blanking bug. Unused props seedDocPath/seedFlagField on CollabBodyEditor can be removed.
+
+---
+
+## ════ SESSION CLOSE — 2026-06-02 ════
+
+**Shipped this session (all on `origin/dev` → prod alias `vm-management-front-end.vercel.app`):**
+1. **Sync Meeting sticky topic titles** (deploy `7zz0mzxc9`) — AI can never rename existing topics; identity via `ref`; apply-side title-lock; Retained/New/Dropped review diff. Prod-verified incl. adversarial rename-via-refine.
+2. **Live collaborative agenda editing** (Liveblocks + Yjs + TipTap) — topic bodies + Open Floor; presence avatars + live cursors. **Current prod deploy = `o8v2v9mu7`.**
+
+**Incident + resolution (same session):** collab first shipped with a false-positive verification (same-browser tabs sync via y-indexeddb, masking server failure). Two real bugs found + fixed: (a) Vite bundled two `yjs` instances → `resolve.dedupe:['yjs']` (`000fefe`); (b) brittle `collabSeeded` flag could mark a topic "loaded" while empty → blank display (NO data lost — Firestore intact). Fix `7117270`: content-based self-healing reseed + `isBlankHtml` guard on all editor write paths (empty can never overwrite). Verified on the real Biweekly agenda; **all 9 active agendas warmed**. Team must hard-refresh to get the build.
+
+**CURRENT PROD STATE:** alias → `o8v2v9mu7` (collab ON, data-safe). Sticky titles + collab both live.
+
+**Memory written:** [[reference_yjs_vite_dedupe]], [[feedback_verify_collab_isolated_profiles]].
+
+### Remaining backlog (carry to next session)
+From Andy's brain-dump — **#1 done (agenda collab)**; everything else open:
+- Board / mini-board presence (the rest of #1) + **collab hardening**: Yjs-doc single-writer seed marker (replace content-based reseed's tiny duplicate-on-simultaneous-first-open window); remove unused `seedDocPath`/`seedFlagField` props on CollabBodyEditor.
+- **#2** New Item from any org pill / "All" → "which org?" modal.
+- **#3** Fix broken MS Teams "Join Meeting" buttons.
+- **#4** Deprecate Pre-Brief → clickable HTML Table of Contents (Overview first; defer/skip Working).
+- **#5 (P2)** Sync Meeting: remove the no-matching-category gate blocking new tasks (allow no-category, still statusId 8 AI-Gen).
+- **#6** Sync Meeting review modal → board section looks/works like the Mini Project Boards (keep Notes).
+- **#7** Hard gate: no client-invoicing in agendas → invoicing on private Vistamar boards.
+- **#8** Verify seo@ Fireflies auto-joins every meetings@-organized meeting.
+- **#9 (P3)** Client Settings deliverables + staple "Content" topic for Sync Meeting — NEEDS heavy brainstorm.
+- **#10** Add Andy's work email as a Sync Meeting data source (match per-client correspondence).
+- **#11** Distinct favicon (brainstorm in browser).
+- Plus carried-forward v0.2.4 deferred items (see "Carried-forward deferred" list above — Sync Meeting MASTER scope, Org Settings polish, Fireflies title cleanup, Postmark relay, V1 finish audit, Blaze-gated items, etc.).
+
+**Status:** closed.
