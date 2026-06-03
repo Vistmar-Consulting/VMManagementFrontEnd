@@ -6,11 +6,20 @@ import { Collaboration } from "@tiptap/extension-collaboration";
 import { CollaborationCaret } from "@tiptap/extension-collaboration-caret";
 import * as Y from "yjs";
 import { getYjsProviderForRoom } from "@liveblocks/yjs";
-import { doc, runTransaction } from "firebase/firestore";
 import Box from "@mui/material/Box";
 import { t } from "../../theme/tokens.js";
-import { db } from "../../firebase.js";
 import { sanitizeHtml } from "../../lib/agendaHtml.js";
+
+// True when HTML has no real text/content (empty editor: "", "<p></p>", <br>,
+// &nbsp;, whitespace-only). Used to NEVER mirror a blank body to Firestore —
+// the core data-loss guard: an empty editor (e.g. a not-yet-loaded fragment)
+// must never overwrite real content.
+const isBlankHtml = (html) =>
+  String(html || "")
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/&nbsp;/gi, "")
+    .replace(/<[^>]*>/g, "")
+    .trim().length === 0;
 import EditorToolbar from "./EditorToolbar.jsx";
 import { useEditorFocus } from "./editorFocus.jsx";
 import { promptLink } from "./linkHelper.js";
@@ -181,7 +190,11 @@ export default function CollabBodyEditor({
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
-        onChangeHtmlRef.current(ed.getHTML());
+        const html = ed.getHTML();
+        // SAFETY: never mirror a blank body — an empty editor (e.g. a fragment
+        // that hasn't loaded yet) must never wipe real Firestore content.
+        if (isBlankHtml(html)) return;
+        onChangeHtmlRef.current(html);
       }, debounceMs);
     },
   });
@@ -198,7 +211,8 @@ export default function CollabBodyEditor({
         debounceRef.current = null;
         // editor may already be destroyed by TipTap's own cleanup — guard it
         if (editor && !editor.isDestroyed) {
-          onChangeHtmlRef.current(editor.getHTML());
+          const html = editor.getHTML();
+          if (!isBlankHtml(html)) onChangeHtmlRef.current(html); // never flush blank
         }
       }
     };
@@ -214,7 +228,8 @@ export default function CollabBodyEditor({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
       if (editor && !editor.isDestroyed) {
-        onChangeHtmlRef.current(editor.getHTML());
+        const html = editor.getHTML();
+        if (!isBlankHtml(html)) onChangeHtmlRef.current(html); // never flush blank
       }
       return undefined;
     };
@@ -222,40 +237,35 @@ export default function CollabBodyEditor({
     return unregister;
   }, [editor, register]);
 
-  // Seeding effect — run once the provider has synced. Wins a Firestore
-  // transaction to ensure exactly one client seeds the Yjs fragment from the
-  // legacy bodyHtml value. Uses seededRef so it runs at most once per mount.
+  // Seeding effect — CONTENT-BASED, self-healing. Once the provider has synced
+  // with the server, if the Yjs fragment is EMPTY but Firestore has content,
+  // seed it from bodyHtml. This is the fix for the data-display incident: the
+  // old Firestore "collabSeeded" flag could be set true while the fragment was
+  // actually empty (a failed seed), then BLOCK reseeding forever → blank topic.
+  // Trusting fragment emptiness (not a flag) self-heals those topics. The real
+  // data was never lost (Firestore bodyHtml intact); this restores the display.
+  // Tradeoff: two clients opening the SAME never-seeded topic within ~1s could
+  // duplicate content — rare, and recoverable (vs. the old blanking). Seeding
+  // only happens into a genuinely EMPTY fragment.
   const seededRef = useRef(false);
   useEffect(() => {
     if (!editor) return undefined;
     let cancelled = false;
 
-    const attemptSeed = async () => {
-      if (seededRef.current || cancelled) return;
-      const frag = ydoc.get(fragmentKey, Y.XmlFragment);
-      if (frag.length > 0) { seededRef.current = true; return; }   // already has content
-      if (!valueHtml) { seededRef.current = true; return; }         // nothing to seed
-      try {
-        const seedRef = doc(db, ...seedDocPath.split("/"));          // build DocumentReference from path
-        const won = await runTransaction(db, async (tx) => {
-          const snap = await tx.get(seedRef);
-          if (snap.data()?.[seedFlagField]) return false;
-          tx.update(seedRef, { [seedFlagField]: true });
-          return true;
-        });
-        if (won && !cancelled && ydoc.get(fragmentKey, Y.XmlFragment).length === 0) {
-          // v3 options form; emitUpdate:false avoids a redundant same-content mirror write.
-          editor.commands.setContent(sanitizeHtml(valueHtml) || "", { emitUpdate: false });
-        }
-      } catch {
-        // best-effort; another client will have seeded
-      } finally {
+    const attemptSeed = () => {
+      if (cancelled || seededRef.current) return;
+      if (ydoc.get(fragmentKey, Y.XmlFragment).length > 0) { seededRef.current = true; return; } // already populated
+      const seed = sanitizeHtml(valueHtml) || "";
+      if (isBlankHtml(seed)) { seededRef.current = true; return; } // nothing to seed
+      // Re-check emptiness immediately before writing to minimise the duplicate window.
+      if (ydoc.get(fragmentKey, Y.XmlFragment).length === 0) {
+        editor.commands.setContent(seed, { emitUpdate: false }); // emitUpdate:false → no mirror write
         seededRef.current = true;
       }
     };
 
-    // The provider emits both "synced" and "sync" events (verified in source).
-    // It also exposes a .synced boolean getter on LiveblocksYjsProvider.
+    // The provider emits "synced" and exposes a .synced boolean getter. Only seed
+    // AFTER sync so we've received the server's doc state (avoids false-empty).
     if (yProvider.synced) attemptSeed();
     const onSynced = (isSynced) => { if (isSynced) attemptSeed(); };
     yProvider.on("synced", onSynced);
