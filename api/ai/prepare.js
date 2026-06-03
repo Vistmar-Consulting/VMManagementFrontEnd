@@ -37,12 +37,13 @@ export const config = { maxDuration: 300 };
 // and the new task INHERITS its topic's category + tags.
 function buildSchema(master) {
   const topicProps = {
+    ref: { type: "string" },
     name: { type: "string" },
     bodyHtml: { type: "string" },
     categories: { type: "array", items: { type: "string" } },
     tags: { type: "array", items: { type: "string" } },
   };
-  const topicRequired = ["name", "bodyHtml", "categories", "tags"];
+  const topicRequired = ["ref", "name", "bodyHtml", "categories", "tags"];
   if (master) {
     topicProps.organizationId = { type: "string" };
     topicRequired.push("organizationId");
@@ -186,12 +187,14 @@ You generate the next meeting agenda AND the Project Board updates that follow f
 
 ## Agenda output
 - preBriefHtml: a SHORT HTML pre-brief framing this meeting (a few tight bullets), or "" if not warranted.
-- topics: an array of ${master ? "{ name, bodyHtml, categories, tags, organizationId }" : "{ name, bodyHtml, categories, tags }"} — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.${master ? " Set organizationId on EVERY topic; group topics by org in the listed order." : ""}
+- topics: an array of ${master ? "{ ref, name, bodyHtml, categories, tags, organizationId }" : "{ ref, name, bodyHtml, categories, tags }"} — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.${master ? " Set organizationId on EVERY topic; group topics by org in the listed order." : ""}
 - openFloorHtml: HTML for any open-floor items, or "".
 
 HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise — never a long document.
 
 PRESERVE HYPERLINKS: the current agenda and the inputs may contain <a href="…"> links (docs, sheets, dashboards, GBP listings, etc.). Carry every existing link forward into the new agenda VERBATIM — keep the exact href and link text on the topic it belongs to. Never strip a link or turn it into plain text. If a transcript or note surfaces a relevant URL, include it as a link too.
+
+TOPIC IDENTITY — DO NOT RENAME EXISTING TOPICS: the current agenda's topics are listed below, each tagged [ref:<id>]. For every topic you carry forward from the current agenda, set its "ref" to that exact id and keep its title unchanged — the title is fixed by the system and you may not reword it. Only a genuinely NEW topic may have a new title; set its "ref" to an empty string "". You may reorder topics and you may omit a topic whose work is fully complete.
 
 ## Board changes output (boardChanges)
 Propose three kinds of Project Board updates a human will review, derived from the SAME record. You are given the existing board tasks each with an itemId.
@@ -230,7 +233,8 @@ function buildMasterUserMessage(agenda, transcripts, style, projectBoard, orgAge
   lines.push("");
   lines.push("## Current Touch Base agenda (move it forward from here)");
   (a.topics || []).forEach((t, i) => {
-    lines.push(`Topic ${i + 1}: ${t.name || ""}${t.organizationId ? ` [org: ${t.organizationId}]` : ""}`);
+    const refPart = t.id ? ` [ref: ${t.id}]` : "";
+    lines.push(`Topic ${i + 1}: ${t.name || ""}${refPart}${t.organizationId ? ` [org: ${t.organizationId}]` : ""}`);
     if (t.bodyHtml) lines.push(`  Body (HTML): ${t.bodyHtml}`);
   });
   if (a.openFloorHtml) lines.push(`Open Floor (HTML): ${a.openFloorHtml}`);
@@ -296,7 +300,8 @@ function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, 
   lines.push(`Title: ${a.title || ""}`);
   if (a.preBriefHtml) lines.push(`Pre-Brief (HTML): ${a.preBriefHtml}`);
   (a.topics || []).forEach((t, i) => {
-    lines.push(`Topic ${i + 1}: ${t.name || ""}`);
+    const refPart = t.id ? ` [ref: ${t.id}]` : "";
+    lines.push(`Topic ${i + 1}: ${t.name || ""}${refPart}`);
     if (t.bodyHtml) lines.push(`  Body (HTML): ${t.bodyHtml}`);
   });
   if (a.openFloorHtml) lines.push(`Open Floor (HTML): ${a.openFloorHtml}`);
@@ -408,6 +413,7 @@ export default async function handler(req, res) {
     const topics = Array.isArray(parsed.topics)
       ? parsed.topics.map((t, i) => ({
           topicId: `t${i}`,
+          ref: t?.ref ? String(t.ref) : "",
           name: String(t?.name || ""),
           bodyHtml: String(t?.bodyHtml || ""),
           categories: Array.isArray(t?.categories) ? t.categories.map((c) => String(c)) : [],
