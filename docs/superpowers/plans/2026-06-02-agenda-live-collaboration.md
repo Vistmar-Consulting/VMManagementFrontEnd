@@ -331,7 +331,7 @@ Key requirements (mirror RichBodyEditor where noted):
           return true;
         });
         if (won && !cancelled && ydoc.get(fragmentKey, Y.XmlFragment).length === 0) {
-          editor.commands.setContent(valueHtml, false);
+          editor.commands.setContent(sanitizeHtml(valueHtml) || "", false); // sanitize for parity with RichBodyEditor
         }
       } catch {
         // best-effort; another client will have seeded
@@ -346,7 +346,7 @@ Key requirements (mirror RichBodyEditor where noted):
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, yProvider, ydoc]);
   ```
-  Imports: `import * as Y from "yjs"; import { doc, runTransaction } from "firebase/firestore"; import { db } from "../../firebase.js"; import { getYjsProviderForRoom } from "@liveblocks/yjs";`
+  Imports: `import * as Y from "yjs"; import { doc, runTransaction } from "firebase/firestore"; import { db } from "../../firebase.js"; import { getYjsProviderForRoom } from "@liveblocks/yjs"; import { sanitizeHtml } from "../../lib/agendaHtml.js"; import { useRoom } from "../../lib/liveblocks.js"; import { isLocalEditTransaction } from "./collabSync.js"; import { useCollabFlushRegistry } from "./CollabFlushRegistry.jsx";` (plus the TipTap/MUI imports mirrored from RichBodyEditor, `Collaboration`, `CollaborationCaret`, and `useAuth` from the auth context).
   **Verify** the provider sync API against the installed `@liveblocks/yjs` (event name `"sync"` vs `"synced"`, and whether a `.synced`/`.isSynced` boolean exists). Use whichever the installed version exposes.
 - **Guarded unmount-flush** (replicate `RichBodyEditor.jsx:128-145`): on unmount, if a debounced mirror is pending (`debounceRef.current` set), flush it (write current HTML) — ONLY if pending, so unmount/view-toggle never writes spurious `<p></p>`.
 - **Flush registry:** `const { register } = useCollabFlushRegistry();` — register a `flush()` that, if a debounce is pending, clears the timer and writes immediately (returns the write promise). Unregister on unmount.
@@ -428,17 +428,21 @@ import CollabBodyEditor from "../components/editor/CollabBodyEditor.jsx";
 import AgendaPresence from "../components/AgendaPresence.jsx";
 ```
 
-- [ ] **Step 2: Wrap the view conditional in RoomProvider + FlushRegistry**
+- [ ] **Step 2: Wrap header + both views + dialogs in RoomProvider + FlushRegistry (authoritative)**
 
-At the `viewMode === "overview" ? (…) : (…)` conditional (~line 1782), wrap the WHOLE conditional:
+The providers must wrap **everything that uses Liveblocks**: the header (presence avatars + Sync Meeting button), BOTH view branches, AND the `SyncMeetingDialog` (it calls `useOthers()` in Task 9). Verified structure: the single top-level `return (` is at ~line 1729 (after the `agendaLoading`/`agendaError` early-returns, so `agenda`/`agendaId` are defined); the outer `<Box sx={{ maxWidth: 1280 … }}>` opens there; the header is ~1730-1771; the view ternary is ~1782-1946; `SyncMeetingDialog` is ~1961-1974; the Box closes ~1975.
+
+Open the providers **immediately inside that outer Box** (just after it opens, ~line 1729) and close them **just before that Box closes** (~line 1975), so they wrap header + hero + both views + ManageGuests/History/SyncMeeting dialogs:
 ```jsx
-<RoomProvider id={`agenda:${agendaId}`} initialPresence={{}}>
-  <CollabFlushRegistryProvider>
-    {viewMode === "overview" ? ( … ) : ( … )}
-  </CollabFlushRegistryProvider>
-</RoomProvider>
+<Box sx={{ maxWidth: 1280, … }}>
+  <RoomProvider id={`agenda:${agendaId}`} initialPresence={{}}>
+    <CollabFlushRegistryProvider>
+      {/* …existing header, hero, the viewMode ternary, and all dialogs… */}
+    </CollabFlushRegistryProvider>
+  </RoomProvider>
+</Box>
 ```
-This spans BOTH views so presence + the room persist across the toggle. (The existing `EditorFocusProvider` inside the Overview branch stays as-is.)
+The view ternary stays a true ternary (only one branch renders) — widening the provider does NOT mount both views, so the single-instance-per-fragment invariant (§3.1) holds. The existing `EditorFocusProvider` inside the Overview branch stays as-is. **Do NOT** wrap only the ternary — presence + the dialog would fall outside the room.
 
 - [ ] **Step 3: Swap the three editors to `CollabBodyEditor`**
 
@@ -448,19 +452,27 @@ For each, replace `<RichBodyEditor … />` with `<CollabBodyEditor … />`, keep
 - Working topic body (~line 1423): same props but `mode` default ("inline").
 - Open Floor (~line 504): `mode="shared"`, `fragmentKey="openFloor"`, `valueHtml={agenda?.openFloorHtml || ""}`, `seedDocPath={`agendas/${agendaId}`}`, `seedFlagField="openFloorCollabSeeded"`.
 
-**Pre-Brief stays on `RichBodyEditor`** (do NOT swap it).
+**Pre-Brief stays on `RichBodyEditor`** (do NOT swap it). The three sites live inside child components (`OverviewTopic`, `AgendaTopicCard`, `OpenFloorSection`) — add the `CollabBodyEditor` import to `AgendaDetail.jsx` (Step 1 already does). `CollabBodyEditor` calls `useRoom()`, so it only works mounted under the `RoomProvider` from Step 2 — all three sites are inside it. Keep each editor's existing `onChangeHtml` mirror handler verbatim.
 
 - [ ] **Step 4: Add the presence avatars to the header**
 
-Near the Sync Meeting button (~line 1750, inside the header row), render `<AgendaPresence />`. Note: `AgendaPresence` uses `useOthers()`, so it must be INSIDE the `RoomProvider`. If the header row is OUTSIDE the room wrapper (it is — the room wraps only the view conditional at 1782), either (a) move the `RoomProvider` up to wrap the header too, or (b) render a second small `RoomProvider`-scoped presence. **Preferred:** move the `RoomProvider` open tag up so it also wraps the header that shows presence (keep it within the agenda-loaded branch where `agendaId` is defined). Ensure `AgendaPresence` and all collab editors share the ONE `RoomProvider` for `agenda:{agendaId}`.
+Near the Sync Meeting button (~line 1750, inside the header row — already inside the providers per Step 2), render `<AgendaPresence />`. It uses `useOthers()`/`useSelf()`, which resolve because Step 2 wraps the header.
 
-- [ ] **Step 5: Flush pending edits when opening Sync Meeting**
+- [ ] **Step 5: Flush pending edits when opening Sync Meeting (MANDATORY child extraction)**
 
-The Sync Meeting button (~line 1750) currently does `onClick={() => setSyncMeetingOpen(true)}`. The flush must run inside the FlushRegistry provider scope. Since the button is in the header, expose flush via a small inner component OR lift `flushAll` through context. Implementation: render the header's Sync Meeting button inside `CollabFlushRegistryProvider` (move the provider up to wrap header + views), and change the handler to:
+`AgendaDetail` itself renders the providers (Step 2), so it CANNOT call `useCollabFlushRegistry()` and get the real registry — it would get the no-op fallback (context value is only visible to children). Therefore you MUST extract a small child component rendered inside the providers:
 ```jsx
-onClick={async () => { try { await flushAll(); } catch {} setSyncMeetingOpen(true); }}
+function SyncMeetingHeaderButton({ onOpen }) {
+  const { flushAll } = useCollabFlushRegistry();
+  return (
+    <Button size="small" startIcon={<AutoAwesomeIcon fontSize="small" />} sx={{ /* keep existing styles */ }}
+      onClick={async () => { try { await flushAll(); } catch {} onOpen(); }}>
+      Sync Meeting
+    </Button>
+  );
+}
 ```
-where `const { flushAll } = useCollabFlushRegistry();` is read by the component that renders the button (must be a child of the provider — extract a small `<SyncMeetingButton onOpen={…}/>` child if the main component sits above the provider). Keep it simple: place both `RoomProvider` + `CollabFlushRegistryProvider` high enough (just inside the agenda-loaded render) to wrap header + both views, then read `flushAll` via the hook in the same render scope.
+Replace the inline admin-gated Sync Meeting button (~line 1750) with `{isAdmin && <SyncMeetingHeaderButton onOpen={() => setSyncMeetingOpen(true)} />}`. (`AgendaPresence` is likewise a child, so it works without extraction.)
 
 - [ ] **Step 6: Check Firestore rules for the new fields**
 
