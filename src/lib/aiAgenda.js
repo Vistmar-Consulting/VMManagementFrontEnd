@@ -456,6 +456,12 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
   ]);
   const catBySlug = new Set(catSnap.docs.map((d) => d.id));
   const catByName = new Map(catSnap.docs.map((d) => [(d.data().name || "").toLowerCase(), d.id]));
+
+  // Canonical topic identity: a continued topic (carrying a ref to an existing
+  // topic doc id) keeps its Firestore name (and, for master, org) — the model's
+  // name is discarded. This is the structural title-lock.
+  const curNameById = new Map(curTopics.docs.map((d) => [d.id, d.data().name || ""]));
+  const curOrgById = new Map(curTopics.docs.map((d) => [d.id, d.data().organizationId ?? null]));
   const resolveCat = (c) => {
     const val = String(c || "").trim();
     if (catBySlug.has(val)) return val;
@@ -527,13 +533,14 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       const categoryIds = [...new Set((t.categories || []).map(resolveCat).filter(Boolean))];
       const tagIds = [...new Set((t.tags || []).map(resolveTag).filter(Boolean))];
       const ref = doc(collection(db, "agendas", agendaId, "topics"));
+      const retained = t.ref && curNameById.has(t.ref);
       tx.set(ref, {
-        name: String(t.name || ""),
+        name: retained ? curNameById.get(t.ref) : String(t.name || ""),
         bodyHtml: sanitizeHtml(t.bodyHtml || ""),
         sortOrder: i + 1,
         categoryIds,
         tagIds,
-        organizationId: t.organizationId || null,
+        organizationId: retained && curOrgById.has(t.ref) ? curOrgById.get(t.ref) : (t.organizationId || null),
         createdAt: serverTimestamp(),
         createdByUid: uid,
         updatedAt: serverTimestamp(),
