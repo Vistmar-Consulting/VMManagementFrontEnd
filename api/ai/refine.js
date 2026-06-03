@@ -15,13 +15,14 @@ export const config = { maxDuration: 300 };
 // Same proposal schema as generate.js (master adds per-topic organizationId).
 function buildSchema(master) {
   const topicProps = {
+    ref: { type: "string" },
     topicId: { type: "string" },
     name: { type: "string" },
     bodyHtml: { type: "string" },
     categories: { type: "array", items: { type: "string" } },
     tags: { type: "array", items: { type: "string" } },
   };
-  const topicRequired = ["name", "bodyHtml", "categories", "tags"];
+  const topicRequired = ["ref", "name", "bodyHtml", "categories", "tags"];
   if (master) {
     topicProps.organizationId = { type: "string" };
     topicRequired.push("organizationId");
@@ -68,10 +69,12 @@ PRESERVE HYPERLINKS: keep every existing <a href="…"> verbatim (exact href + t
 
 PRESERVE TOPIC IDS: each input topic carries a topicId (e.g. "t0", "t2"). For every topic you keep or edit, copy its topicId exactly into the output. Do NOT invent or change topicIds. Omit topicId only for a brand-new topic you add — the caller will assign a fresh id.
 
+PRESERVE TOPIC REFS: each input topic may carry a ref (e.g. "docABC123"). Copy each topic's ref into the output EXACTLY. Never invent or change a ref. A brand-new topic you add has ref "".
+
 HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise.
 ${master ? `\nThis is the MASTER Touch Base agenda — organized org by org. EVERY topic must keep/set its organizationId (slug from the list). Place any new topic under the right org and keep org grouping intact.\n\n## Organizations (use these slugs for organizationId)\n${orgListBlock(orgMeta)}\n` : ""}
 ## Output
-Return the FULL refined agenda (not a diff) as JSON matching the schema: preBriefHtml, topics[{ name, bodyHtml, categories, tags${master ? ", organizationId" : ""} }], openFloorHtml.${categorizationBlock(categories, tagVocab)}`;
+Return the FULL refined agenda (not a diff) as JSON matching the schema: preBriefHtml, topics[{ ref, name, bodyHtml, categories, tags${master ? ", organizationId" : ""} }], openFloorHtml.${categorizationBlock(categories, tagVocab)}`;
 }
 
 function buildUserMessage(proposal, instruction, master) {
@@ -80,9 +83,10 @@ function buildUserMessage(proposal, instruction, master) {
   lines.push("## Current draft agenda");
   if (p.preBriefHtml) lines.push(`Pre-Brief (HTML): ${p.preBriefHtml}`);
   (p.topics || []).forEach((t, i) => {
+    const refP = t.ref ? ` [ref: ${t.ref}]` : "";
     const idPart = t.topicId ? ` [topicId: ${t.topicId}]` : "";
     const orgPart = master && t.organizationId ? ` [organizationId: ${t.organizationId}]` : "";
-    lines.push(`Topic ${i + 1}: ${t.name || ""}${idPart}${orgPart}`);
+    lines.push(`Topic ${i + 1}: ${t.name || ""}${refP}${idPart}${orgPart}`);
     if (t.bodyHtml) lines.push(`  Body (HTML): ${t.bodyHtml}`);
     if (t.categories?.length) lines.push(`  categories: ${t.categories.join(", ")}`);
     if (t.tags?.length) lines.push(`  tags: ${t.tags.join(", ")}`);
@@ -136,6 +140,7 @@ export default async function handler(req, res) {
       topics: Array.isArray(parsed.topics)
         ? parsed.topics.map((t) => ({
             topicId: t?.topicId ? String(t.topicId) : null,
+            ref: t?.ref ? String(t.ref) : "",
             name: String(t?.name || ""),
             bodyHtml: String(t?.bodyHtml || ""),
             categories: Array.isArray(t?.categories) ? t.categories.map((c) => String(c)) : [],
