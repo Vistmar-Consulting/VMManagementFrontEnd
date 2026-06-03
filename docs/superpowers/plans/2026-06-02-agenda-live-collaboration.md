@@ -184,10 +184,13 @@ git commit -m "feat(collab): /api/liveblocks-auth — @vistamar-gated Liveblocks
 
 - [ ] **Step 1: Write it**
 
-`src/lib/liveblocks.js`:
+**Installed `@liveblocks/react` is v3.19.4 → use the modern `LiveblocksProvider` + `RoomProvider` + global-hooks API (NOT `createRoomContext`).** A `RoomProvider` must be nested inside a `LiveblocksProvider`. This lib creates the client (so the Firebase-token authEndpoint lives here), exports a `LiveblocksRoot` wrapper component, and re-exports `RoomProvider` + the hooks from `@liveblocks/react`.
+
+`src/lib/liveblocks.js` (no JSX — uses `createElement` so the file stays `.js`):
 ```js
+import { createElement } from "react";
 import { createClient } from "@liveblocks/client";
-import { createRoomContext } from "@liveblocks/react";
+import { LiveblocksProvider, RoomProvider, useRoom, useOthers, useSelf } from "@liveblocks/react";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebase.js";
 
@@ -223,9 +226,13 @@ const client = createClient({
   },
 });
 
-export const { RoomProvider, useRoom, useOthers, useSelf } = createRoomContext(client);
+// Wrap any subtree that uses Liveblocks (RoomProvider must be inside this).
+export function LiveblocksRoot({ children }) {
+  return createElement(LiveblocksProvider, { client }, children);
+}
+
+export { RoomProvider, useRoom, useOthers, useSelf };
 ```
-**Version note:** if the installed `@liveblocks/react` has removed `createRoomContext` in favor of the global API, instead do: `export { useRoom, useOthers, useSelf } from "@liveblocks/react";` and export a `LiveblocksRoot` that renders `<LiveblocksProvider authEndpoint={...}>`, then wrap `RoomProvider` (from `@liveblocks/react`) under it in AgendaDetail. Check `npm ls @liveblocks/react` + the package's exports before choosing. Prefer `createRoomContext` if present (simplest).
 
 - [ ] **Step 2: Build sanity**
 
@@ -422,7 +429,7 @@ git commit -m "feat(collab): AgendaPresence avatar stack"
 
 Add near the existing editor imports:
 ```js
-import { RoomProvider } from "../lib/liveblocks.js";
+import { LiveblocksRoot, RoomProvider } from "../lib/liveblocks.js";
 import { CollabFlushRegistryProvider, useCollabFlushRegistry } from "../components/editor/CollabFlushRegistry.jsx";
 import CollabBodyEditor from "../components/editor/CollabBodyEditor.jsx";
 import AgendaPresence from "../components/AgendaPresence.jsx";
@@ -435,13 +442,16 @@ The providers must wrap **everything that uses Liveblocks**: the header (presenc
 Open the providers **immediately inside that outer Box** (just after it opens, ~line 1729) and close them **just before that Box closes** (~line 1975), so they wrap header + hero + both views + ManageGuests/History/SyncMeeting dialogs:
 ```jsx
 <Box sx={{ maxWidth: 1280, … }}>
-  <RoomProvider id={`agenda:${agendaId}`} initialPresence={{}}>
-    <CollabFlushRegistryProvider>
-      {/* …existing header, hero, the viewMode ternary, and all dialogs… */}
-    </CollabFlushRegistryProvider>
-  </RoomProvider>
+  <LiveblocksRoot>
+    <RoomProvider id={`agenda:${agendaId}`} initialPresence={{}}>
+      <CollabFlushRegistryProvider>
+        {/* …existing header, hero, the viewMode ternary, and all dialogs… */}
+      </CollabFlushRegistryProvider>
+    </RoomProvider>
+  </LiveblocksRoot>
 </Box>
 ```
+(`RoomProvider` MUST be nested inside `LiveblocksRoot` — that's the v3 requirement.)
 The view ternary stays a true ternary (only one branch renders) — widening the provider does NOT mount both views, so the single-instance-per-fragment invariant (§3.1) holds. The existing `EditorFocusProvider` inside the Overview branch stays as-is. **Do NOT** wrap only the ternary — presence + the dialog would fall outside the room.
 
 - [ ] **Step 3: Swap the three editors to `CollabBodyEditor`**
