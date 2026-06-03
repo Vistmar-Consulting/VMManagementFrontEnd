@@ -4,7 +4,6 @@ import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
 import { Collaboration } from "@tiptap/extension-collaboration";
 import { CollaborationCaret } from "@tiptap/extension-collaboration-caret";
-import * as Y from "yjs";
 import { getYjsProviderForRoom } from "@liveblocks/yjs";
 import Box from "@mui/material/Box";
 import { t } from "../../theme/tokens.js";
@@ -24,7 +23,7 @@ import EditorToolbar from "./EditorToolbar.jsx";
 import { useEditorFocus } from "./editorFocus.jsx";
 import { promptLink } from "./linkHelper.js";
 import { useRoom } from "../../lib/liveblocks.js";
-import { isLocalEditTransaction } from "./collabSync.js";
+import { isLocalEditTransaction, fragmentHasRealContent, decideSeedAction } from "./collabSync.js";
 import { useCollabFlushRegistry } from "./CollabFlushRegistry.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 
@@ -237,44 +236,49 @@ export default function CollabBodyEditor({
     return unregister;
   }, [editor, register]);
 
-  // Seeding effect — CONTENT-BASED, self-healing. Once the provider has synced
-  // with the server, if the Yjs fragment is EMPTY but Firestore has content,
-  // seed it from bodyHtml. This is the fix for the data-display incident: the
-  // old Firestore "collabSeeded" flag could be set true while the fragment was
-  // actually empty (a failed seed), then BLOCK reseeding forever → blank topic.
-  // Trusting fragment emptiness (not a flag) self-heals those topics. The real
-  // data was never lost (Firestore bodyHtml intact); this restores the display.
-  // Tradeoff: two clients opening the SAME never-seeded topic within ~1s could
-  // duplicate content — rare, and recoverable (vs. the old blanking). Seeding
-  // only happens into a genuinely EMPTY fragment.
-  const seededRef = useRef(false);
+  // Seeding effect — CONTENT-BASED, self-healing, with NO durable "seeded" flag.
+  // Firestore bodyHtml (valueHtml) is canonical; the Yjs fragment is transport.
+  // After the provider syncs (and whenever Firestore content arrives), if the
+  // fragment has NO real content but Firestore does, (re)seed it from bodyHtml.
+  //
+  // This heals a fragment that lost its content — e.g. a Liveblocks room whose
+  // Yjs state was reset, or y-prosemirror's auto-inserted empty <paragraph/>.
+  // The bug behind the blank-topic incident was detecting "already seeded" via
+  // `fragment.length > 0`: an empty <paragraph/> has length 1, so the heal was
+  // blocked and the topic stayed blank forever. We now test for REAL content
+  // (fragmentHasRealContent) and NEVER trust a flag — a flag that says "seeded"
+  // while the body is blank is precisely what blanked topics before.
+  //
+  // valueHtml IS a dependency: if Firestore content arrives AFTER the first
+  // sync, we must re-attempt (the old code locked on the first empty read).
+  // Tradeoff: two clients seeding the SAME empty fragment within ~1s can
+  // duplicate content — rare, visible, and recoverable (vs. silent blanking).
   useEffect(() => {
     if (!editor) return undefined;
     let cancelled = false;
 
-    const attemptSeed = () => {
-      if (cancelled || seededRef.current) return;
-      if (ydoc.get(fragmentKey, Y.XmlFragment).length > 0) { seededRef.current = true; return; } // already populated
+    const reconcile = () => {
+      if (cancelled || !yProvider.synced) return;
+      const hasContent = fragmentHasRealContent(ydoc, fragmentKey);
       const seed = sanitizeHtml(valueHtml) || "";
-      if (isBlankHtml(seed)) { seededRef.current = true; return; } // nothing to seed
+      if (decideSeedAction({ fragmentHasContent: hasContent, seedHtml: seed }) !== "seed") return;
       // Re-check emptiness immediately before writing to minimise the duplicate window.
-      if (ydoc.get(fragmentKey, Y.XmlFragment).length === 0) {
+      if (!fragmentHasRealContent(ydoc, fragmentKey)) {
         editor.commands.setContent(seed, { emitUpdate: false }); // emitUpdate:false → no mirror write
-        seededRef.current = true;
       }
     };
 
-    // The provider emits "synced" and exposes a .synced boolean getter. Only seed
-    // AFTER sync so we've received the server's doc state (avoids false-empty).
-    if (yProvider.synced) attemptSeed();
-    const onSynced = (isSynced) => { if (isSynced) attemptSeed(); };
+    // The provider emits "synced" and exposes a .synced boolean getter. Only
+    // reconcile AFTER sync so we've received the server's doc state.
+    if (yProvider.synced) reconcile();
+    const onSynced = (isSynced) => { if (isSynced) reconcile(); };
     yProvider.on("synced", onSynced);
     return () => {
       cancelled = true;
       yProvider.off("synced", onSynced);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, yProvider, ydoc]);
+  }, [editor, yProvider, ydoc, valueHtml]);
 
   // cmd/ctrl+K link handler — shared by the toolbar button and keydown listener
   const handleLink = useCallback(() => promptLink(editor), [editor]);
