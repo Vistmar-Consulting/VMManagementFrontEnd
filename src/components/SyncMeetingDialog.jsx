@@ -42,6 +42,7 @@ import {
   setAgendaStyle,
 } from "../lib/aiAgenda.js";
 import { validateProposal, normalizeTopicRefs, classifyTopicChanges } from "../lib/syncMeeting.js";
+import { useOthers } from "../lib/liveblocks.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP } from "../lib/itemStatusMap.js";
 
@@ -86,6 +87,7 @@ export default function SyncMeetingDialog({
 }) {
   const { user } = useAuth();
   const [step, setStep] = useState("choose"); // choose | working | review
+  const others = useOthers(); // live collaborators in this agenda's room (presence-aware apply warning)
   const [meetingStyle, setMeetingStyle] = useState(agenda?.meetingStyle === "executive" ? "executive" : "working");
   const [extraContext, setExtraContext] = useState("");
   const [includeSops, setIncludeSops] = useState(false);
@@ -294,6 +296,14 @@ export default function SyncMeetingDialog({
   });
 
   const apply = async () => {
+    // Presence-aware guard: applyUnified replaces ALL topics. If others are live
+    // in this agenda right now, confirm before blowing away what they're editing.
+    if (others.length > 0) {
+      const ok = window.confirm(
+        `${others.length} other ${others.length === 1 ? "person is" : "people are"} editing this agenda right now. Applying Sync Meeting replaces all topics. Continue?`,
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     setError(null);
     try {
