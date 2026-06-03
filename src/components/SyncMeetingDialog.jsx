@@ -41,7 +41,7 @@ import {
   applyUnified,
   setAgendaStyle,
 } from "../lib/aiAgenda.js";
-import { validateProposal } from "../lib/syncMeeting.js";
+import { validateProposal, normalizeTopicRefs, classifyTopicChanges } from "../lib/syncMeeting.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP } from "../lib/itemStatusMap.js";
 
@@ -198,7 +198,7 @@ export default function SyncMeetingDialog({
           title: agenda?.title || "",
           preBriefHtml: agenda?.preBriefHtml || "",
           openFloorHtml: agenda?.openFloorHtml || "",
-          topics: (topics || []).map((t) => ({ name: t.name || "", bodyHtml: t.bodyHtml || "" })),
+          topics: (topics || []).map((t) => ({ id: t.id, name: t.name || "", bodyHtml: t.bodyHtml || "" })),
         },
         transcripts,
         projectBoard,
@@ -213,8 +213,10 @@ export default function SyncMeetingDialog({
         orgMeta,
         extraContext: extraContext.trim() || undefined,
       });
-      setProposal(result);
-      applyValidation(result, tasks || []);
+      const currentTopicIds = (topics || []).map((t) => t.id);
+      const normalized = { ...result, topics: normalizeTopicRefs(result.topics, currentTopicIds) };
+      setProposal(normalized);
+      applyValidation(normalized, tasks || []);
       setStep("review");
     } catch (err) {
       setError(err.message || "Generation failed");
@@ -240,7 +242,12 @@ export default function SyncMeetingDialog({
       });
       // Refine returns refreshed agenda content (topics/preBrief/openFloor). It
       // does NOT touch the board changes, so carry those forward unchanged.
-      const merged = { ...result, boardChanges: proposal.boardChanges };
+      const currentTopicIds = (topics || []).map((t) => t.id);
+      const merged = {
+        ...result,
+        topics: normalizeTopicRefs(result.topics, currentTopicIds),
+        boardChanges: proposal.boardChanges,
+      };
       setProposal(merged);
       setExistingTags(new Set((catCtx.tagVocab || []).map((t) => (t.name || "").toLowerCase())));
       // A refine can orphan a create whose owning topic was deleted → re-run
@@ -417,6 +424,29 @@ export default function SyncMeetingDialog({
                 {summaryText(summary)}
               </Typography>
             )}
+            {(() => {
+              const { statuses, dropped } = classifyTopicChanges(topics, proposal.topics || []);
+              return (
+                <Box sx={{ mb: 1.5 }}>
+                  <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mb: dropped.length ? 0.75 : 0 }}>
+                    {(proposal.topics || []).map((tp, i) => (
+                      <Chip
+                        key={i}
+                        size="small"
+                        label={`${tp.name || "(untitled)"} · ${statuses[i] === "retained" ? "Retained" : "New"}`}
+                        color={statuses[i] === "retained" ? "default" : "primary"}
+                        variant={statuses[i] === "retained" ? "outlined" : "filled"}
+                      />
+                    ))}
+                  </Stack>
+                  {dropped.length > 0 && (
+                    <Typography variant="caption" color="text.secondary">
+                      Dropped: {dropped.map((d) => d.name).join(", ")}
+                    </Typography>
+                  )}
+                </Box>
+              );
+            })()}
             <Box
               sx={{
                 border: "1px solid", borderColor: "divider", borderRadius: 1, p: 2,
