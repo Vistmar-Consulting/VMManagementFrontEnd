@@ -93,3 +93,6 @@ Liveblocks + Yjs + TipTap, agenda-only (topic bodies + Open Floor; Pre-Brief ski
 
 - `dev/sessions/v0_3_0_Andrew_BACKLOG_TRIAGE/context.md` — created (this file)
 - `dev/SESSION_INDEX.json` — new active entry added
+
+- **✅ COLLAB RE-ENABLED + DATA-SAFE 2026-06-02 ~11:30pm.** Fix `7117270` (deploy `o8v2v9mu7`, prod alias set): (1) seeding is CONTENT-BASED/self-healing (reseed any empty Yjs fragment from Firestore bodyHtml; dropped the brittle collabSeeded flag that caused the blank-display incident); (2) all 3 editor write paths refuse to write a blank body (`isBlankHtml` guard) → an empty editor can NEVER overwrite real content. Verified on the real Biweekly agenda: topics reseed with content, reload persists, 0 blanks. **Warmed all 9 active agendas** (opened each once → Yjs docs populated + persisted to Liveblocks) so concurrent 8am opens won't hit the reseed duplication race. Team must hard-refresh to get the build.
+- **Remaining hardening (follow-up, not urgent):** replace content-based reseed's tiny duplicate-on-simultaneous-first-open window with a Yjs-doc-level single-writer marker (a Y.Map "seeded" set in the same transaction as setContent) — robust against concurrent first-seeds without the flag-blanking bug. Unused props seedDocPath/seedFlagField on CollabBodyEditor can be removed.
