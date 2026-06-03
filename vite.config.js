@@ -29,6 +29,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    // Yjs MUST be a single runtime instance. With multiple packages importing it
+    // (@liveblocks/yjs, @tiptap/extension-collaboration, y-prosemirror, our own
+    // import), Vite can otherwise bundle two copies — y-prosemirror's ops then run
+    // against a Y.Doc from a different instance, instanceof checks fail silently,
+    // and document edits never sync (presence still works — it rides Liveblocks
+    // awareness, not Yjs internals). Deduping yjs fixes collaborative doc sync.
+    resolve: {
+      dedupe: ["yjs"],
+    },
     server: {
       port: 5173,
       host: true,
