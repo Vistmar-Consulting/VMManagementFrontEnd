@@ -45,13 +45,14 @@ function buildSchema(master) {
     type: "object",
     additionalProperties: false,
     properties: {
+      preBriefHtml: { type: "string" },
       topics: {
         type: "array",
         items: { type: "object", additionalProperties: false, properties: topicProps, required: topicRequired },
       },
       openFloorHtml: { type: "string" },
     },
-    required: ["topics", "openFloorHtml"],
+    required: ["preBriefHtml", "topics", "openFloorHtml"],
   };
 }
 
@@ -121,6 +122,7 @@ ${howToUse}
 
 ## Output format
 Return the proposed next agenda as JSON matching the provided schema:
+- preBriefHtml: a SHORT HTML pre-brief framing this meeting (a few tight bullets), or "" if not warranted.
 - topics: an array of ${master ? "{ name, bodyHtml, organizationId }" : "{ name, bodyHtml }"} — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.${master ? " Set organizationId on EVERY topic; group topics by org in the listed order." : ""}
 - openFloorHtml: HTML for any open-floor items, or "".
 
@@ -203,6 +205,7 @@ function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, 
   lines.push("");
   lines.push("## Current agenda (move it forward from here)");
   lines.push(`Title: ${a.title || ""}`);
+  if (a.preBriefHtml) lines.push(`Pre-Brief (HTML): ${a.preBriefHtml}`);
   (a.topics || []).forEach((t, i) => {
     lines.push(`Topic ${i + 1}: ${t.name || ""}`);
     if (t.bodyHtml) lines.push(`  Body (HTML): ${t.bodyHtml}`);
@@ -236,6 +239,7 @@ function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, 
     lines.push("## This client's other meeting agendas (current planning across the org — for coherence, not to copy)");
     orgAgendas.forEach((oa) => {
       lines.push(`### ${oa.title || "Meeting"}`);
+      if (oa.preBriefHtml) lines.push(`Pre-Brief: ${oa.preBriefHtml}`);
       (oa.topics || []).forEach((t) => {
         lines.push(`- ${t.name || ""}${t.bodyHtml ? `: ${t.bodyHtml}` : ""}`);
       });
@@ -306,6 +310,7 @@ export default async function handler(req, res) {
     }
 
     const proposal = {
+      preBriefHtml: String(parsed.preBriefHtml || ""),
       topics: Array.isArray(parsed.topics)
         ? parsed.topics.map((t) => ({
             name: String(t?.name || ""),
