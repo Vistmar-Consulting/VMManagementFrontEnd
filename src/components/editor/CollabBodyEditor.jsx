@@ -244,7 +244,8 @@ export default function CollabBodyEditor({
           return true;
         });
         if (won && !cancelled && ydoc.get(fragmentKey, Y.XmlFragment).length === 0) {
-          editor.commands.setContent(sanitizeHtml(valueHtml) || "", false);
+          // v3 options form; emitUpdate:false avoids a redundant same-content mirror write.
+          editor.commands.setContent(sanitizeHtml(valueHtml) || "", { emitUpdate: false });
         }
       } catch {
         // best-effort; another client will have seeded
