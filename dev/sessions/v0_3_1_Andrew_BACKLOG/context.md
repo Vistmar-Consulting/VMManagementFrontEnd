@@ -51,8 +51,9 @@ data-safe). Team must **hard-refresh** to pick up a new build.
 - **#2** New Item from any org pill / "All" → small "Create a new Item for which Organization?" modal
   (dropdown) so you can create cross-org items from any view.
 - **#3** Fix broken MS Teams "Join Meeting" buttons (all broken).
-- **#4** Deprecate Pre-Brief entirely (delete all vestiges) → clickable HTML Table of Contents of the
-  Topic Cards; build in Overview view first (most important), defer/maybe-skip Working view.
+- **#4 [🔨 IN PROGRESS — spec + plan reviewer-APPROVED, building]** Deprecate Pre-Brief entirely
+  (delete all vestiges) → clickable HTML Table of Contents of the Topic Cards; build in Overview view
+  first, defer Working view. See ## Tasks.
 - **#5 (P2)** Sync Meeting: remove the gate that blocks creating a new Task when it fits no existing
   category — allow no-category (still statusId 8 / AI Gen on the board) instead of blocking.
 - **#6** Sync Meeting review modal: make the Project Board confirmation section look/work exactly like
@@ -95,7 +96,20 @@ data-safe). Team must **hard-refresh** to pick up a new build.
 
 ## Tasks (this session)
 
-_(none yet — awaiting Andy's pick)_
+### #4 — Pre-Brief deprecation → live Agenda TOC (Overview) — SPEC + PLAN APPROVED, building
+Full deprecation (client + the 3 `api/ai/*.js` serverless fns; leave `preBriefHtml` data dormant)
++ a fully-live clickable Table of Contents of the Topic Cards in Overview. TOC = pure projection of
+the reactive `topics` array (no state) → auto-reflects create/delete/reorder/rename incl. remote
+collaborators (rides Firestore onSnapshot, not Yjs). Master-org-aware grouping + Open Floor entry;
+native `scrollIntoView` with `scroll-margin-top` to clear the sticky toolbar; hides on empty agenda.
+- **Decisions:** leave Pre-Brief data dormant; in-app only (no exported-HTML TOC); topics + master-org
+  headers + Open Floor; static top block in Pre-Brief's old spot; Overview only (Working deferred);
+  numbered entries; clickable org headers. **Scope expansion (Andy-approved):** include server-side
+  deprecation — the `api/ai/{prepare,refine,generate}.js` fns required+generated `preBriefHtml`
+  (the Explore pass + spec reviewer wrongly reported "no refs outside src/"; corrected).
+- **Spec:** `docs/superpowers/specs/2026-06-03-prebrief-deprecation-agenda-toc-design.md` (reviewer-APPROVED iter 1).
+- **Plan:** `docs/superpowers/plans/2026-06-03-prebrief-deprecation-agenda-toc.md` (reviewer-APPROVED iter 1; 8 tasks).
+- **STOP at deploy gate** (Task 8) before any `git push origin main:dev`.
 
 ## Files Modified
 

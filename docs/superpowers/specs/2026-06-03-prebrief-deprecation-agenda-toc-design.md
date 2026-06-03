@@ -63,22 +63,61 @@ list from the live array on every render. That is the entire reactivity story.
 
 ## 4. Part A — Pre-Brief Deprecation
 
-Remove every code vestige. **Do not** delete or migrate the `preBriefHtml` field on agenda docs
-(dormant data, reversible).
+Remove every code vestige across **client AND the AI serverless functions** (full deprecation —
+the model must stop generating a Pre-Brief, not just have it dropped client-side). **Do not** delete
+or migrate the `preBriefHtml` field on agenda docs (dormant data, reversible).
 
+> **Footprint correction:** an earlier exploration pass reported "no Pre-Brief references outside
+> `src/`." That was wrong — `api/ai/{prepare,refine,generate}.js` each **require + generate**
+> `preBriefHtml`. The full grep-verified footprint is below. Verification re-grep must cover the whole
+> repo (`api/` included), not just `src/`.
+
+### 4.1 Client — render, editor, helpers
 | File | Location | Action |
 |---|---|---|
 | `src/pages/AgendaDetail.jsx` | `PreBriefSection` fn (~482–501) | Delete the component. |
 | `src/pages/AgendaDetail.jsx` | render call (~1822) | Delete `<PreBriefSection … />`. |
-| `src/pages/AgendaDetail.jsx` | import (~82) | Remove the now-orphaned `RichBodyEditor` import — it is used **only** by `PreBriefSection` (Open Floor uses `CollabBodyEditor`). Sweep for any other imports/helpers orphaned by the deletion. |
-| `src/lib/agendaHtml.js` | ~39–46 | Remove the Pre-Brief `<section>` from composed export/email HTML. |
-| `src/lib/aiAgenda.js` | 259, ~386 (comment), 525–527 | Stop emitting/writing `preBriefHtml` in proposal + `applyUnified`. AI never regenerates it. |
-| `src/components/SyncMeetingDialog.jsx` | ~201 | Drop `preBriefHtml` from proposal assembly. |
-| `src/lib/agendaVersions.js` | 2, 41, 71 | Drop `preBriefHtml` from snapshot schema + restore. Old snapshots simply won't carry it forward (harmless). |
-| `src/lib/__tests__/agendaHtml.test.js` | 58–71 | Remove/adjust the two Pre-Brief tests (one asserts placement at top; one asserts omission when empty). |
+| `src/pages/AgendaDetail.jsx` | import (~82) | Remove the now-orphaned `RichBodyEditor` import — used **only** by `PreBriefSection` (Open Floor uses `CollabBodyEditor`). Sweep for any other imports/helpers orphaned by the deletion. |
+| `src/lib/agendaHtml.js` | comment line 28, ~39–46 | Remove the Pre-Brief `<section>` (`pbHtml`/`preBrief` lines) from composed export/email HTML; drop "pre-brief" from the doc comment. |
+| `src/lib/agendaVersions.js` | comment line 2, 41, 71 | Drop `preBriefHtml` from snapshot schema + restore. Old snapshots simply won't carry it forward (harmless). |
+| `src/lib/__tests__/agendaHtml.test.js` | 58–71 | **Remove** both Pre-Brief tests. (The "omit when no content" test at 69–71 becomes input-identical to the Open-Floor-omission test at 51–53 — fully redundant, so delete rather than adjust.) |
 
-Verification target: after removal, `grep -ri "prebrief"` over `src/` returns **only** incidental
-matches that are demonstrably unreachable, ideally zero. Build + existing test suite stay green.
+### 4.2 Client — AI / Sync Meeting
+| File | Location | Action |
+|---|---|---|
+| `src/lib/aiAgenda.js` | 259 | Remove `preBriefHtml` from the per-org agenda context object built for `orgAgendas`. |
+| `src/lib/aiAgenda.js` | ~368, ~386 (comments) | Update comments that enumerate the proposal shape `(preBriefHtml/topics/openFloorHtml)` → `(topics/openFloorHtml)`. |
+| `src/lib/aiAgenda.js` | 524–526 | Remove the `preBriefHtml: sanitizeHtml(proposal.preBriefHtml \|\| "")` line from the `applyUnified` agenda-doc `tx.update`; fix the "pre-brief + open floor" comment. |
+| `src/components/SyncMeetingDialog.jsx` | ~201 | Drop `preBriefHtml` from the `prepareMeeting` `agenda` payload. |
+| `src/components/SyncMeetingDialog.jsx` | ~245 (comment), 624 (UI copy) | Comment + the user-facing line "Applying replaces the **Pre-Brief**, topics, and Open Floor…" → "Applying replaces the topics and Open Floor…". |
+| `src/pages/AIIntegration.jsx` | 53 | Help text "The meeting's existing **Pre-Brief**, topics, and Open Floor…" → "…existing topics and Open Floor…". |
+
+### 4.3 Server — AI serverless functions
+Three files share the same shape (output schema + system prompt + context-feed + response parse).
+For **each** of `api/ai/prepare.js`, `api/ai/generate.js`, `api/ai/refine.js`:
+
+- **Output schema** (`buildSchema`): delete the `preBriefHtml: { type: "string" }` property and remove
+  `"preBriefHtml"` from the schema's top-level `required` array. (`additionalProperties:false` already
+  forbids stray keys, so the model returns exactly the remaining fields.)
+- **System prompt:** delete the `- preBriefHtml: a SHORT HTML pre-brief …` agenda-output bullet
+  (prepare ~189, generate ~125). In `refine.js`, update the prose that enumerates the agenda shape —
+  "(pre-brief, topics, open floor)" (~64) and "matching the schema: preBriefHtml, topics[…], openFloorHtml"
+  (~77) → drop the pre-brief mentions.
+- **Context feed:** remove the `if (a.preBriefHtml) lines.push(\`Pre-Brief (HTML): …\`)` line for the
+  current agenda (prepare ~301, generate ~208) and the `if (oa.preBriefHtml) …` / `if (p.preBriefHtml) …`
+  lines for other-org / draft agendas (prepare ~339, generate ~242, refine ~84).
+- **Response parse:** remove `preBriefHtml: String(parsed.preBriefHtml || ""),` from the returned
+  object (prepare ~468, generate ~313, refine ~139).
+
+These three are the only consumers of that schema field; with the client no longer reading
+`preBriefHtml`, removing it server-side is internally consistent. After the change the model never
+spends tokens on a Pre-Brief and the apply path has nothing to write.
+
+### 4.4 Verification target
+After removal, `grep -rin "prebrief\|pre-brief" --include="*.js" --include="*.jsx"` over the **whole
+repo** (excluding `node_modules`, `docs/`, `dev/`) returns **zero** functional matches. `npm run
+build` clean; full vitest suite green. A real Sync Meeting AI generation on prod produces a valid
+proposal with no Pre-Brief and applies cleanly (server-side prompt/schema change verified live).
 
 Closes carried-forward deferral #4 (Pre-Brief structured redesign) as moot.
 
@@ -163,6 +202,10 @@ anchor elements (or a shared `scroll-mt` style) so all jump targets clear the st
   same-browser tabs (per `feedback_verify_collab_isolated_profiles`). Note: structural changes ride
   Firestore `onSnapshot`, not Yjs, so the dual-yjs class of bug does not apply here — but isolated
   profiles remain the correct verification method for the live cross-user behavior.
+- **Server AI deprecation (hard gate, Vercel prod):** after deploy, run one real Sync Meeting AI
+  generation on a real agenda → proposal returns a valid agenda (topics + Open Floor, no Pre-Brief),
+  the structured-output schema change holds (no 4xx / parse error), apply writes cleanly. Discard the
+  gen (don't mutate real data) once confirmed.
 
 ## 8. Risks
 - **Sticky-toolbar offset wrong** → titles tuck under the toolbar. Mitigation: source the offset from
