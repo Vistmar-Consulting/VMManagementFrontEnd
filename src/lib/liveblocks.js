@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { LiveblocksProvider, RoomProvider, useRoom, useOthers, useSelf, useStatus, useSyncStatus } from "@liveblocks/react";
+import { LiveblocksProvider, RoomProvider, useRoom, useOthers, useSelf } from "@liveblocks/react";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebase.js";
 
@@ -39,4 +39,4 @@ export function LiveblocksRoot({ children }) {
   return createElement(LiveblocksProvider, { authEndpoint }, children);
 }
 
-export { RoomProvider, useRoom, useOthers, useSelf, useStatus, useSyncStatus };
+export { RoomProvider, useRoom, useOthers, useSelf };
