@@ -31,11 +31,10 @@ function buildSchema(master) {
     type: "object",
     additionalProperties: false,
     properties: {
-      preBriefHtml: { type: "string" },
       topics: { type: "array", items: { type: "object", additionalProperties: false, properties: topicProps, required: topicRequired } },
       openFloorHtml: { type: "string" },
     },
-    required: ["preBriefHtml", "topics", "openFloorHtml"],
+    required: ["topics", "openFloorHtml"],
   };
 }
 
@@ -61,7 +60,7 @@ function orgListBlock(orgMeta) {
 }
 
 function buildSystem(categories, tagVocab, master, orgMeta) {
-  return `You are refining a DRAFT meeting agenda based on a single instruction from the user. You are given the current draft (pre-brief, topics, open floor) and an instruction.
+  return `You are refining a DRAFT meeting agenda based on a single instruction from the user. You are given the current draft (topics, open floor) and an instruction.
 
 Apply ONLY what the instruction asks — add, edit, remove, or reorder as requested. Keep everything else EXACTLY as it is: same topics, same wording, same order, same categories/tags, same links. Do not invent unrelated content, do not re-summarize untouched topics, do not look for outside information — work only from the draft + the instruction.
 
@@ -74,14 +73,13 @@ PRESERVE TOPIC REFS: each input topic may carry a ref (e.g. "docABC123"). Copy e
 HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise.
 ${master ? `\nThis is the MASTER Touch Base agenda — organized org by org. EVERY topic must keep/set its organizationId (slug from the list). Place any new topic under the right org and keep org grouping intact.\n\n## Organizations (use these slugs for organizationId)\n${orgListBlock(orgMeta)}\n` : ""}
 ## Output
-Return the FULL refined agenda (not a diff) as JSON matching the schema: preBriefHtml, topics[{ ref, name, bodyHtml, categories, tags${master ? ", organizationId" : ""} }], openFloorHtml.${categorizationBlock(categories, tagVocab)}`;
+Return the FULL refined agenda (not a diff) as JSON matching the schema: topics[{ ref, name, bodyHtml, categories, tags${master ? ", organizationId" : ""} }], openFloorHtml.${categorizationBlock(categories, tagVocab)}`;
 }
 
 function buildUserMessage(proposal, instruction, master) {
   const p = proposal || {};
   const lines = [];
   lines.push("## Current draft agenda");
-  if (p.preBriefHtml) lines.push(`Pre-Brief (HTML): ${p.preBriefHtml}`);
   (p.topics || []).forEach((t, i) => {
     const refP = t.ref ? ` [ref: ${t.ref}]` : "";
     const idPart = t.topicId ? ` [topicId: ${t.topicId}]` : "";
@@ -136,7 +134,6 @@ export default async function handler(req, res) {
     }
 
     const refined = {
-      preBriefHtml: String(parsed.preBriefHtml || ""),
       topics: Array.isArray(parsed.topics)
         ? parsed.topics.map((t) => ({
             topicId: t?.topicId ? String(t.topicId) : null,
