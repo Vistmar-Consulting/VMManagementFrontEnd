@@ -165,7 +165,7 @@ export default function PastMeetingsCard({ firefliesTitles }) {
   const handleRefresh = () => {
     // Update seedIds to current list so only recordings that appear *after*
     // this press get the NEW badge.
-    seedIdsRef.current = new Set((listData?.transcripts || []).map((t) => t.id));
+    seedIdsRef.current = new Set((listData?.transcripts || []).map((tr) => tr.id));
     refetch();
   };
 
