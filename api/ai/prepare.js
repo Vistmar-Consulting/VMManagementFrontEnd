@@ -26,7 +26,7 @@ const MODEL = "claude-sonnet-4-6";
 // isn't killed by the platform default. (Vercel reads per-function config.)
 export const config = { maxDuration: 300 };
 
-// Combined structured-output schema: the agenda (preBriefHtml, topics[],
+// Combined structured-output schema: the agenda (topics[],
 // openFloorHtml) PLUS boardChanges (creates / moves / notes). Strings + flat
 // arrays; no recursion / numeric constraints (structured-outputs limitations).
 // MASTER (Touch Base) adds a required per-topic `organizationId` so the
@@ -52,7 +52,6 @@ function buildSchema(master) {
     type: "object",
     additionalProperties: false,
     properties: {
-      preBriefHtml: { type: "string" },
       topics: {
         type: "array",
         items: { type: "object", additionalProperties: false, properties: topicProps, required: topicRequired },
@@ -106,7 +105,7 @@ function buildSchema(master) {
         required: ["creates", "moves", "notes"],
       },
     },
-    required: ["preBriefHtml", "topics", "openFloorHtml", "boardChanges"],
+    required: ["topics", "openFloorHtml", "boardChanges"],
   };
 }
 
@@ -186,7 +185,6 @@ ${howToUse}
 You generate the next meeting agenda AND the Project Board updates that follow from it, together, so every new task lands under the agenda topic it belongs to.
 
 ## Agenda output
-- preBriefHtml: a SHORT HTML pre-brief framing this meeting (a few tight bullets), or "" if not warranted.
 - topics: an array of ${master ? "{ ref, name, bodyHtml, categories, tags, organizationId }" : "{ ref, name, bodyHtml, categories, tags }"} — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.${master ? " Set organizationId on EVERY topic; group topics by org in the listed order." : ""}
 - openFloorHtml: HTML for any open-floor items, or "".
 
@@ -298,7 +296,6 @@ function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, 
   lines.push("");
   lines.push("## Current agenda (move it forward from here)");
   lines.push(`Title: ${a.title || ""}`);
-  if (a.preBriefHtml) lines.push(`Pre-Brief (HTML): ${a.preBriefHtml}`);
   (a.topics || []).forEach((t, i) => {
     const refPart = t.id ? ` [ref: ${t.id}]` : "";
     lines.push(`Topic ${i + 1}: ${t.name || ""}${refPart}`);
@@ -336,7 +333,6 @@ function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, 
     lines.push("## This client's other meeting agendas (current planning across the org — for coherence, not to copy)");
     orgAgendas.forEach((oa) => {
       lines.push(`### ${oa.title || "Meeting"}`);
-      if (oa.preBriefHtml) lines.push(`Pre-Brief: ${oa.preBriefHtml}`);
       (oa.topics || []).forEach((t) => {
         lines.push(`- ${t.name || ""}${t.bodyHtml ? `: ${t.bodyHtml}` : ""}`);
       });
@@ -465,7 +461,6 @@ export default async function handler(req, res) {
       : [];
 
     return res.status(200).json({
-      preBriefHtml: String(parsed.preBriefHtml || ""),
       topics,
       openFloorHtml: String(parsed.openFloorHtml || ""),
       boardChanges: { creates, moves, notes },
