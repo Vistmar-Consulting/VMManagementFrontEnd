@@ -16,10 +16,13 @@
 // at `fireflies-detail-{id}`. Fireflies Business plan = 60 req/min; the
 // aggressive cache keeps us well under in practice.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Divider, IconButton, TextField, Typography } from "@mui/material";
-import { Close, Search } from "@mui/icons-material";
+import {
+  Box, Button, CircularProgress, Divider, IconButton,
+  TextField, Tooltip, Typography,
+} from "@mui/material";
+import { Close, Refresh, Search } from "@mui/icons-material";
 import { format } from "date-fns";
 
 import { firefliesQuery, GQL_MEETING_DETAIL, GQL_MEETING_LIST } from "../lib/fireflies.js";
@@ -30,6 +33,18 @@ import MeetingDetailModal from "./MeetingDetailModal.jsx";
 export default function PastMeetingsCard({ firefliesTitles }) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [isOpen, setIsOpen] = useState(false);
+  // Snapshot of recording IDs at mount (or last manual refresh).
+  // Used to mark recordings that appeared since then with a NEW badge.
+  const seedIdsRef = useRef(
+    (() => {
+      try {
+        const raw = localStorage.getItem("fireflies-meetings-cache");
+        const parsed = raw ? JSON.parse(raw) : null;
+        return new Set((parsed?.data?.transcripts || []).map((tr) => tr.id));
+      } catch { return new Set(); }
+    })()
+  );
 
   // Persist the Fireflies list to localStorage so it survives page refreshes.
   const FF_CACHE_KEY = "fireflies-meetings-cache";
@@ -42,7 +57,7 @@ export default function PastMeetingsCard({ firefliesTitles }) {
   }, []);
 
   const CACHE_TTL_MS = 30 * 60 * 1000;
-  const { data: listData, isLoading: listLoading } = useQuery({
+  const { data: listData, isLoading: listLoading, isFetching, refetch } = useQuery({
     queryKey: ["fireflies-meetings-all"],
     queryFn: async () => {
       const data = await firefliesQuery(GQL_MEETING_LIST, { limit: 50 });
@@ -107,22 +122,13 @@ export default function PastMeetingsCard({ firefliesTitles }) {
     return () => { cancelled = true; };
   }, [allMeetings.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Stubs retained for JSX compatibility — Task 2 removes these render blocks entirely.
+  const meetingTitles = [];
   const [titleFilter, setTitleFilter] = useState(null);
 
-  // Unique meeting titles for filter pills
-  const meetingTitles = useMemo(() => {
-    const counts = {};
-    allMeetings.forEach((m) => {
-      const title = m.title || "Untitled";
-      counts[title] = (counts[title] || 0) + 1;
-    });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([title, count]) => ({ title, count }));
-  }, [allMeetings]);
-
-  // Title filter first, then deep search across prefetched details
+  // Deep search across prefetched details
   const meetings = useMemo(() => {
     let filtered = allMeetings;
-    if (titleFilter) filtered = filtered.filter((m) => m.title === titleFilter);
     if (search) {
       const q = search.toLowerCase();
       filtered = filtered.filter((m) => {
@@ -144,16 +150,7 @@ export default function PastMeetingsCard({ firefliesTitles }) {
       });
     }
     return filtered;
-  }, [allMeetings, titleFilter, search, detailsMap]);
-  const loading = listLoading;
-  const count = meetings?.length || 0;
-
-  const getActionItems = (summary) => {
-    if (!summary?.action_items) return [];
-    if (Array.isArray(summary.action_items)) return summary.action_items;
-    return summary.action_items.split("\n").filter(Boolean);
-  };
-
+  }, [allMeetings, search, detailsMap]);
   const highlight = (text, query) => {
     if (!query || !text) return text;
     const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
@@ -165,6 +162,13 @@ export default function PastMeetingsCard({ firefliesTitles }) {
     );
   };
 
+  const handleRefresh = () => {
+    // Update seedIds to current list so only recordings that appear *after*
+    // this press get the NEW badge.
+    seedIdsRef.current = new Set((listData?.transcripts || []).map((t) => t.id));
+    refetch();
+  };
+
   return (
     <>
       <Box sx={{ mt: 4 }}>
@@ -173,8 +177,8 @@ export default function PastMeetingsCard({ firefliesTitles }) {
           <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper }}>
             Past Meetings
           </Typography>
-          {count > 0 && (
-            <MiniPill style={{ background: t.copperFaint, color: t.copper }}>{count}</MiniPill>
+          {meetings?.length > 0 && (
+            <MiniPill style={{ background: t.copperFaint, color: t.copper }}>{meetings.length}</MiniPill>
           )}
         </Box>
 
@@ -234,7 +238,7 @@ export default function PastMeetingsCard({ firefliesTitles }) {
           )}
 
           <Box sx={{ maxHeight: 400, overflowY: "auto" }}>
-            {loading ? (
+            {listLoading ? (
               [0, 1, 2].map((i) => (
                 <Box key={i} sx={{ p: 1.5, borderBottom: `1px solid ${t.cream2}` }}>
                   <ShimmerBar $h={14} $w="40%" $mb={6} />
@@ -248,7 +252,12 @@ export default function PastMeetingsCard({ firefliesTitles }) {
               </Typography>
             ) : (
               meetings.map((m) => {
-                const actionItems = getActionItems(m.summary);
+                const actionItems = (() => {
+                  const s = m.summary;
+                  if (!s?.action_items) return [];
+                  if (Array.isArray(s.action_items)) return s.action_items;
+                  return s.action_items.split("\n").filter(Boolean);
+                })();
                 const snippet = m.summary?.short_summary || m.summary?.overview || "";
                 const truncated = snippet.length > 160 ? snippet.slice(0, 160) + "..." : snippet;
                 return (
