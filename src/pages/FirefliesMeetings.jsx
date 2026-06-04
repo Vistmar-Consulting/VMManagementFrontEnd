@@ -53,11 +53,12 @@ export default function FirefliesMeetings() {
   // Fireflies recordings. Seed limit-50 from the card's shared localStorage
   // cache so first paint is instant when the card was visited; larger pages
   // fetch fresh (kept in React Query memory for the session).
-  const seed = useMemo(() => {
+  const CACHE_TTL_MS = 30 * 60 * 1000;
+  const seedEntry = useMemo(() => {
     if (limit !== PAGE_SIZE) return undefined;
     try {
       const raw = localStorage.getItem("fireflies-meetings-cache");
-      return raw ? JSON.parse(raw).data : undefined;
+      return raw ? JSON.parse(raw) : undefined;
     } catch { return undefined; }
   }, [limit]);
 
@@ -70,8 +71,9 @@ export default function FirefliesMeetings() {
       }
       return data;
     },
-    initialData: seed,
-    staleTime: Infinity,
+    initialData: seedEntry?.data,
+    initialDataUpdatedAt: seedEntry?.fetchedAt ? new Date(seedEntry.fetchedAt).getTime() : 0,
+    staleTime: CACHE_TTL_MS,
     retry: 0,
   });
 

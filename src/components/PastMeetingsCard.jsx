@@ -41,7 +41,7 @@ export default function PastMeetingsCard({ firefliesTitles }) {
     } catch { return null; }
   }, []);
 
-  const hasCachedList = !!cached?.data;
+  const CACHE_TTL_MS = 30 * 60 * 1000;
   const { data: listData, isLoading: listLoading } = useQuery({
     queryKey: ["fireflies-meetings-all"],
     queryFn: async () => {
@@ -51,8 +51,8 @@ export default function PastMeetingsCard({ firefliesTitles }) {
       return data;
     },
     initialData: cached?.data || undefined,
-    enabled: !hasCachedList,
-    staleTime: Infinity,
+    initialDataUpdatedAt: cached?.fetchedAt ? new Date(cached.fetchedAt).getTime() : 0,
+    staleTime: CACHE_TTL_MS,
     retry: 0,
   });
 
