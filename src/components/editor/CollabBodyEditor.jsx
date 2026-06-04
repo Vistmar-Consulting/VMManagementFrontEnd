@@ -23,7 +23,7 @@ import EditorToolbar from "./EditorToolbar.jsx";
 import { useEditorFocus } from "./editorFocus.jsx";
 import { promptLink } from "./linkHelper.js";
 import { useRoom } from "../../lib/liveblocks.js";
-import { isLocalEditTransaction, fragmentHasRealContent, decideSeedAction } from "./collabSync.js";
+import { isLocalEditTransaction, fragmentHasRealContent, decideSeedAction, isElectedSeeder, SEED_SETTLE_MS } from "./collabSync.js";
 import { useCollabFlushRegistry } from "./CollabFlushRegistry.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 
@@ -113,6 +113,7 @@ export default function CollabBodyEditor({
   const { profile } = useAuth();
 
   const debounceRef = useRef(null);
+  const settleTimerRef = useRef(null);
   // onChangeHtml via ref so onUpdate + the unmount flush always call the latest
   // callback without re-registering effects (parent passes an inline arrow each
   // render). The unmount effect below depends only on [editor] for this reason.
@@ -262,20 +263,36 @@ export default function CollabBodyEditor({
       const hasContent = fragmentHasRealContent(ydoc, fragmentKey);
       const seed = sanitizeHtml(valueHtml) || "";
       if (decideSeedAction({ fragmentHasContent: hasContent, seedHtml: seed }) !== "seed") return;
-      // Re-check emptiness immediately before writing to minimise the duplicate window.
-      if (!fragmentHasRealContent(ydoc, fragmentKey)) {
-        editor.commands.setContent(seed, { emitUpdate: false }); // emitUpdate:false → no mirror write
-      }
+      // Election: only the client with the lowest clientID in awareness seeds.
+      // Defer writing by SEED_SETTLE_MS to let latecomers join awareness first.
+      // Any awareness change resets the timer so the election re-runs with the
+      // updated client set. valueHtml is a dep, so if it changes React tears down
+      // this effect (cancelling the timer) and re-runs fresh — no stale-seed risk.
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+      settleTimerRef.current = setTimeout(() => {
+        settleTimerRef.current = null;
+        if (cancelled) return;
+        if (fragmentHasRealContent(ydoc, fragmentKey)) return;
+        const awarenessIDs = [...yProvider.awareness.getStates().keys()];
+        if (!isElectedSeeder(ydoc.clientID, awarenessIDs)) return;
+        if (!fragmentHasRealContent(ydoc, fragmentKey)) {
+          editor.commands.setContent(seed, { emitUpdate: false });
+        }
+      }, SEED_SETTLE_MS);
     };
 
-    // The provider emits "synced" and exposes a .synced boolean getter. Only
-    // reconcile AFTER sync so we've received the server's doc state.
     if (yProvider.synced) reconcile();
     const onSynced = (isSynced) => { if (isSynced) reconcile(); };
     yProvider.on("synced", onSynced);
+    const onAwarenessChange = () => reconcile();
+    yProvider.awareness.on("change", onAwarenessChange);
     return () => {
       cancelled = true;
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
       yProvider.off("synced", onSynced);
+      yProvider.awareness.off("change", onAwarenessChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, yProvider, ydoc, valueHtml]);
