@@ -116,6 +116,8 @@ const sectionTitleSx = {
   mb: "6px", // ~6pt gap between the title and its first line of body text
 };
 
+const ANCHOR_SCROLL_MT = 56;
+
 // ─── Hero ──────────────────────────────────────────────────────────────
 
 function ViewToggle({ value, onChange }) {
@@ -482,7 +484,7 @@ function OpenFloorSection({ agendaId, agenda }) {
   const { user } = useAuth();
 
   return (
-    <Box sx={{ mt: 2.5 }}>
+    <Box id="open-floor" sx={{ mt: 2.5, scrollMarginTop: `${ANCHOR_SCROLL_MT}px` }}>
       <Typography sx={sectionTitleSx}>Open Floor</Typography>
       <CollabBodyEditor
         mode="shared"
@@ -1462,10 +1464,12 @@ function OrgSectionHeader({ org }) {
   const accent = org?.accentColor || "#888";
   return (
     <Box
+      id={org?.id ? `org-${org.id}` : undefined}
       sx={{
         mt: 2.5, mb: 1, px: 1.5, py: 0.6, borderRadius: "8px",
         background: accent, color: getContrastText(accent),
         display: "flex", alignItems: "center", gap: 1,
+        scrollMarginTop: `${ANCHOR_SCROLL_MT}px`,
       }}
     >
       <Typography sx={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase" }}>
@@ -1805,10 +1809,12 @@ export default function AgendaDetail() {
                               <Box
                                 ref={dragProvided.innerRef}
                                 {...dragProvided.draggableProps}
+                                id={`topic-${topic.id}`}
                                 sx={{
                                   background: snapshot.isDragging ? "rgba(184,115,51,0.04)" : "transparent",
                                   borderRadius: 1,
                                   "&:hover .topic-grip": { opacity: 0.55 },
+                                  scrollMarginTop: `${ANCHOR_SCROLL_MT}px`,
                                 }}
                               >
                                 {isMaster && topic.organizationId !== (topics[idx - 1]?.organizationId) && (
