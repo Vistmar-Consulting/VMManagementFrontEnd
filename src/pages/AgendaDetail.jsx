@@ -77,6 +77,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { useCollection } from "../hooks/useCollection.js";
 import { useDoc } from "../hooks/useDoc.js";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
+import { agendaRoomId } from "../lib/agendaRoom.js";
 import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
 import RichBodyEditor from "../components/editor/RichBodyEditor.jsx";
@@ -1758,7 +1759,7 @@ export default function AgendaDetail() {
   return (
     <Box sx={{ maxWidth: 1280, mx: "auto", pb: 8 }}>
       <LiveblocksRoot>
-        <RoomProvider id={`agenda:${agendaId}`} initialPresence={{}}>
+        <RoomProvider id={agendaRoomId(agendaId)} initialPresence={{}}>
           <CollabFlushRegistryProvider>
       <Box sx={{ pt: 2, px: 4, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Tooltip title="Back to Calendar">
