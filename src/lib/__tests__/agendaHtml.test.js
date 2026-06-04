@@ -55,20 +55,7 @@ describe("composeAgendaHtml", () => {
     const html = composeAgendaHtml(agenda, topics, { inlineStyles: true });
     expect(html).toContain("style=");
   });
-  it("places the Pre-Brief section at the very top, before topics", () => {
-    const html = composeAgendaHtml(
-      { ...agenda, preBriefHtml: "<p>pb body</p>" },
-      topics,
-    );
-    const idxPB = html.indexOf("Pre-Brief");
-    const idxA = html.indexOf("Topic A");
-    expect(idxPB).toBeGreaterThan(-1);
-    expect(idxPB).toBeLessThan(idxA); // pre-brief precedes the first topic
-    expect(html).toContain("pb body");
-  });
-  it("omits the Pre-Brief section when there is no pre-brief content", () => {
-    expect(composeAgendaHtml({ title: "x" }, [])).not.toContain("Pre-Brief");
-  });
+
 });
 
 import { mergeBodyHtml } from "../agendaHtml.js";

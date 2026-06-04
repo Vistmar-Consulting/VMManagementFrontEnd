@@ -8,10 +8,10 @@
 //
 // Data: useDoc("agendas/:agendaId") + useDoc("calendar_series/:seriesId")
 // + useCollection("agendas/:agendaId/topics"). Topic bodies + Open Floor are
-// rich HTML (topic.bodyHtml / agenda.openFloorHtml) edited via RichBodyEditor;
-// the old per-bullet talkingPoints/notes/openFloor subscriptions were removed
-// in the v0.2.4 rich-text cutover (the agenda-level openFloor read that remains
-// only feeds the ActionBar Meeting-Prep email). All writes go straight to
+// rich HTML (topic.bodyHtml / agenda.openFloorHtml). The old per-bullet
+// talkingPoints/notes/openFloor subscriptions were removed in the v0.2.4
+// rich-text cutover (the agenda-level openFloor read that remains only feeds
+// the ActionBar Meeting-Prep email). All writes go straight to
 // Firestore — no API/Graph mutation in this slice.
 
 import { useEffect, useMemo, useState } from "react";
@@ -80,7 +80,7 @@ import { visibleAttendees } from "../lib/meetingHelpers.js";
 import { agendaRoomId } from "../lib/agendaRoom.js";
 import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
-import RichBodyEditor from "../components/editor/RichBodyEditor.jsx";
+
 import { EditorFocusProvider } from "../components/editor/editorFocus.jsx";
 import { LiveblocksRoot, RoomProvider } from "../lib/liveblocks.js";
 import { CollabFlushRegistryProvider, useCollabFlushRegistry } from "../components/editor/CollabFlushRegistry.jsx";
@@ -104,8 +104,8 @@ const inputBase = {
   "&:focus": { borderBottomColor: t.copper },
 };
 
-// Shared visual for every Overview section title — topic headings (editable),
-// Pre-Brief, and Open Floor (static) all use this so they look identical.
+// Shared visual for every Overview section title — topic headings (editable)
+// and Open Floor (static) both use this so they look identical.
 const sectionTitleSx = {
   fontFamily: t.serif,
   fontSize: 15,
@@ -467,31 +467,6 @@ function OverviewTopic({ topic, agendaId, dragHandleProps }) {
         onChangeHtml={(html) =>
           updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
             bodyHtml: html,
-            updatedAt: serverTimestamp(),
-            updatedByUid: user?.uid || null,
-          })
-        }
-      />
-    </Box>
-  );
-}
-
-// ─── Pre-Brief (top of the Overview card) ──────────────────────────────
-// Quick pre-brief of the meeting — used in-meeting to agree on what to cover.
-// Mirrors Open Floor: one rich body on agenda.preBriefHtml.
-
-function PreBriefSection({ agendaId, agenda }) {
-  const { user } = useAuth();
-  return (
-    <Box sx={{ mb: 2.5 }}>
-      <Typography sx={sectionTitleSx}>Pre-Brief</Typography>
-      <RichBodyEditor
-        mode="shared"
-        valueHtml={agenda?.preBriefHtml || ""}
-        placeholder="Add a pre-brief…"
-        onChangeHtml={(html) =>
-          updateDoc(doc(db, "agendas", agendaId), {
-            preBriefHtml: html,
             updatedAt: serverTimestamp(),
             updatedByUid: user?.uid || null,
           })
@@ -1820,7 +1795,6 @@ export default function AgendaDetail() {
             >
               <SharedEditorToolbar />
               <Box sx={{ px: 4, pt: 2, pb: 3 }}>
-                <PreBriefSection agendaId={agendaId} agenda={agenda} />
                 <DragDropContext onDragEnd={handleTopicDragEnd}>
                   <Droppable droppableId="overview-topics">
                     {(droppableProvided) => (

@@ -1,5 +1,5 @@
 // Agenda version history — snapshot + restore of an agenda's CONTENT.
-// Content = title + preBriefHtml + openFloorHtml + a frozen copy of the topics
+// Content = title + openFloorHtml + a frozen copy of the topics
 // (id/name/bodyHtml/sortOrder/categoryIds/tagIds). NOT the meeting-binding
 // fields (graphEventId etc.) and NOT the Project Board items (live task state).
 //
@@ -38,7 +38,6 @@ export async function snapshotAgenda(agendaId, { source = "manual", label = null
   });
   const snapshot = {
     title: a.title ?? "",
-    preBriefHtml: a.preBriefHtml ?? "",
     openFloorHtml: a.openFloorHtml ?? "",
     topics,
   };
@@ -68,7 +67,6 @@ export async function restoreAgendaVersion(agendaId, versionId, { uid = null } =
   const batch = writeBatch(db);
   batch.update(doc(db, "agendas", agendaId), {
     title: snap.title ?? "",
-    preBriefHtml: snap.preBriefHtml ?? "",
     openFloorHtml: snap.openFloorHtml ?? "",
     updatedAt: serverTimestamp(),
     updatedByUid: uid,
