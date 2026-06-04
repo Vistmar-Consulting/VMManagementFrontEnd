@@ -7,21 +7,24 @@ export function buildTocEntries(topics, { isMaster = false, orgById = {}, hasOpe
   let n = 0;
 
   for (const topic of list) {
-    if (isMaster && topic.organizationId !== prevOrg) {
-      const org = orgById[topic.organizationId];
-      entries.push({
-        type: "org",
-        label: org?.name || "Unassigned",
-        anchorId: `org-${topic.organizationId}`,
-        accentColor: org?.accentColor,
-      });
-      prevOrg = topic.organizationId;
+    if (isMaster) {
+      const orgId = topic.organizationId ?? "unassigned";
+      if (orgId !== prevOrg) {
+        const org = orgById[orgId];
+        entries.push({
+          type: "org",
+          label: org?.name || "Unassigned",
+          anchorId: `org-${orgId}`,
+          accentColor: org?.accentColor,
+        });
+        prevOrg = orgId;
+      }
     }
     n += 1;
     entries.push({
       type: "topic",
-      label: (topic.name && topic.name.trim()) || "Untitled",
-      anchorId: `topic-${topic.id}`,
+      label: (typeof topic.name === "string" && topic.name.trim()) || "Untitled",
+      anchorId: topic.id != null ? `topic-${topic.id}` : `topic-${n}`,
       number: n,
     });
   }

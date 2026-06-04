@@ -59,4 +59,21 @@ describe("buildTocEntries", () => {
     const out = buildTocEntries(topics, { isMaster: false, orgById: { o1: { id: "o1", name: "Unio" } }, hasOpenFloor: false });
     expect(out.every((e) => e.type === "topic")).toBe(true);
   });
+
+  it("normalizes missing organizationId to 'unassigned' anchor in master mode", () => {
+    const topics = [
+      { id: "a", name: "A", organizationId: "o1" },
+      { id: "b", name: "B" },          // no organizationId
+      { id: "c", name: "C" },          // also no organizationId — same group, no second header
+    ];
+    const orgById = { o1: { id: "o1", name: "Unio", accentColor: "#111" } };
+    const out = buildTocEntries(topics, { isMaster: true, orgById, hasOpenFloor: false });
+    expect(out).toEqual([
+      { type: "org", label: "Unio", anchorId: "org-o1", accentColor: "#111" },
+      { type: "topic", label: "A", anchorId: "topic-a", number: 1 },
+      { type: "org", label: "Unassigned", anchorId: "org-unassigned", accentColor: undefined },
+      { type: "topic", label: "B", anchorId: "topic-b", number: 2 },
+      { type: "topic", label: "C", anchorId: "topic-c", number: 3 },
+    ]);
+  });
 });
