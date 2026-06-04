@@ -182,9 +182,18 @@ export default function PastMeetingsCard({ firefliesTitles }) {
       >
         {/* ── Collapsible header ── */}
         <Box
+          role="button"
+          tabIndex={0}
           onClick={() => {
             if (isOpen) setSearch("");
             setIsOpen((v) => !v);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              if (isOpen) setSearch("");
+              setIsOpen((v) => !v);
+            }
           }}
           sx={{
             display: "flex",
@@ -196,6 +205,7 @@ export default function PastMeetingsCard({ firefliesTitles }) {
             userSelect: "none",
             borderBottom: isOpen ? `1px solid ${t.cream2}` : "none",
             "&:hover": { background: t.copperFaint },
+            "&:focus-visible": { outline: `2px solid ${t.copper}`, outlineOffset: -2 },
           }}
         >
           <Box sx={{ width: 3, height: 16, borderRadius: 0.5, background: t.copper, flexShrink: 0 }} />
@@ -310,8 +320,8 @@ export default function PastMeetingsCard({ firefliesTitles }) {
                         }}
                       >
                         {/* Row line 1: title + date + NEW + action count */}
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: snippet ? 0.4 : 0 }}>
-                          <Typography sx={{ fontSize: 12, fontWeight: 600, color: t.ink }}>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: snippet ? 0.4 : 0, minWidth: 0 }}>
+                          <Typography sx={{ fontSize: 12, fontWeight: 600, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                             {m.title || "Untitled"}
                           </Typography>
                           <Typography sx={{ fontSize: 10, color: t.ink3, flexShrink: 0 }}>
