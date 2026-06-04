@@ -464,8 +464,6 @@ function OverviewTopic({ topic, agendaId, dragHandleProps }) {
         mode="shared"
         valueHtml={topic.bodyHtml || ""}
         fragmentKey={topic.id}
-        seedDocPath={`agendas/${agendaId}/topics/${topic.id}`}
-        seedFlagField="collabSeeded"
         placeholder="Add talking points…"
         onChangeHtml={(html) =>
           updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
@@ -491,8 +489,6 @@ function OpenFloorSection({ agendaId, agenda }) {
         mode="shared"
         valueHtml={agenda?.openFloorHtml || ""}
         fragmentKey="openFloor"
-        seedDocPath={`agendas/${agendaId}`}
-        seedFlagField="openFloorCollabSeeded"
         placeholder="Add open-floor items…"
         onChangeHtml={(html) =>
           updateDoc(doc(db, "agendas", agendaId), {
@@ -1412,8 +1408,6 @@ function AgendaTopicCard({
           <CollabBodyEditor
             valueHtml={topic.bodyHtml || ""}
             fragmentKey={topic.id}
-            seedDocPath={`agendas/${agendaId}/topics/${topic.id}`}
-            seedFlagField="collabSeeded"
             placeholder="Add talking points…"
             onChangeHtml={(html) =>
               updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {

@@ -83,8 +83,6 @@ const proseBase = {
  * Props:
  *   fragmentKey   — Yjs XmlFragment key (topic.id or "openFloor")
  *   valueHtml     — HTML seed content (loaded once on first sync)
- *   seedDocPath   — Firestore doc path string holding the seed flag
- *   seedFlagField — field name on that doc to lock seeding (string)
  *   onChangeHtml  — mirror callback, called with editor.getHTML() after debounce
  *   placeholder   — placeholder text when empty
  *   debounceMs    — debounce delay in ms (default 1500)
@@ -95,8 +93,6 @@ const proseBase = {
 export default function CollabBodyEditor({
   fragmentKey,
   valueHtml,
-  seedDocPath,
-  seedFlagField,
   onChangeHtml,
   placeholder = "Type here…",
   debounceMs = 1500,
@@ -252,8 +248,8 @@ export default function CollabBodyEditor({
   //
   // valueHtml IS a dependency: if Firestore content arrives AFTER the first
   // sync, we must re-attempt (the old code locked on the first empty read).
-  // Tradeoff: two clients seeding the SAME empty fragment within ~1s can
-  // duplicate content — rare, visible, and recoverable (vs. silent blanking).
+  // The awareness-election guard (settle timer + clientID-minimum winner) prevents
+  // the two-client simultaneous-open race that caused content doubling 2026-06-03.
   useEffect(() => {
     if (!editor) return undefined;
     let cancelled = false;
@@ -269,7 +265,6 @@ export default function CollabBodyEditor({
       // updated client set. valueHtml is a dep, so if it changes React tears down
       // this effect (cancelling the timer) and re-runs fresh — no stale-seed risk.
       clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = null;
       settleTimerRef.current = setTimeout(() => {
         settleTimerRef.current = null;
         if (cancelled) return;
