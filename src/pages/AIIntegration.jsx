@@ -50,7 +50,7 @@ const HOW_IT_WORKS = [
   {
     group: "What it reads",
     items: [
-      ["Current agenda", "The meeting's existing Pre-Brief, topics, and Open Floor — the starting point it moves forward."],
+      ["Current agenda", "The meeting's existing topics and Open Floor — the starting point it moves forward."],
       ["Meeting transcripts", "Every Fireflies meeting since this meeting last occurred — this client's meetings plus internal Vistamar meetings (auto-detected by who attended). What was said."],
       ["Other client agendas", "The current content of the client's other meeting agendas, whatever stage they're in. What's planned across the org."],
       ["Project Board", "The client's tasks created or updated in the window — with status, on-hold, and brand-new flags. Task state."],

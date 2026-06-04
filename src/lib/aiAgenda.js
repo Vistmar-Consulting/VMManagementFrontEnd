@@ -256,7 +256,6 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
           title: a.title || "",
           org: ao,
           orgName: orgNameOf(ao),
-          preBriefHtml: a.preBriefHtml || "",
           openFloorHtml: a.openFloorHtml || "",
           topics: tSnap.docs.map((d) => ({ name: d.data().name || "", bodyHtml: d.data().bodyHtml || "" })),
         };
@@ -365,7 +364,7 @@ export function tagSlug(name) {
 }
 
 // Sync Meeting (unified): POST the assembled inputs to /api/ai/prepare and get
-// back ONE proposal covering both the agenda (preBriefHtml/topics/openFloorHtml)
+// back ONE proposal covering both the agenda (topics/openFloorHtml)
 // and the project-board changes (boardChanges: { creates, moves, notes }).
 // Topics already carry topicId; creates already carry topicId (set server-side).
 export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts, projectBoard, existingTasks, orgAgendas, extraContext, categories, tagVocab, internal, master, orgMeta }) {
@@ -383,7 +382,7 @@ export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   // /api/ai/prepare returns the proposal fields at the top level
-  // ({ preBriefHtml, topics, openFloorHtml, boardChanges }) — no { proposal }
+  // ({ topics, openFloorHtml, boardChanges }) — no { proposal }
   // wrapper — so return the body directly.
   return res.json();
 }
@@ -521,9 +520,8 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       return id;
     };
 
-    // Agenda doc: pre-brief + open floor + the anchor (advances only here).
+    // Agenda doc: open floor + the anchor (advances only here).
     tx.update(doc(db, "agendas", agendaId), {
-      preBriefHtml: sanitizeHtml(proposal.preBriefHtml || ""),
       openFloorHtml: sanitizeHtml(proposal.openFloorHtml || ""),
       updatedAt: serverTimestamp(),
       updatedByUid: uid,

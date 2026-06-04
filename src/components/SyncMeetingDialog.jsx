@@ -198,7 +198,6 @@ export default function SyncMeetingDialog({
         meetingStyle,
         agenda: {
           title: agenda?.title || "",
-          preBriefHtml: agenda?.preBriefHtml || "",
           openFloorHtml: agenda?.openFloorHtml || "",
           topics: (topics || []).map((t) => ({ id: t.id, name: t.name || "", bodyHtml: t.bodyHtml || "" })),
         },
@@ -242,7 +241,7 @@ export default function SyncMeetingDialog({
         master,
         orgMeta: catCtx.orgMeta,
       });
-      // Refine returns refreshed agenda content (topics/preBrief/openFloor). It
+      // Refine returns refreshed agenda content (topics/openFloor). It
       // does NOT touch the board changes, so carry those forward unchanged.
       const currentTopicIds = (topics || []).map((t) => t.id);
       const merged = {
@@ -621,7 +620,7 @@ export default function SyncMeetingDialog({
             )}
 
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
-              Applying replaces the Pre-Brief, topics, and Open Floor, and writes the checked board changes —
+              Applying replaces the topics and Open Floor, and writes the checked board changes —
               all in one transaction. The current agenda was saved to version history first.
             </Typography>
           </Box>
