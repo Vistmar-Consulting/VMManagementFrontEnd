@@ -76,6 +76,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260604-Andrew-v0.3.3-seed-guard",
+      "developer": "Andrew",
+      "date": "2026-06-04",
+      "date_closed": "2026-06-04",
+      "version_start": "v0.3.3",
+      "version_end": "v0.3.3",
+      "commit_start": "06751b8",
+      "commit_end": "6b8035d",
+      "summary": "Collab single-writer seed guard shipped. Prevents content doubling when two clients simultaneously open a fresh empty Liveblocks room. Election: only the client with the lowest ydoc.clientID in the current awareness set seeds, after a 50ms settle delay (resets on each awareness change). New exports: SEED_SETTLE_MS + isElectedSeeder in collabSync.js (8 new tests → 72 total). Removed unused seedDocPath/seedFlagField props from CollabBodyEditor + 3 AgendaDetail callsites. Prod deploy h7jc7pk9x.",
+      "folder": "dev/sessions/v0_3_3_Andrew_SEED_GUARD/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260602-Andrew-v0.3.1-backlog",
       "developer": "Andrew",
       "date": "2026-06-02",
