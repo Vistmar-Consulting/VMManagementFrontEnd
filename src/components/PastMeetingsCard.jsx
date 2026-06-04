@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Box, Button, CircularProgress, Divider, IconButton,
+  Box, Button, CircularProgress, IconButton,
   TextField, Tooltip, Typography,
 } from "@mui/material";
 import { Close, Refresh, Search } from "@mui/icons-material";
@@ -122,10 +122,6 @@ export default function PastMeetingsCard({ firefliesTitles }) {
     return () => { cancelled = true; };
   }, [allMeetings.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Stubs retained for JSX compatibility — Task 2 removes these render blocks entirely.
-  const meetingTitles = [];
-  const [titleFilter, setTitleFilter] = useState(null);
-
   // Deep search across prefetched details
   const meetings = useMemo(() => {
     let filtered = allMeetings;
@@ -169,141 +165,188 @@ export default function PastMeetingsCard({ firefliesTitles }) {
     refetch();
   };
 
+  const totalCount = allMeetings.length;
+  const filteredCount = meetings.length;
+
   return (
     <>
-      <Box sx={{ mt: 4 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-          <Box sx={{ width: 3, height: 16, borderRadius: 0.5, background: t.copper }} />
+      {/* ── Outer white card ── */}
+      <Box
+        sx={{
+          mt: 4,
+          background: "white",
+          border: `1px solid ${t.cream3}`,
+          borderRadius: "10px",
+          overflow: "hidden",
+        }}
+      >
+        {/* ── Collapsible header ── */}
+        <Box
+          onClick={() => {
+            if (isOpen) setSearch("");
+            setIsOpen((v) => !v);
+          }}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 2,
+            py: 1.5,
+            cursor: "pointer",
+            userSelect: "none",
+            borderBottom: isOpen ? `1px solid ${t.cream2}` : "none",
+            "&:hover": { background: t.copperFaint },
+          }}
+        >
+          <Box sx={{ width: 3, height: 16, borderRadius: 0.5, background: t.copper, flexShrink: 0 }} />
           <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: t.copper }}>
             Past Meetings
           </Typography>
-          {meetings?.length > 0 && (
-            <MiniPill style={{ background: t.copperFaint, color: t.copper }}>{meetings.length}</MiniPill>
+          {totalCount > 0 && (
+            <MiniPill style={{ background: t.copperFaint, color: t.copper }}>{totalCount}</MiniPill>
           )}
-        </Box>
-
-        <Box sx={{ pl: 1 }}>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="Search past meetings..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            InputProps={{
-              startAdornment: <Search sx={{ color: t.ink3, fontSize: 18, mr: 0.5 }} />,
-              ...(search && {
-                endAdornment: (
-                  <IconButton size="small" onClick={() => setSearch("")}>
-                    <Close sx={{ fontSize: 16 }} />
-                  </IconButton>
-                ),
-              }),
-            }}
-            sx={{
-              mb: 1.5,
-              "& .MuiInputBase-root": { fontSize: 12, borderRadius: "8px", background: t.cream },
-              "& .MuiOutlinedInput-notchedOutline": { borderColor: t.cream3 },
-              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: t.copperLight },
-              "& .Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: t.copper },
-            }}
-          />
-
-          {/* Meeting title filter pills */}
-          {meetingTitles.length > 1 && (
-            <>
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, alignItems: "center", py: 1.5 }}>
-                <Typography sx={{ fontSize: 10, color: t.ink3, mr: 0.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  Meetings:
-                </Typography>
-                {meetingTitles.map(({ title, count: c }) => {
-                  const isActive = titleFilter === title;
-                  return (
-                    <MiniPill
-                      key={title}
-                      onClick={() => setTitleFilter(isActive ? null : title)}
-                      style={{
-                        background: isActive ? t.copper : t.cream2,
-                        color: isActive ? "white" : t.ink3,
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      {title} ({c})
-                    </MiniPill>
-                  );
-                })}
-              </Box>
-              <Divider sx={{ mb: 1.5 }} />
-            </>
-          )}
-
-          <Box sx={{ maxHeight: 400, overflowY: "auto" }}>
-            {listLoading ? (
-              [0, 1, 2].map((i) => (
-                <Box key={i} sx={{ p: 1.5, borderBottom: `1px solid ${t.cream2}` }}>
-                  <ShimmerBar $h={14} $w="40%" $mb={6} />
-                  <ShimmerBar $h={12} $w="90%" $mb={4} />
-                  <ShimmerBar $h={12} $w="70%" $mb={0} />
-                </Box>
-              ))
-            ) : !meetings || meetings.length === 0 ? (
-              <Typography sx={{ fontSize: 12, color: t.ink3, fontStyle: "italic", py: 2, textAlign: "center" }}>
-                {search ? "No meetings match your search" : "No recorded meetings found for this series"}
-              </Typography>
-            ) : (
-              meetings.map((m) => {
-                const actionItems = (() => {
-                  const s = m.summary;
-                  if (!s?.action_items) return [];
-                  if (Array.isArray(s.action_items)) return s.action_items;
-                  return s.action_items.split("\n").filter(Boolean);
-                })();
-                const snippet = m.summary?.short_summary || m.summary?.overview || "";
-                const truncated = snippet.length > 160 ? snippet.slice(0, 160) + "..." : snippet;
-                return (
-                  <Box
-                    key={m.id}
-                    onClick={() => setSelectedId(m.id)}
-                    sx={{
-                      p: 1.5,
-                      borderBottom: `1px solid ${t.cream2}`,
-                      cursor: "pointer",
-                      transition: "background 0.1s",
-                      "&:hover": { background: t.copperFaint },
-                      "&:last-child": { borderBottom: "none" },
-                    }}
-                  >
-                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.3 }}>
-                      <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                        <Typography sx={{ fontSize: 12, fontWeight: 600, color: t.ink }}>
-                          {m.title || "Untitled"}
-                        </Typography>
-                        <Typography sx={{ fontSize: 10, color: t.ink3 }}>
-                          {m.date ? format(new Date(m.date), "MMM d, yyyy") : "Unknown date"}
-                        </Typography>
-                      </Box>
-                      {actionItems.length > 0 && (
-                        <MiniPill style={{ background: t.copperFaint, color: t.copper }}>
-                          {actionItems.length} action item{actionItems.length !== 1 ? "s" : ""}
-                        </MiniPill>
-                      )}
-                    </Box>
-                    <Typography sx={{ fontSize: 11, color: t.ink2, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                      {search ? highlight(truncated, search) : truncated}
-                    </Typography>
-                  </Box>
-                );
-              })
-            )}
+          <Box sx={{ ml: "auto", fontSize: 14, color: t.ink3, transition: "transform 0.2s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", display: "flex", alignItems: "center" }}>
+            ›
           </Box>
         </Box>
+
+        {/* ── Collapsible body ── */}
+        {isOpen && (
+          <Box sx={{ p: 2, background: t.cream }}>
+
+            {/* Search + Refresh row */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Search recordings…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: <Search sx={{ color: t.ink3, fontSize: 16, mr: 0.5 }} />,
+                  ...(search && {
+                    endAdornment: (
+                      <IconButton size="small" onClick={() => setSearch("")}>
+                        <Close sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    ),
+                  }),
+                }}
+                sx={{
+                  "& .MuiInputBase-root": { fontSize: 12, borderRadius: "8px", background: "white", height: 34 },
+                  "& .MuiOutlinedInput-notchedOutline": { borderColor: t.cream3 },
+                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: t.copperLight },
+                  "& .Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: t.copper },
+                }}
+              />
+              <Tooltip title="Refresh from Fireflies">
+                <span>
+                  <Button
+                    size="small"
+                    onClick={handleRefresh}
+                    disabled={isFetching}
+                    startIcon={isFetching ? <CircularProgress size={12} sx={{ color: t.ink3 }} /> : <Refresh sx={{ fontSize: 14 }} />}
+                    sx={{
+                      fontSize: 11, color: t.ink2, textTransform: "none",
+                      border: `1px solid ${t.cream3}`, borderRadius: "8px",
+                      height: 34, px: 1.5, whiteSpace: "nowrap",
+                      "&:hover": { background: t.cream2 },
+                    }}
+                  >
+                    Refresh
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
+
+            {/* ── Inner Fireflies card ── */}
+            <Box sx={{ border: `1px solid ${t.cream3}`, borderRadius: "8px", overflow: "hidden", background: "white" }}>
+              {/* Inner card header */}
+              <Box sx={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                px: 1.5, py: 1, background: t.cream2,
+              }}>
+                <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: t.ink3 }}>
+                  Fireflies Recordings
+                </Typography>
+                <Typography sx={{ fontSize: 10, color: t.ink3 }}>
+                  {search ? `${filteredCount} of ${totalCount}` : `${totalCount} recording${totalCount !== 1 ? "s" : ""}`}
+                </Typography>
+              </Box>
+
+              {/* Scrollable list */}
+              <Box sx={{ maxHeight: 255, overflowY: "auto" }}>
+                {listLoading ? (
+                  [0, 1, 2].map((i) => (
+                    <Box key={i} sx={{ p: 1.5, borderBottom: `1px solid ${t.cream2}` }}>
+                      <ShimmerBar $h={13} $w="40%" $mb={5} />
+                      <ShimmerBar $h={11} $w="85%" $mb={0} />
+                    </Box>
+                  ))
+                ) : meetings.length === 0 ? (
+                  <Typography sx={{ fontSize: 12, color: t.ink3, fontStyle: "italic", py: 2.5, textAlign: "center" }}>
+                    {search ? "No recordings match your search" : "No recorded meetings found for this series"}
+                  </Typography>
+                ) : (
+                  meetings.map((m) => {
+                    const detail = detailsMap[m.id]?.transcript?.summary;
+                    const actionItems = detail?.action_items
+                      ? (Array.isArray(detail.action_items) ? detail.action_items : detail.action_items.split("\n").filter(Boolean))
+                      : [];
+                    const rawSnippet = detail?.short_summary || detail?.overview || "";
+                    const snippet = rawSnippet.length > 140 ? rawSnippet.slice(0, 140) + "…" : rawSnippet;
+                    const isNew = !seedIdsRef.current.has(m.id);
+                    return (
+                      <Box
+                        key={m.id}
+                        onClick={() => setSelectedId(m.id)}
+                        sx={{
+                          px: 1.5, py: 1.25,
+                          borderBottom: `1px solid ${t.cream2}`,
+                          cursor: "pointer",
+                          transition: "background 0.1s",
+                          "&:hover": { background: t.copperFaint },
+                          "&:last-child": { borderBottom: "none" },
+                        }}
+                      >
+                        {/* Row line 1: title + date + NEW + action count */}
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: snippet ? 0.4 : 0 }}>
+                          <Typography sx={{ fontSize: 12, fontWeight: 600, color: t.ink }}>
+                            {m.title || "Untitled"}
+                          </Typography>
+                          <Typography sx={{ fontSize: 10, color: t.ink3, flexShrink: 0 }}>
+                            {m.date ? format(new Date(m.date), "MMM d, yyyy") : ""}
+                          </Typography>
+                          {isNew && (
+                            <Box component="span" sx={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase", px: 0.75, py: 0.25, borderRadius: "4px", background: "#d4edda", color: "#1a6b2e" }}>
+                              new
+                            </Box>
+                          )}
+                          {actionItems.length > 0 && (
+                            <MiniPill style={{ background: t.copperFaint, color: t.copper, marginLeft: "auto" }}>
+                              {actionItems.length} action{actionItems.length !== 1 ? "s" : ""}
+                            </MiniPill>
+                          )}
+                        </Box>
+                        {/* Row line 2: snippet */}
+                        {snippet && (
+                          <Typography sx={{ fontSize: 11, color: t.ink2, lineHeight: 1.45, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}>
+                            {search ? highlight(snippet, search) : snippet}
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })
+                )}
+              </Box>
+            </Box>
+
+          </Box>
+        )}
       </Box>
 
       {selectedId && (
-        <MeetingDetailModal
-          transcriptId={selectedId}
-          onClose={() => setSelectedId(null)}
-        />
+        <MeetingDetailModal transcriptId={selectedId} onClose={() => setSelectedId(null)} />
       )}
     </>
   );
