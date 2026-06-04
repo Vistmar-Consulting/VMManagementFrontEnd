@@ -16,7 +16,7 @@ import { Close } from "@mui/icons-material";
 import { useOrgMembers } from "../hooks/useOrgMembers.js";
 import { isClientEmail, removeOrgMember, upsertOrgMember } from "../lib/orgMembers.js";
 
-export default function OrgMembersCard({ orgSlug }) {
+export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
   const { data: members, loading, error: loadError } = useOrgMembers(orgSlug);
 
   const [name, setName] = useState("");
@@ -31,13 +31,16 @@ export default function OrgMembersCard({ orgSlug }) {
   const handleAdd = async () => {
     setAddError(null);
     const trimmedEmail = email.trim();
-    if (!isClientEmail(trimmedEmail)) {
-      setAddError("Enter a valid non-Vistamar email");
+    const emailValid = allowVMDomain
+      ? !!trimmedEmail && trimmedEmail.includes("@")
+      : isClientEmail(trimmedEmail);
+    if (!emailValid) {
+      setAddError(allowVMDomain ? "Enter a valid email" : "Enter a valid non-Vistamar email");
       return;
     }
     setBusy(true);
     try {
-      await upsertOrgMember(orgSlug, { name: name.trim(), email: trimmedEmail, source: "manual" });
+      await upsertOrgMember(orgSlug, { name: name.trim(), email: trimmedEmail, source: "manual", allowVMDomain });
       setName("");
       setEmail("");
     } catch (err) {
@@ -131,7 +134,7 @@ export default function OrgMembersCard({ orgSlug }) {
           />
           <TextField
             size="small"
-            placeholder="email@client.com"
+            placeholder={allowVMDomain ? "name@vistamarconsulting.com" : "email@client.com"}
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);

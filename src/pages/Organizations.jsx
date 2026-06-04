@@ -136,7 +136,7 @@ export default function Organizations() {
                   <Collapse in={isExpanded} unmountOnExit>
                     <Stack spacing={2} sx={{ p: 2 }}>
                       <OrgDeliverablesCard org={org} />
-                      <OrgMembersCard orgSlug={org.id} />
+                      <OrgMembersCard orgSlug={org.id} allowVMDomain={org.type === "internal"} />
                     </Stack>
                   </Collapse>
                 </Box>

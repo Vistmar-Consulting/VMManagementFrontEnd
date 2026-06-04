@@ -50,9 +50,10 @@ export function deliverablesSummary(deliverables) {
 // Upsert a client member into organizations/{slug}/members, keyed by email.
 // Merge so re-adding an existing person updates the name without clobbering
 // createdAt. No-op (returns false) for non-client / malformed emails.
-export async function upsertOrgMember(orgSlug, { name, email, source = "manual" }) {
-  if (!orgSlug || !isClientEmail(email)) return false;
+export async function upsertOrgMember(orgSlug, { name, email, source = "manual", allowVMDomain = false }) {
   const id = memberIdFromEmail(email);
+  if (!orgSlug || !id) return false;
+  if (!allowVMDomain && !isClientEmail(email)) return false;
   await setDoc(
     doc(db, "organizations", orgSlug, "members", id),
     { name: name || email, email: id, source, createdAt: serverTimestamp() },
