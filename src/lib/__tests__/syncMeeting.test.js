@@ -39,13 +39,14 @@ describe("validateProposal", () => {
     expect(r.rejectedCreates[0].reason).toMatch(/topic/i);
   });
 
-  it("rejects a create whose topic has no category to inherit", () => {
+  it("accepts a create whose topic has no category (categoryId lands null)", () => {
     const r = validateProposal({
       topics: withIds,
       boardChanges: { creates: [{ title: "NoCat", topicId: "t2", note: "" }], moves: [], notes: [] },
       existingTasks,
     });
-    expect(r.rejectedCreates.map((c) => c.title)).toEqual(["NoCat"]);
+    expect(r.rejectedCreates).toHaveLength(0);
+    expect(r.acceptedCreates.map((c) => c.title)).toEqual(["NoCat"]);
   });
 
   it("drops moves/notes referencing unknown itemIds", () => {

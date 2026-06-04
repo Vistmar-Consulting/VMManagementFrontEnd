@@ -8,10 +8,6 @@ export function mintTopicIds(topics) {
   return (topics || []).map((t, i) => ({ ...t, topicId: `t${i}` }));
 }
 
-function topicHasCategory(t) {
-  return Array.isArray(t?.categoryIds) && t.categoryIds.length > 0;
-}
-
 // Inherit the owning topic's first category + all tags (default policy).
 export function inheritKeysForCreate(create, topicsById) {
   const t = topicsById[create?.topicId];
@@ -34,7 +30,6 @@ export function validateProposal({ topics, boardChanges, existingTasks }) {
   for (const c of boardChanges?.creates || []) {
     const t = byId[c.topicId];
     if (!t) { rejectedCreates.push({ ...c, reason: "owning topic no longer in proposal" }); continue; }
-    if (!topicHasCategory(t)) { rejectedCreates.push({ ...c, reason: "owning topic has no category to inherit" }); continue; }
     acceptedCreates.push(c);
   }
 
