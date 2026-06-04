@@ -48,3 +48,18 @@ export function decideSeedAction({ fragmentHasContent, seedHtml }) {
   if (isBlankContent(seedHtml)) return "wait";
   return "seed";
 }
+
+// Settle window (ms) before the single-writer election runs. Gives latecomers
+// time to register their awareness state before the winner writes.
+export const SEED_SETTLE_MS = 50;
+
+// Returns true if this client should seed the empty room.
+// The client with the lowest clientID in the current awareness set wins.
+// yProvider.awareness.getStates() always includes the local client's own entry
+// (Yjs awareness invariant), so myClientID will normally appear in the list;
+// the empty/undefined fallback is defensive only.
+// Safe for ≤20 concurrent users — Math.min spread is fine at this scale.
+export function isElectedSeeder(myClientID, awarenessClientIDs) {
+  if (!awarenessClientIDs || awarenessClientIDs.length === 0) return true;
+  return myClientID === Math.min(...awarenessClientIDs);
+}

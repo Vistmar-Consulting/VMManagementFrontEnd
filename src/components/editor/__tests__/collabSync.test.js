@@ -6,6 +6,8 @@ import {
   isBlankContent,
   fragmentHasRealContent,
   decideSeedAction,
+  SEED_SETTLE_MS,
+  isElectedSeeder,
 } from "../collabSync.js";
 
 // y-prosemirror tags transactions it applies from a REMOTE Yjs update with
@@ -90,5 +92,36 @@ describe("decideSeedAction", () => {
   });
   it("seeds when the fragment is blank but Firestore has content", () => {
     expect(decideSeedAction({ fragmentHasContent: false, seedHtml: "<p>real</p>" })).toBe("seed");
+  });
+});
+
+describe("SEED_SETTLE_MS", () => {
+  it("is a positive number", () => {
+    expect(typeof SEED_SETTLE_MS).toBe("number");
+    expect(SEED_SETTLE_MS).toBeGreaterThan(0);
+  });
+});
+
+describe("isElectedSeeder", () => {
+  it("sole client — empty array → seeds (defensive fallback)", () => {
+    expect(isElectedSeeder(5, [])).toBe(true);
+  });
+  it("sole client — undefined → seeds (defensive fallback)", () => {
+    expect(isElectedSeeder(5, undefined)).toBe(true);
+  });
+  it("self is minimum in a group → seeds", () => {
+    expect(isElectedSeeder(3, [3, 7, 12])).toBe(true);
+  });
+  it("self is not minimum → does not seed", () => {
+    expect(isElectedSeeder(7, [3, 7, 12])).toBe(false);
+  });
+  it("two clients — self is lower → seeds", () => {
+    expect(isElectedSeeder(2, [2, 9])).toBe(true);
+  });
+  it("two clients — self is higher → does not seed", () => {
+    expect(isElectedSeeder(9, [2, 9])).toBe(false);
+  });
+  it("only self in awareness (normal solo case) → seeds", () => {
+    expect(isElectedSeeder(5, [5])).toBe(true);
   });
 });
