@@ -68,19 +68,19 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
     [working]
   );
 
+  // Vistamar team dropdown — always sourced from organizations/vistamar/members
+  // so the roster matches what Settings > Organizations shows.
+  const { data: vmOrgMembers } = useOrgMembers("vistamar");
   const internalChoices = useMemo(() => {
-    return (users || [])
-      .filter((u) => u.email && !workingEmails.has(u.email.toLowerCase()))
-      .map((u) => ({
-        email: u.email,
-        name: u.displayName || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email,
-      }));
-  }, [users, workingEmails]);
+    return (vmOrgMembers || [])
+      .filter((m) => m.email && !workingEmails.has(m.email.toLowerCase()))
+      .map((m) => ({ email: m.email, name: m.name || m.email }));
+  }, [vmOrgMembers, workingEmails]);
 
-  // Per-org client directory (organizations/{orgSlug}/members). Pass null for
-  // the master agenda so it stays empty (useOrgMembers(null) short-circuits).
-  // Same dedup against the current attendee roster as the Vistamar dropdown.
-  const { data: orgMembers } = useOrgMembers(isMaster ? null : orgSlug);
+  // Per-org client directory. Skip for master agendas, Vistamar-org meetings
+  // (no external clients), and when there's no org at all.
+  const showClientSection = !isMaster && !!orgSlug && orgSlug !== "vistamar";
+  const { data: orgMembers } = useOrgMembers(showClientSection ? orgSlug : null);
   const clientOptions = useMemo(() => {
     return (orgMembers || [])
       .filter((m) => m.email && !workingEmails.has(m.email.toLowerCase()))
@@ -240,35 +240,36 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
             </Stack>
           </Box>
 
-          {/* Add client — autocomplete from the org's member directory */}
-          <Box>
-            <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#6b6b8a", mb: 0.5 }}>
-              Add client attendee
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Autocomplete
-                size="small"
-                fullWidth
-                value={clientPick}
-                onChange={(_, v) => setClientPick(v)}
-                options={clientOptions}
-                getOptionLabel={(o) => o.name || o.email}
-                isOptionEqualToValue={(a, b) => a.email === b.email}
-                disabled={!orgSlug || isMaster}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Add client attendee…" size="small" />
-                )}
-              />
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={handleAddClient}
-                disabled={!clientPick}
-              >
-                Add
-              </Button>
-            </Stack>
-          </Box>
+          {/* Add client — only for client-org meetings (not Vistamar internal) */}
+          {showClientSection && (
+            <Box>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#6b6b8a", mb: 0.5 }}>
+                Add client attendee
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <Autocomplete
+                  size="small"
+                  fullWidth
+                  value={clientPick}
+                  onChange={(_, v) => setClientPick(v)}
+                  options={clientOptions}
+                  getOptionLabel={(o) => o.name || o.email}
+                  isOptionEqualToValue={(a, b) => a.email === b.email}
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Add client attendee…" size="small" />
+                  )}
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleAddClient}
+                  disabled={!clientPick}
+                >
+                  Add
+                </Button>
+              </Stack>
+            </Box>
+          )}
 
           {/* Add external — free-text email + name */}
           <Box>
