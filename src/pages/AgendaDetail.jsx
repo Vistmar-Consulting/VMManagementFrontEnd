@@ -87,6 +87,7 @@ import { CollabFlushRegistryProvider, useCollabFlushRegistry } from "../componen
 import CollabBodyEditor from "../components/editor/CollabBodyEditor.jsx";
 import AgendaPresence from "../components/AgendaPresence.jsx";
 import SharedEditorToolbar from "../components/editor/SharedEditorToolbar.jsx";
+import AgendaTOC from "../components/AgendaTOC.jsx";
 import { GripVertical, Trash2 } from "lucide-react";
 import { t } from "../theme/tokens.js";
 
@@ -1799,6 +1800,7 @@ export default function AgendaDetail() {
             >
               <SharedEditorToolbar />
               <Box sx={{ px: 4, pt: 2, pb: 3 }}>
+                <AgendaTOC topics={topics} isMaster={isMaster} orgById={orgById} />
                 <DragDropContext onDragEnd={handleTopicDragEnd}>
                   <Droppable droppableId="overview-topics">
                     {(droppableProvided) => (
