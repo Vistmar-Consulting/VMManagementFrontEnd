@@ -11,10 +11,10 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close } from "@mui/icons-material";
+import { Close, EditOutlined } from "@mui/icons-material";
 
 import { useOrgMembers } from "../hooks/useOrgMembers.js";
-import { isClientEmail, removeOrgMember, upsertOrgMember } from "../lib/orgMembers.js";
+import { isClientEmail, memberIdFromEmail, removeOrgMember, upsertOrgMember } from "../lib/orgMembers.js";
 
 export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
   const { data: members, loading, error: loadError } = useOrgMembers(orgSlug);
@@ -23,6 +23,13 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [addError, setAddError] = useState(null);
+
+  // Inline edit state — only one row editable at a time.
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState(null);
 
   const sorted = [...(members || [])].sort((a, b) =>
     (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase())
@@ -55,6 +62,44 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
       await removeOrgMember(orgSlug, memberId);
     } catch (err) {
       setAddError(err.message || "Remove failed");
+    }
+  };
+
+  const startEdit = (member) => {
+    setEditingId(member.id);
+    setEditName(member.name || "");
+    setEditEmail(member.email || "");
+    setEditError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async (member) => {
+    setEditError(null);
+    const trimmedEmail = editEmail.trim();
+    const emailValid = allowVMDomain
+      ? !!trimmedEmail && trimmedEmail.includes("@")
+      : isClientEmail(trimmedEmail);
+    if (!emailValid) {
+      setEditError(allowVMDomain ? "Enter a valid email" : "Enter a valid non-Vistamar email");
+      return;
+    }
+    setEditBusy(true);
+    try {
+      const newId = memberIdFromEmail(trimmedEmail);
+      if (newId !== member.id) {
+        // Email changed — delete old doc, create new one.
+        await removeOrgMember(orgSlug, member.id);
+      }
+      await upsertOrgMember(orgSlug, { name: editName.trim(), email: trimmedEmail, source: member.source || "manual", allowVMDomain });
+      setEditingId(null);
+    } catch (err) {
+      setEditError(err.message || "Save failed");
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -93,32 +138,60 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
                 No members yet — added automatically when you schedule meetings, or add one above.
               </Typography>
             ) : (
-              sorted.map((member) => (
-                <Box
-                  key={member.id}
-                  sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.4 }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>
-                      {member.name || member.email}
-                    </Typography>
-                    {member.name && (
-                      <Typography
-                        sx={{ fontSize: 12, color: "text.secondary", lineHeight: 1.3 }}
-                      >
-                        {member.email}
-                      </Typography>
-                    )}
+              sorted.map((member) =>
+                editingId === member.id ? (
+                  <Box key={member.id} sx={{ display: "flex", flexDirection: "column", gap: 0.75, py: 0.5 }}>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        size="small"
+                        placeholder="Name"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        disabled={editBusy}
+                        sx={{ flex: 1 }}
+                        autoFocus
+                      />
+                      <TextField
+                        size="small"
+                        placeholder="Email"
+                        value={editEmail}
+                        onChange={(e) => { setEditEmail(e.target.value); if (editError) setEditError(null); }}
+                        disabled={editBusy}
+                        sx={{ flex: 1 }}
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="contained" onClick={() => handleSaveEdit(member)} disabled={editBusy || !editEmail.trim()}>
+                        {editBusy ? "Saving…" : "Save"}
+                      </Button>
+                      <Button size="small" onClick={cancelEdit} disabled={editBusy}>Cancel</Button>
+                    </Stack>
+                    {editError && <Alert severity="error" sx={{ py: 0 }}>{editError}</Alert>}
                   </Box>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleRemove(member.id)}
-                    aria-label={`Remove ${member.name || member.email}`}
+                ) : (
+                  <Box
+                    key={member.id}
+                    sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.4 }}
                   >
-                    <Close sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Box>
-              ))
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>
+                        {member.name || member.email}
+                      </Typography>
+                      {member.name && (
+                        <Typography sx={{ fontSize: 12, color: "text.secondary", lineHeight: 1.3 }}>
+                          {member.email}
+                        </Typography>
+                      )}
+                    </Box>
+                    <IconButton size="small" onClick={() => startEdit(member)} aria-label={`Edit ${member.name || member.email}`}>
+                      <EditOutlined sx={{ fontSize: 16 }} />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => handleRemove(member.id)} aria-label={`Remove ${member.name || member.email}`}>
+                      <Close sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Box>
+                )
+              )
             )}
           </Box>
         )}
