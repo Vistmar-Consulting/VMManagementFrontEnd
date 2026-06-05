@@ -115,6 +115,32 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260605-Andrew-v0.3.6-favicon",
+      "developer": "Andrew",
+      "date": "2026-06-05",
+      "date_closed": "2026-06-05",
+      "version_start": "v0.3.6",
+      "version_end": "v0.3.6",
+      "commit_start": "2260db1",
+      "commit_end": "77435ba",
+      "summary": "Favicon (backlog #11): designed 10 options in a live browser picker (localhost:8765) using brand colors extracted from vistamarconsulting.com; Andy selected Wave V (#2) — teal #1b6e9a rounded square, orange #f29248 V-chevron, subtle white wave. public/favicon.svg created, index.html updated. Also verified + pushed the Teams Join Meeting button fix from parallel session (v0.3.5, commit 77435ba). Brain-dump backlog #3 and #11 closed.",
+      "folder": "dev/sessions/v0_3_6_Andrew_FAVICON/",
+      "status": "closed"
+    },
+    {
+      "session_id": "SES-20260605-Andrew-v0.3.7-sync-subitems",
+      "developer": "Andrew",
+      "date": "2026-06-05",
+      "date_closed": "2026-06-05",
+      "version_start": "v0.3.7",
+      "version_end": "v0.3.7",
+      "commit_start": "335233b",
+      "commit_end": "6624fae",
+      "summary": "Sync Meeting subitem creation (end-to-end). AI-proposed creates can now nest one level under existing board items or other creates in the same run. parentRef string convention: '' = top-level, '{itemId}' = existing parent, 'new:N' = 0-based index into the run's creates array. validateProposal gained 4 rules + second-pass forward-ref cleanup (24 tests, TDD). applyUnified: pre-allocated doc refs (retry-idempotent), parentRef→parentId resolution, hasChildren:true on intra-run + existing parents, pre-apply guard for unchecked 'new:N' parents (caught by final code review). Review modal: Parent display line, Parent dropdown, pl:3 indent, updated header. Also shipped: assignee auto-fill from note text, Status default to AI Gen, editable title+description in modal. Deployed prod 6624fae.",
+      "folder": "dev/sessions/v0_3_5_Andrew_SYNC_SUBITEMS/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260602-Andrew-v0.3.1-backlog",
       "developer": "Andrew",
       "date": "2026-06-02",
