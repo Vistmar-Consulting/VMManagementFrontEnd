@@ -102,6 +102,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260605-Andrew-v0.3.5-deliverables",
+      "developer": "Andrew",
+      "date": "2026-06-05",
+      "date_closed": "2026-06-05",
+      "version_start": "v0.3.5",
+      "version_end": "v0.3.5",
+      "commit_start": "77435ba",
+      "commit_end": "77435ba",
+      "summary": "Two items from backlog: (1) Teams Join Meeting button fix — button was Working-view-only (inside ActionBar ternary); fixed by adding to AgendaHero so it shows in Overview (default view). (2) Client content deliverables seeded to Firestore for Unio/BMD/GV/IDCare via agent-browser eval; sourced from Switchboard SOPs. All four orgs now show contracted monthly content obligations in Settings → Organizations.",
+      "folder": "dev/sessions/v0_3_5_Andrew_DELIVERABLES/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260602-Andrew-v0.3.1-backlog",
       "developer": "Andrew",
       "date": "2026-06-02",
