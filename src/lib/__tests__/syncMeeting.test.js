@@ -79,6 +79,121 @@ describe("validateProposal", () => {
   });
 });
 
+describe("validateProposal — parentRef", () => {
+  const existingTasks = [
+    { id: "item-A", title: "Existing top-level" },
+    { id: "item-B", title: "Another existing" },
+  ];
+  const withIds = mintTopicIds([{ name: "Topic", categoryIds: ["web"], tagIds: [] }]);
+
+  function mkCreate(title, parentRef = "") {
+    return { title, topicId: "t0", note: "", ...(parentRef ? { parentRef } : {}) };
+  }
+
+  it("accepts a create with no parentRef (top-level)", () => {
+    const r = validateProposal({
+      topics: withIds,
+      boardChanges: { creates: [mkCreate("Task A")], moves: [], notes: [] },
+      existingTasks,
+    });
+    expect(r.rejectedCreates).toHaveLength(0);
+    expect(r.acceptedCreates).toHaveLength(1);
+  });
+
+  it("accepts a create whose parentRef is an existing board item", () => {
+    const r = validateProposal({
+      topics: withIds,
+      boardChanges: { creates: [mkCreate("Sub", "item-A")], moves: [], notes: [] },
+      existingTasks,
+    });
+    expect(r.rejectedCreates).toHaveLength(0);
+    expect(r.acceptedCreates).toHaveLength(1);
+  });
+
+  it("rejects a create whose parentRef itemId is not on the board", () => {
+    const r = validateProposal({
+      topics: withIds,
+      boardChanges: { creates: [mkCreate("Sub", "item-ghost")], moves: [], notes: [] },
+      existingTasks,
+    });
+    expect(r.rejectedCreates).toHaveLength(1);
+    expect(r.rejectedCreates[0].reason).toMatch(/parentRef itemId not found/i);
+  });
+
+  it("accepts a create with parentRef new:0 pointing to a valid top-level create", () => {
+    const r = validateProposal({
+      topics: withIds,
+      boardChanges: {
+        creates: [mkCreate("Parent task"), mkCreate("Child task", "new:0")],
+        moves: [], notes: [],
+      },
+      existingTasks,
+    });
+    expect(r.rejectedCreates).toHaveLength(0);
+    expect(r.acceptedCreates).toHaveLength(2);
+  });
+
+  it("rejects parentRef new:N when N is out of range", () => {
+    const r = validateProposal({
+      topics: withIds,
+      boardChanges: { creates: [mkCreate("Only", "new:5")], moves: [], notes: [] },
+      existingTasks,
+    });
+    expect(r.rejectedCreates).toHaveLength(1);
+    expect(r.rejectedCreates[0].reason).toMatch(/out of range/i);
+  });
+
+  it("rejects parentRef self-reference (new:N where N = own index)", () => {
+    const r = validateProposal({
+      topics: withIds,
+      boardChanges: { creates: [mkCreate("Self", "new:0")], moves: [], notes: [] },
+      existingTasks,
+    });
+    expect(r.rejectedCreates).toHaveLength(1);
+    expect(r.rejectedCreates[0].reason).toMatch(/self-reference/i);
+  });
+
+  it("rejects parentRef that would exceed single nesting depth", () => {
+    // creates[1] has parentRef "new:0", so creates[2] cannot use "new:1"
+    const r = validateProposal({
+      topics: withIds,
+      boardChanges: {
+        creates: [
+          mkCreate("Top"),
+          mkCreate("Mid", "new:0"),
+          mkCreate("Bottom", "new:1"),   // parent (creates[1]) has a parentRef → reject
+        ],
+        moves: [], notes: [],
+      },
+      existingTasks,
+    });
+    expect(r.rejectedCreates).toHaveLength(1);
+    expect(r.rejectedCreates[0].title).toBe("Bottom");
+    expect(r.rejectedCreates[0].reason).toMatch(/nesting depth/i);
+  });
+
+  it("second-pass rejects a subitem whose intra-run parent was itself rejected (forward ref)", () => {
+    // creates[0] references creates[1] as parent (forward ref)
+    // creates[1] has an invalid topicId → rejected in main pass
+    // creates[0] should be rejected in second pass
+    const r = validateProposal({
+      topics: withIds,
+      boardChanges: {
+        creates: [
+          mkCreate("Child forward", "new:1"),   // forward ref to creates[1]
+          { title: "Parent bad topic", topicId: "t-gone", note: "" },  // will be rejected (bad topicId)
+        ],
+        moves: [], notes: [],
+      },
+      existingTasks,
+    });
+    // creates[1] rejected (bad topic), creates[0] rejected (target rejected)
+    expect(r.rejectedCreates).toHaveLength(2);
+    const childRejection = r.rejectedCreates.find((c) => c.title === "Child forward");
+    expect(childRejection?.reason).toMatch(/target was rejected/i);
+  });
+});
+
 describe("inheritKeysForCreate", () => {
   it("inherits the owning topic's first category and all tags", () => {
     const withIds = mintTopicIds(topics);
