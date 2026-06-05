@@ -521,6 +521,28 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     }
   });
 
+  // Guard: reject any accepted create whose "new:N" parent wasn't accepted or is
+  // itself a subitem. validateProposal's backstop re-runs on a compacted array
+  // where N no longer matches original proposal indices, producing misleading errors.
+  // This guard catches the gap with a clear, actionable message.
+  for (const { create } of acceptedCreates) {
+    const ref = create.parentRef || "";
+    if (ref.startsWith("new:")) {
+      const n = parseInt(ref.slice(4), 10);
+      const parentEntry = acceptedCreates.find((x) => x.idx === n);
+      if (!parentEntry) {
+        throw new Error(
+          `Task "${create.title}" is marked as a subitem but its parent task was not selected. Uncheck it or choose a different parent.`
+        );
+      }
+      if (parentEntry.create.parentRef) {
+        throw new Error(
+          `Task "${create.title}" cannot be a subitem of "${parentEntry.create.title}" because that task is itself a subitem. Only one level of nesting is allowed.`
+        );
+      }
+    }
+  }
+
   await runTransaction(db, async (tx) => {
     // ---- READS PHASE (all tx.get before any write) ----
     const orgRefs = new Map(distinctOrgs.map((o) => [o, doc(db, "organizations", o)]));
