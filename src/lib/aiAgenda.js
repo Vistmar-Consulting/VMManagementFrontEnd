@@ -506,6 +506,21 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
   let notedCount = 0;
   let newTagCount = 0;
 
+  // Pre-allocate item doc refs so "new:N" forward-references resolve to a real
+  // Firestore ID before the target create is written inside the transaction.
+  const createDocRefs = acceptedCreates.map(() => doc(collection(db, "items")));
+
+  // Which accepted positions will become parents of another accepted create?
+  const parentCreateIdxs = new Set();
+  acceptedCreates.forEach(({ create }, pos) => {
+    const ref = create.parentRef || "";
+    if (ref.startsWith("new:")) {
+      const n = parseInt(ref.slice(4), 10);
+      const targetPos = acceptedCreates.findIndex((x) => x.idx === n);
+      if (targetPos >= 0) parentCreateIdxs.add(targetPos);
+    }
+  });
+
   await runTransaction(db, async (tx) => {
     // ---- READS PHASE (all tx.get before any write) ----
     const orgRefs = new Map(distinctOrgs.map((o) => [o, doc(db, "organizations", o)]));
@@ -570,7 +585,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       orgNum.set(o, snap.data()?.nextItemNumber ?? 1);
     }
     let order = null;
-    acceptedCreates.forEach(({ idx, create }) => {
+    acceptedCreates.forEach(({ idx, create }, pos) => {
       const org = orgOfCreate(create);
       const promo = promotions[idx];
       const statusId = promo?.statusId ?? AI_GEN_STATUS;
@@ -578,11 +593,22 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       const { categoryId, tagIds } = inheritKeysForCreate(create, topicsById);
       let num = orgNum.get(org) ?? 1;
       order = generateKeyBetween(order, null);
-      const ref = doc(collection(db, "items"));
-      tx.set(ref, {
+
+      // Resolve parentRef → parentId
+      const rawRef = create.parentRef || "";
+      let parentId = null;
+      if (rawRef.startsWith("new:")) {
+        const n = parseInt(rawRef.slice(4), 10);
+        const targetPos = acceptedCreates.findIndex((x) => x.idx === n);
+        if (targetPos >= 0) parentId = createDocRefs[targetPos].id;
+      } else if (rawRef) {
+        parentId = rawRef;
+      }
+
+      tx.set(createDocRefs[pos], {
         organizationId: org,
-        parentId: null,
-        hasChildren: false,
+        parentId,
+        hasChildren: parentCreateIdxs.has(pos),
         type: "task",
         title: String(create.title || ""),
         description: String(create.note || ""),
@@ -601,6 +627,16 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
         order,
       });
       orgNum.set(org, num + 1);
+    });
+
+    // Mark existing board items as parents when new subitems were accepted under them.
+    const existingParentIds = new Set(
+      acceptedCreates
+        .map(({ create }) => create.parentRef || "")
+        .filter((ref) => ref && !ref.startsWith("new:"))
+    );
+    existingParentIds.forEach((id) => {
+      tx.update(doc(db, "items", id), { hasChildren: true, updatedAt: serverTimestamp() });
     });
 
     // Accepted moves → status change.
