@@ -67,9 +67,10 @@ function buildSchema(master) {
               type: "object",
               additionalProperties: false,
               properties: {
-                title: { type: "string" },
+                title:      { type: "string" },
                 topicIndex: { type: "integer" },
-                note: { type: "string" },
+                note:       { type: "string" },
+                parentRef:  { type: "string" },   // optional — "" or omitted = top-level
               },
               required: ["title", "topicIndex", "note"],
             },
@@ -201,6 +202,11 @@ ${boardScope}### boardChanges.creates — NEW tasks
 - Propose ONLY work that genuinely surfaced in the record and is NOT already on the board (don't duplicate existing tasks).
 - Each create: a concrete action-oriented title; a one-line note citing the source (meeting/date) + naming the owner/contact (use the SOPs — e.g. Bill = website, Cedric = technical).
 - CRITICAL: For each new task in boardChanges.creates, set \`topicIndex\` to the 0-based index (in the \`topics\` array) of the topic it belongs under. The task will INHERIT that topic's category and tags — do NOT assign categories/tags to tasks yourself. Every create must reference a real topic index.
+- OPTIONAL: set \`parentRef\` when this task is a subitem.
+  - Nest under an **existing** board item: set \`parentRef\` to that item's \`itemId\` (from the task list below).
+  - Nest under a **newly proposed** task in this run: set \`parentRef\` to \`"new:N"\` where N is the 0-based index of the parent create in this \`creates\` array (e.g. \`"new:0"\` nests under the first proposed task).
+  - One level deep only — never set \`parentRef\` on a task whose intended parent itself has a \`parentRef\`.
+  - Leave \`parentRef\` empty or omit for top-level tasks.
 
 ### boardChanges.moves — STATUS MOVES on EXISTING tasks
 - When the record clearly indicates an existing task progressed, propose a move. Set itemId (exact, from the existing list), title (copy the existing title), toStatus (one of: Assigned, In Progress, Review, Done, Pending), and a one-line reason citing the source.
