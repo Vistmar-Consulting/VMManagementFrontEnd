@@ -54,20 +54,36 @@ Add a chevron toggle to the sidebar header. Clicking it collapses the sidebar to
 ### State
 ```js
 const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-const [collapsed, setCollapsed] = useLocalStorage('vm-sidebar-collapsed', isMobile);
+// Compute the seed once at mount via useRef — avoids a localStorage read on
+// every render and bypasses the timing race where useLocalStorage's internal
+// useEffect may fire before useMediaQuery resolves on mobile.
+const defaultCollapsed = useRef(
+  (() => {
+    const stored = localStorage.getItem('vm-sidebar-collapsed');
+    return stored === null ? isMobile : JSON.parse(stored);
+  })()
+);
+const [collapsed, setCollapsed] = useLocalStorage(
+  'vm-sidebar-collapsed',
+  defaultCollapsed.current
+);
 ```
-`useLocalStorage` from `@uidotdev/usehooks` (already used in TaskBoard + Calendar). The `isMobile` default only applies when no stored value exists.
+`useLocalStorage` from `@uidotdev/usehooks` (already used in TaskBoard + Calendar). `useRef` + IIFE ensures `localStorage` is read exactly once at mount; on all subsequent renders `useLocalStorage` uses the already-persisted value and the ref is ignored.
+
+**Imports to add:** `useRef` from `react`; `useMediaQuery` and `useTheme` from `@mui/material` (neither is currently used in `Sidebar.jsx` — must be added explicitly).
 
 ### Width + overflow
 ```js
 sx={{
   width: collapsed ? theme.sidebar.collapsedWidth : theme.sidebar.width,
+  // overflow: hidden clips label text during the collapse transition.
+  // NOTE: a box-shadow on this element would also be clipped; use
+  // filter: drop-shadow() instead if a shadow is ever added.
   overflow: 'hidden',
   transition: 'width 0.2s ease',
   ...
 }}
 ```
-`overflow: hidden` clips label text during the slide transition.
 
 ### Header
 - Expanded: `Stack direction="row" justifyContent="space-between"` — brand text on left, `ChevronLeft` on right.
@@ -78,8 +94,8 @@ sx={{
 - `ListItemText` wrapped in a `Collapse` or simply conditionally rendered based on `collapsed`.
 
 ### Settings group
-- When collapsed: `ListItemText` hidden, chevron indicator hidden. Clicking the Settings `ListItemButton` expands the sidebar (calls `setCollapsed(false)`) rather than toggling the settings children.
-- When expanded: existing behavior unchanged.
+- When collapsed: `ListItemText` hidden, chevron indicator hidden. Clicking the Settings `ListItemButton` must set **both** `setCollapsed(false)` AND `setSettingsOpen(true)` — so the sidebar expands and the Settings children are immediately visible. (If only `setCollapsed(false)` is called and `settingsOpen` was `false`, the user sees an expanded sidebar with a closed Settings group and has to click again.)
+- When expanded: existing toggle behavior unchanged (`setSettingsOpen(o => !o)`).
 
 ### Settings children
 - `<Collapse in={settingsOpen && !collapsed}>` — children only show when both settings is open AND sidebar is expanded.
