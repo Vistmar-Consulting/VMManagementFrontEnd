@@ -228,6 +228,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   // Only offer the create (mint-new-event) flow for genuinely unbound agendas —
   // never for a bound one, or we'd mint a duplicate event.
   const canScheduleCreate = !isBound;
+  const teamsUrl = agenda?.teamsUrl || calendarSeries?.teamsUrl || null;
 
   useEffect(() => {
     setTitleDraft(agenda?.title || "");
@@ -337,6 +338,35 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
               meeting schedule (date/time), not the recurrence cadence. */}
         </Box>
       </Tooltip>
+
+      {teamsUrl && (
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 1.25 }}>
+          <Box
+            component="a"
+            href={teamsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.75,
+              px: 1.5,
+              py: 0.6,
+              borderRadius: 1,
+              border: "1px solid #e0e0f0",
+              color: "#5059C9",
+              fontSize: 13,
+              fontWeight: 600,
+              textDecoration: "none",
+              transition: "background 0.15s, border-color 0.15s",
+              "&:hover": { background: "#f3f4fb", borderColor: "#5059C9" },
+            }}
+          >
+            <TeamsLogo size={16} />
+            Join Meeting
+          </Box>
+        </Box>
+      )}
 
       {/* View toggle sits under the schedule — title → schedule → toggle forms a
           centered column of the meeting's interactive controls. */}
