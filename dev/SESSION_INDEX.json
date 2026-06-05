@@ -70,8 +70,8 @@
       "commit_start": "8080f4f",
       "date_closed": "2026-06-04",
       "version_end": "v0.3.2",
-      "commit_end": "949d2e2",
-      "summary": "Backlog #4: Pre-Brief deprecated everywhere (client render/export/versions + AI client + 3 AI serverless fns; data dormant). Live clickable Agenda TOC shipped: pure buildTocEntries (master-aware, 8 tests), AgendaTOC component, scroll anchors (ANCHOR_SCROLL_MT=56). All 7 plan tasks committed, 64 tests green, deployed prod jql2wuwu0. Two-profile cross-user reactivity deferred to manual (Firestore onSnapshot, not Yjs). Also fixed Fireflies stale cache bug (aa7ed8a): PastMeetingsCard `enabled:!hasCachedList` permanently disabled the query; FirefliesMeetings `staleTime:Infinity` never auto-refreshed — both now use 30-min TTL via initialDataUpdatedAt.",
+      "commit_end": "4a14839",
+      "summary": "Backlog #4: Pre-Brief deprecated everywhere (client render/export/versions + AI client + 3 AI serverless fns; data dormant). Live clickable Agenda TOC shipped: pure buildTocEntries (master-aware, 8 tests), AgendaTOC component, scroll anchors (ANCHOR_SCROLL_MT=56). All 7 plan tasks committed, 64 tests green, deployed prod jql2wuwu0. Two-profile cross-user reactivity deferred to manual. Post-close: fixed Fireflies stale cache (30-min TTL, initialDataUpdatedAt); Past Meetings redesign (collapsible white card, Refresh button, rich rows, NEW badge — aa7ed8a+dd581ee+c2d7736+b783f31, fixes Terser blank-agenda production incident); fixed Sync Meeting Vistamar transcript classification (Hugo/Scot non-VM emails in Fireflies, vistamarTitleSet fallback) and label bug (5a390de+4a14839). Deployed Vercel index-Cv650NrC.js. Deferred: Sync Meeting assignee pre-fill (inferAssigneeIds exists, not wired to initial promotions state).",
       "folder": "dev/sessions/v0_3_2_Andrew_TOC/",
       "status": "closed"
     },

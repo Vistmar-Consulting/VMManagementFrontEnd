@@ -64,7 +64,7 @@ Backlog item #4: Deprecate Pre-Brief entirely and replace with a live, clickable
 
 ## Deferred
 
-*(nothing from plan; cross-user collab verification deferred to prod)*
+- **Sync Meeting assignee pre-fill** — `inferAssigneeIds` function already exists in SyncMeetingDialog.jsx (parses "Owner: X" / "Action item for X" from create notes) but is not yet wired to the initial `promotions` state. When creates arrive, initial promotions should call `inferAssigneeIds(create.note, users)` and seed `assigneeIds` so the dropdown is pre-filled. Andy wants this done.
 
 ---
 
@@ -90,6 +90,34 @@ Backlog item #4: Deprecate Pre-Brief entirely and replace with a live, clickable
 - Cross-user collab reactivity (Firestore onSnapshot) deferred — Andy verified prod visually
 
 **Status:** CLOSED. Next: pick next backlog item (collab single-writer seed guard is 🔴 HIGH).
+
+---
+
+## ════ POST-CLOSE ADDENDUM — 2026-06-04/05 ════
+
+Additional work completed in the same dev session after the TOC close. All deployed to `origin/dev` → Vercel (`index-Cv650NrC.js`).
+
+**Production incident — blank agendas:**
+- `aa7ed8a` — fix(fireflies): replace stale-forever localStorage cache with 30-min TTL  
+  Root cause of incident: `PastMeetingsCard` had `enabled:!hasCachedList` (query permanently disabled when cache existed) and `FirefliesMeetings` had `staleTime:Infinity`. Both fixed with `initialDataUpdatedAt` + 30-min TTL.
+- The TTL fix introduced `const count = meetings?.length || 0` alias. Terser stripped the declaration while keeping the JSX reference → `ReferenceError: count is not defined` → blank agenda pages for all users. Fixed by the Past Meetings redesign which removed the alias entirely.
+
+**Past Meetings redesign (spec + plan + implementation):**
+- `6b8035d` — docs(spec): Past Meetings collapsible card redesign
+- `661402d` — docs(plan): Past Meetings collapsible card implementation plan
+- `dd581ee` — refactor: wire isOpen/seedIdsRef/refetch/handleRefresh, drop titleFilter
+- `99d288a` — fix: rename map param `tr` to avoid theme token shadow
+- `c2d7736` — feat: collapsible white card, Refresh button, rich rows (detailsMap snippets), NEW badge
+- `b783f31` — fix: keyboard a11y on header toggle, title overflow ellipsis
+
+**Sync Meeting fixes:**
+- `5a390de` — fix(sync-meeting): "N client" label changed to "N Vistamar" for internal-org syncs  
+  Root cause: `orgCount` transcripts for a Vistamar meeting are "this-org", not "vistamar-internal"; status display was mislabeled. Added `internal` flag to summary object.
+- `4a14839` — fix(ai): Vistamar-mapped Fireflies titles classified as internal regardless of attendee emails  
+  Root cause: Hugo/Scot may have non-@vistamarconsulting.com accounts in Fireflies; "all VM" Rule 2 failed → `cls=null` → 0 Vistamar internal for client syncs. Now loads all Vistamar agendas' `firefliesTitles` at sync time and uses as fallback classifier.
+
+**Deferred to next session:**
+- Sync Meeting assignee pre-fill: `inferAssigneeIds` exists in SyncMeetingDialog but not wired to initial `promotions` state (see Deferred section above).
 
 ---
 
