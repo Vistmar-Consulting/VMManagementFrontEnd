@@ -104,6 +104,18 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
   const listData = await firefliesQuery(GQL_MEETING_LIST, { limit: 50, skip: 0 });
   const list = listData?.transcripts || [];
 
+  // Vistamar-internal title set: any Fireflies title explicitly mapped to a
+  // Vistamar agenda is treated as Vistamar-internal regardless of attendee
+  // emails (Hugo/Scot may use non-@vistamarconsulting.com accounts in Fireflies).
+  const vmAgendasSnap = await getDocs(
+    query(collection(db, "agendas"), where("organizationId", "==", "vistamar"))
+  );
+  const vistamarTitleSet = new Set(
+    vmAgendasSnap.docs.flatMap((d) =>
+      (d.data().firefliesTitles || []).map((s) => (s || "").toLowerCase().trim())
+    ).filter(Boolean)
+  );
+
   // Transcript window = the MEETING CYCLE being prepared — from this meeting's
   // PREVIOUS occurrence to its UPCOMING one — with a ±1 day buffer on each end
   // so a transcript timestamped at the meeting boundary (time-of-day / timezone
@@ -152,8 +164,10 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
   for (const t of list) {
     const d = toMs(t.date);
     if (d <= 0 || d < windowStart || d > windowEnd) continue;
-    const mapped = titleSet.has((t.title || "").toLowerCase().trim());
-    const cls = resolveOrgFromAttendees(t.meeting_attendees);
+    const titleLc = (t.title || "").toLowerCase().trim();
+    const mapped = titleSet.has(titleLc);
+    const isVistamarTitle = vistamarTitleSet.has(titleLc);
+    const cls = resolveOrgFromAttendees(t.meeting_attendees) || (isVistamarTitle ? "vistamar" : null);
     if (master) {
       if (!cls) continue;
       included.push({ ...t, _ms: d, org: cls, scope: cls === "vistamar" ? "vistamar-internal" : "this-org" });
