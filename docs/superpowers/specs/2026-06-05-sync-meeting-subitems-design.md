@@ -10,7 +10,7 @@ Sync Meeting's AI pass can currently only propose top-level board items (`parent
 ## Scope & Constraints
 
 - **Single depth only.** A subitem may nest under a top-level item. A subitem may not itself be a parent. Enforced in the prompt, validation, and apply.
-- **Existing parents:** any top-level item already on the board (from `existingTasks`).
+- **Existing parents:** any top-level item already on the board (from `existingTasks`). The `existingTasks` list already filters `!it.parentId`, so any `parentRef` pointing to a subitem's Firestore ID will fail the `knownItemIds` check and be rejected — the `!it.parentId` filter implicitly enforces this.
 - **Intra-run parents:** any create proposed in the same run that has no `parentRef` of its own.
 - No changes to moves or notes — those continue to target top-level items only.
 - No changes to the Firestore data model — `parentId` and `hasChildren` already exist on `items`.
@@ -63,31 +63,35 @@ OR of another task being proposed in this same run.
 
 ### Pre-transaction: allocate doc refs up front
 
-Before entering the Firestore transaction, allocate all create doc refs:
+**Replace** the existing per-create `const ref = doc(collection(db, "items"))` allocation inside the creates loop with a single pre-allocation before the transaction. This is required so that `"new:N"` forward-references can resolve to a doc ID before the target create is written.
 
 ```js
+// Before runTransaction(...)
 const createDocRefs = acceptedCreates.map(() => doc(collection(db, "items")));
-// createDocRefs[i] is the Firestore ref for acceptedCreates[i]
+// createDocRefs[pos] is the Firestore ref for acceptedCreates[pos]
+// The existing per-create `const ref = doc(...)` inside the loop MUST be removed.
 ```
 
-This allows forward-reference resolution regardless of array order.
+### Pre-pass: identify which accepted creates become parents
 
-### Pre-pass: identify which creates become parents
+Run this before the transaction body. `"new:N"` in `parentRef` uses N as the index into the **full** proposal `creates` array (same index space as `create.idx`). We need accepted-position space (`pos`) for the `hasChildren` write, so we resolve the mapping here.
 
 ```js
-const parentCreateIdxs = new Set();
-acceptedCreates.forEach(({ create }, i) => {
+const parentCreateIdxs = new Set(); // accepted positions that will be parents
+acceptedCreates.forEach(({ create }, pos) => {
   const ref = create.parentRef || "";
   if (ref.startsWith("new:")) {
     const n = parseInt(ref.slice(4), 10);
-    if (!isNaN(n)) parentCreateIdxs.add(n);  // absolute index into acceptedCreates
+    // n is an original proposal index; find its accepted position
+    const targetPos = acceptedCreates.findIndex((x) => x.idx === n);
+    if (targetPos >= 0) parentCreateIdxs.add(targetPos);
   }
 });
 ```
 
-Note: `parentRef: "new:N"` uses N as the index into the **full** `creates` array from the proposal. `applyUnified` maps those to `acceptedCreates` positions via the `createIdxs` mapping.
-
 ### Per-create: resolve parentRef → parentId
+
+Inside the transaction, replace the existing `tx.set(ref, { ... parentId: null, hasChildren: false ... })` with:
 
 ```js
 acceptedCreates.forEach(({ idx, create }, pos) => {
@@ -96,25 +100,27 @@ acceptedCreates.forEach(({ idx, create }, pos) => {
 
   if (ref.startsWith("new:")) {
     const n = parseInt(ref.slice(4), 10);
-    // n is the index into the original proposal creates array;
-    // find which accepted position maps to that original index
+    // n is a proposal index; map to accepted position to get the pre-allocated ref
     const targetPos = acceptedCreates.findIndex((x) => x.idx === n);
     if (targetPos >= 0) parentId = createDocRefs[targetPos].id;
+    // If targetPos === -1 the parent was not accepted (user unchecked it or it was
+    // rejected by validation). This should not reach here — validateProposal guards
+    // it — but if it does, parentId stays null (silent top-level fallback).
   } else if (ref) {
     parentId = ref;  // existing Firestore item ID
   }
 
   tx.set(createDocRefs[pos], {
-    ...itemFields,
-    parentId,
-    hasChildren: parentCreateIdxs.has(pos),  // true if another accepted create references this one
+    ...itemFields,             // all existing fields unchanged
+    parentId,                  // null = top-level; string = subitem
+    hasChildren: parentCreateIdxs.has(pos),  // true if this create is a parent of another accepted create
   });
 });
 ```
 
 ### Post-creates: update existing-item parents
 
-Collect all `parentRef` values that are existing itemIds (non-empty, not `"new:N"`). For each unique one, issue a `tx.update` setting `hasChildren: true`:
+After the creates loop, collect all `parentRef` values pointing to existing Firestore item IDs and mark them `hasChildren: true`. These are pure writes (no read needed — `hasChildren` is set unconditionally).
 
 ```js
 const existingParentIds = new Set(
@@ -131,34 +137,92 @@ existingParentIds.forEach((id) => {
 
 ## 3. Validation — `src/lib/syncMeeting.js` (`validateProposal`)
 
-Add three rejection rules inside the existing creates loop, after the topic-ownership check:
+### Loop refactor required
+
+The current creates loop is `for (const c of boardChanges?.creates || [])`. The new validation rules need both the loop index and random access into the array. **Refactor to:**
 
 ```js
-const ref = c.parentRef || "";
-if (ref) {
-  if (ref.startsWith("new:")) {
-    const n = parseInt(ref.slice(4), 10);
-    if (isNaN(n) || n < 0 || n >= creates.length) {
-      rejectedCreates.push({ ...c, reason: "parentRef new:N index out of range" }); continue;
-    }
-    if (n === idx) {  // idx = position of c in creates array
-      rejectedCreates.push({ ...c, reason: "parentRef self-reference" }); continue;
-    }
-    const targetParent = creates[n];
-    if (targetParent?.parentRef) {
-      rejectedCreates.push({ ...c, reason: "parentRef would exceed single nesting depth" }); continue;
-    }
-  } else {
-    if (!knownItemIds.has(ref)) {
-      rejectedCreates.push({ ...c, reason: "parentRef itemId not found on board" }); continue;
-    }
-  }
+const creates = boardChanges?.creates || [];
+for (let idx = 0; idx < creates.length; idx++) {
+  const c = creates[idx];
+  // ... existing topic-ownership check unchanged ...
+  // ... new parentRef checks below ...
 }
 ```
 
-`idx` is the loop index (the 0-based position of `c` in `creates`). `knownItemIds` is the existing set from `existingTasks`.
+### New validation rules
 
-`existingTasks` retains its current `!it.parentId` filter — only top-level existing items are valid parents.
+Declare `rejectedIdxs` before the loop — it tracks indices of rejected creates so forward-referencing subitems can be caught in the second pass:
+
+```js
+const rejectedIdxs = new Set(); // populated at each rejection below
+const creates = boardChanges?.creates || [];
+for (let idx = 0; idx < creates.length; idx++) {
+  const c = creates[idx];
+  // ... existing topic-ownership check ...
+  // if rejected: rejectedCreates.push({ ...c, reason }); rejectedIdxs.add(idx); continue;
+
+  const parentRef = c.parentRef || "";
+  if (parentRef) {
+    if (parentRef.startsWith("new:")) {
+      const n = parseInt(parentRef.slice(4), 10);
+      if (isNaN(n) || n < 0 || n >= creates.length) {
+        rejectedCreates.push({ ...c, reason: "parentRef new:N index out of range" });
+        rejectedIdxs.add(idx); continue;
+      }
+      if (n === idx) {
+        rejectedCreates.push({ ...c, reason: "parentRef self-reference" });
+        rejectedIdxs.add(idx); continue;
+      }
+      const targetParent = creates[n];
+      if (targetParent?.parentRef) {
+        rejectedCreates.push({ ...c, reason: "parentRef would exceed single nesting depth" });
+        rejectedIdxs.add(idx); continue;
+      }
+      // Forward-reference case (n > idx): target not yet processed.
+      // Caught by second-pass below.
+    } else {
+      if (!knownItemIds.has(parentRef)) {
+        rejectedCreates.push({ ...c, reason: "parentRef itemId not found on board" });
+        rejectedIdxs.add(idx); continue;
+      }
+    }
+  }
+  acceptedCreates.push(c);
+}
+```
+
+**Important — two changes to the existing loop body:**
+1. Every existing rejection (including the topic-ownership check) must also call `rejectedIdxs.add(idx)` before `continue`.
+2. The existing `acceptedCreates.push(c)` that currently follows the topic check **must be removed**. The single `acceptedCreates.push(c)` at the end of the new loop body (shown above) is the only push point. An additive patch that keeps the old push AND adds the new end-of-loop push will double-push every accepted create.
+
+### Second-pass: reject subitems whose intra-run parent was itself rejected
+
+After the main loop, forward references (`"new:N"` where N > idx at time of processing) may point to a create that was subsequently rejected. Since `rejectedIdxs` is built from real indices (not `indexOf` on spread copies), this works correctly:
+
+```js
+const stillAccepted = [];
+for (const c of acceptedCreates) {
+  const ref = c.parentRef || "";
+  if (ref.startsWith("new:")) {
+    const n = parseInt(ref.slice(4), 10);
+    if (rejectedIdxs.has(n)) {
+      rejectedCreates.push({ ...c, reason: "parentRef target was rejected" });
+      continue;
+    }
+  }
+  stillAccepted.push(c);
+}
+// Replace acceptedCreates in place
+acceptedCreates.length = 0;
+stillAccepted.forEach((c) => acceptedCreates.push(c));
+```
+
+> **Scope note:** `validateProposal`'s return value `acceptedCreates` is used by the dialog on receipt to drive the UI selection. `applyUnified` does not consume it — it rebuilds from `createIdxs`. So the second-pass guards the dialog display path. The apply-time re-run of `validateProposal` (called inside `applyUnified`) will also run the second pass, providing a backstop there too.
+>
+> **`hasRejections` timing:** the existing `return { ..., hasRejections: rejectedCreates.length > 0 || ... }` fires after the second pass, so it correctly counts second-pass rejections too. No change needed — just don't hoist `hasRejections` to a variable above the second-pass block.
+
+`existingTasks` retains its current `!it.parentId` filter — only top-level existing items are valid parents, and the `knownItemIds` check enforces this implicitly.
 
 ---
 
@@ -185,9 +249,11 @@ Each create row shows a **Parent** line when `c.parentRef` is set, below the Top
 })()}
 ```
 
+`creates[n].title` reads the live proposal state, so if the user edits the parent task's title field, the label updates immediately.
+
 ### Parent edit dropdown
 
-A **Parent** `Select` added to the inline controls row (after Assignee):
+A **Parent** `Select` added to the inline controls row (after Assignee). `value={`new:${j}`}` and the display label both use `slice(4)` → `parseInt`, so the key format is consistent.
 
 ```jsx
 <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -221,7 +287,7 @@ A **Parent** `Select` added to the inline controls row (after Assignee):
 
 ### Visual indentation
 
-Creates with a non-empty `parentRef` render with `pl: 3` on the outer `Box` and slightly lighter title weight, signalling nesting without reordering the list.
+Creates with a non-empty `parentRef` render with `pl: 3` on the outer `Box` and slightly lighter title style, signalling nesting without reordering the list.
 
 ### Section header
 
@@ -229,7 +295,7 @@ Creates with a non-empty `parentRef` render with `pl: 3` on the outer `Box` and 
 
 ---
 
-## 5. Accepted Schema Change to `accepted` Object
+## 5. Accepted Schema — No Change
 
 The `accepted` object passed from the dialog to `applyUnified` carries `promotions` keyed by create index. No change needed — `parentRef` lives on the create itself (in the proposal), not in promotions.
 
@@ -246,13 +312,14 @@ AI output
                                        + creates[2] written with hasChildren=true
 
 validateProposal (on receipt + at apply)
-  parentRef itemId not in existingTasks     → rejected
-  parentRef "new:N" out of range            → rejected
-  parentRef self-reference                  → rejected
-  parentRef target already has a parentRef  → rejected (depth guard)
+  parentRef itemId not in existingTasks        → rejected
+  parentRef "new:N" out of range               → rejected
+  parentRef self-reference                     → rejected
+  parentRef target already has a parentRef     → rejected (depth guard)
+  parentRef "new:N" where N itself was rejected → rejected (second-pass cleanup)
 
 Review modal
-  User sees "Parent: {title}" per row
+  User sees "Parent: {title}" per row (live — updates if parent title edited)
   User can change/clear via Parent dropdown
   Subitems render indented (pl:3)
 ```
@@ -263,8 +330,8 @@ Review modal
 
 | File | Change |
 |---|---|
-| `api/ai/prepare.js` | Add `parentRef` to `buildSchema()` creates; add prompt instructions |
-| `src/lib/aiAgenda.js` | Pre-allocate doc refs; pre-pass for parent creates; resolve `parentRef` → `parentId`; post-creates `hasChildren` updates on existing parents |
-| `src/lib/syncMeeting.js` | Three new rejection rules in `validateProposal` creates loop |
+| `api/ai/prepare.js` | Add `parentRef` to `buildSchema()` creates; add prompt instructions to `buildSystem()` |
+| `src/lib/aiAgenda.js` | Pre-allocate `createDocRefs`; pre-pass `parentCreateIdxs`; resolve `parentRef` → `parentId` per create; post-creates `hasChildren` update on existing parents; remove old per-create `ref` allocation |
+| `src/lib/syncMeeting.js` | Refactor creates loop to indexed `for`; four new rejection rules + second-pass cleanup for rejected-parent forward refs |
 | `src/components/SyncMeetingDialog.jsx` | Parent display line; Parent dropdown control; indent style; section header update |
-| `src/lib/__tests__/syncMeeting.test.js` | Tests for all three new validation rules |
+| `src/lib/__tests__/syncMeeting.test.js` | Tests covering all new validation rules including second-pass rejected-parent case |
