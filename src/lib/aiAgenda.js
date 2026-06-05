@@ -289,6 +289,7 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
     summary: {
       windowStart,
       master: !!master,
+      internal: targetOrg === "vistamar",
       usedFallbackWindow,
       orgAgendaCount: orgAgendas.length,
       orgCount: transcripts.filter((t) => t.scope === "this-org").length,

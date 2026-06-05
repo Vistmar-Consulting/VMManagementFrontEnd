@@ -61,7 +61,10 @@ function summaryText(s) {
       ? `since ${new Date(s.windowStart).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
       : "recently";
   const meetings = s.orgCount + s.internalCount;
-  const parts = [`Read ${meetings} meeting${meetings === 1 ? "" : "s"} ${since} — ${s.orgCount} client, ${s.internalCount} Vistamar internal`];
+  const meetingLabel = s.internal
+    ? `${s.orgCount} Vistamar`
+    : `${s.orgCount} client, ${s.internalCount} Vistamar internal`;
+  const parts = [`Read ${meetings} meeting${meetings === 1 ? "" : "s"} ${since} — ${meetingLabel}`];
   if (s.orgAgendaCount) parts.push(`${s.orgAgendaCount} other client agenda${s.orgAgendaCount === 1 ? "" : "s"}`);
   if (s.projectCount) parts.push(`${s.projectCount} Project Board update${s.projectCount === 1 ? "" : "s"} (${s.projectNewCount} new)`);
   const notes = [];
