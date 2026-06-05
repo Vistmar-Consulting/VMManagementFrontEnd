@@ -438,6 +438,7 @@ export default async function handler(req, res) {
               title: String(c?.title || ""),
               topicId: `t${idx}`,
               note: String(c?.note || ""),
+              parentRef: typeof c?.parentRef === "string" ? c.parentRef : "",
             };
             if (master) create.organizationId = topics[idx].organizationId;
             return create;
