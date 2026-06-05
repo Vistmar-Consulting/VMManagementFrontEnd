@@ -169,6 +169,7 @@ ${orgListBlock(orgMeta)}`
 - Reconcile the current agenda with everything that happened since this meeting last occurred: this client's meetings, internal Vistamar meetings, recent Project Board activity, this client's OTHER meeting agendas, and any additional context the user provided.
 - The org operates holistically — be aware of everything happening across this client. Use the client's other agendas so this agenda stays coherent with them: don't duplicate or contradict what's already on another meeting's agenda, surface cross-meeting dependencies, and keep one consistent picture of the client's work.
 - Internal Vistamar meetings (tagged [Vistamar internal]) are for YOUR situational awareness — never surface internal-only mechanics, staffing, or candor into a client-facing agenda, especially an executive one. Keep Vistamar looking strong and prepared to the client.
+- Never create or retain a topic whose primary purpose is invoicing, billing, or payment status — that belongs exclusively on the private Vistamar Project Board, not a client-facing agenda.
 - Use Project Board activity to reflect what is done, in progress, or newly raised — fold it into the relevant topics rather than listing tasks verbatim.`;
 
   const boardScope = internal || master
