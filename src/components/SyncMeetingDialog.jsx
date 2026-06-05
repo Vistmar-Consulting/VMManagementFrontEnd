@@ -44,12 +44,29 @@ import {
 import { validateProposal, normalizeTopicRefs, classifyTopicChanges } from "../lib/syncMeeting.js";
 import { useOthers } from "../lib/liveblocks.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
-import { STATUS_MAP } from "../lib/itemStatusMap.js";
+import { STATUS_MAP, AI_GEN_STATUS } from "../lib/itemStatusMap.js";
 
-// Inline-promotion status choices for a new (AI Gen) create. Leaving this unset
-// keeps the create at statusId 8 (triage). Restricted to the moveable
-// lifecycle statuses (Assigned / In Progress / Review / Pending).
+// Inline-promotion status choices for a new (AI Gen) create. AI Gen is always
+// the default; user can promote to any moveable lifecycle status.
+const AI_GEN_OPTION = STATUS_OPTIONS.find((s) => s.id === AI_GEN_STATUS);
 const PROMOTE_STATUSES = STATUS_OPTIONS.filter((s) => Object.prototype.hasOwnProperty.call(STATUS_MAP, s.name));
+
+// Parse "Owner: <name>" or "Action item for <name>" from a create note and
+// return the matching user's id, if found.
+function inferAssigneeIds(note, users) {
+  if (!note || !users?.length) return [];
+  const ownerMatch = note.match(/\bOwner:\s*([^;,.\n]+)/i);
+  const actionMatch = note.match(/\bAction item for\s+([^;,.\n]+)/i);
+  const rawName = (ownerMatch?.[1] || actionMatch?.[1] || "").trim();
+  if (!rawName) return [];
+  const lower = rawName.toLowerCase();
+  const matched = users.find((u) => {
+    const dn = (u.displayName || "").toLowerCase();
+    const firstName = dn.split(" ")[0];
+    return dn === lower || firstName === lower;
+  });
+  return matched ? [matched.id] : [];
+}
 
 // One-line summary of what fed the model — so the user always sees the actual
 // input set (no silent caps / dropped data).
@@ -163,7 +180,15 @@ export default function SyncMeetingDialog({
     setSelCreates(nextCreates);
     setSelMoves(nextMoves);
     setSelNotes(nextNotes);
-    setPromotions({});
+    // Pre-populate each valid create with AI Gen status and any inferrable assignee.
+    const initPromotions = {};
+    creates.forEach((c, i) => {
+      if (accepted.has(c)) {
+        const assigneeIds = inferAssigneeIds(c.note, users);
+        initPromotions[i] = { statusId: AI_GEN_STATUS, ...(assigneeIds.length ? { assigneeIds } : {}) };
+      }
+    });
+    setPromotions(initPromotions);
     return v;
   };
 
@@ -271,6 +296,12 @@ export default function SyncMeetingDialog({
     const next = new Set(prev);
     if (next.has(i)) next.delete(i); else next.add(i);
     return next;
+  });
+
+  const setCreateField = (idx, field, value) => setProposal((prev) => {
+    const creates = [...(prev.boardChanges?.creates || [])];
+    creates[idx] = { ...creates[idx], [field]: value };
+    return { ...prev, boardChanges: { ...prev.boardChanges, creates } };
   });
 
   const setPromoStatus = (idx, statusId) => setPromotions((prev) => {
@@ -513,14 +544,14 @@ export default function SyncMeetingDialog({
 
             {creates.length > 0 && (
               <Box sx={{ mb: 2 }}>
-                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>New tasks → AI Gen</Typography>
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>New tasks & subitems → AI Gen</Typography>
                 <Divider sx={{ mb: 0.5 }} />
                 {creates.map((c, i) => {
                   if (!validCreateIdxs.has(i)) return null; // rejected → shown in banner only
                   const promo = promotions[i] || {};
                   const topicName = topicNameById.get(c.topicId) || "—";
                   return (
-                    <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "flex-start", py: 0.75 }}>
+                    <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "flex-start", py: 0.75, pl: c.parentRef ? 3 : 0 }}>
                       <Checkbox
                         size="small"
                         checked={selCreates.has(i)}
@@ -528,22 +559,56 @@ export default function SyncMeetingDialog({
                         sx={{ mt: -0.5 }}
                       />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{c.title}</Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          value={c.title}
+                          onChange={(e) => setCreateField(i, "title", e.target.value)}
+                          disabled={!selCreates.has(i)}
+                          sx={{ mb: 0.5, "& .MuiInputBase-input": { fontWeight: 600 } }}
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
                           Topic: {topicName}
                         </Typography>
-                        {c.note && <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>{c.note}</Typography>}
+                        {c.parentRef && (() => {
+                          const label = c.parentRef.startsWith("new:")
+                            ? (() => {
+                                const n = parseInt(c.parentRef.slice(4), 10);
+                                const parentCreate = creates[n];
+                                return parentCreate ? `${parentCreate.title} (new)` : `new task #${n}`;
+                              })()
+                            : itemsById.get(c.parentRef)?.title || c.parentRef;
+                          return (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                              Parent: {label}
+                            </Typography>
+                          );
+                        })()}
+                        <TextField
+                          size="small"
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          maxRows={4}
+                          label="Description"
+                          value={c.note || ""}
+                          onChange={(e) => setCreateField(i, "note", e.target.value)}
+                          disabled={!selCreates.has(i)}
+                          sx={{ mb: 0.5 }}
+                        />
                         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
                           <FormControl size="small" sx={{ minWidth: 140 }}>
                             <InputLabel id={`status-${i}`}>Status</InputLabel>
                             <Select
                               labelId={`status-${i}`}
                               label="Status"
-                              value={promo.statusId ?? ""}
+                              value={promo.statusId ?? AI_GEN_STATUS}
                               onChange={(e) => setPromoStatus(i, e.target.value)}
                               disabled={!selCreates.has(i)}
                             >
-                              <MenuItem value=""><em>Triage (AI Gen)</em></MenuItem>
+                              {AI_GEN_OPTION && (
+                                <MenuItem value={AI_GEN_OPTION.id}>{AI_GEN_OPTION.name}</MenuItem>
+                              )}
                               {PROMOTE_STATUSES.map((s) => (
                                 <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                               ))}
@@ -569,6 +634,31 @@ export default function SyncMeetingDialog({
                               {(users || []).map((u) => (
                                 <MenuItem key={u.id} value={u.id}>{u.displayName || u.email}</MenuItem>
                               ))}
+                            </Select>
+                          </FormControl>
+                          <FormControl size="small" sx={{ minWidth: 180 }}>
+                            <InputLabel>Parent</InputLabel>
+                            <Select
+                              label="Parent"
+                              value={c.parentRef || ""}
+                              onChange={(e) => setCreateField(i, "parentRef", e.target.value)}
+                              disabled={!selCreates.has(i)}
+                            >
+                              <MenuItem value=""><em>None (top-level)</em></MenuItem>
+                              {(items || [])
+                                .filter((it) => !it.parentId)
+                                .map((it) => (
+                                  <MenuItem key={it.id} value={it.id}>{it.title}</MenuItem>
+                                ))}
+                              {creates.map((other, j) => {
+                                if (j === i) return null;
+                                if (other.parentRef) return null;
+                                return (
+                                  <MenuItem key={`new:${j}`} value={`new:${j}`}>
+                                    {other.title} (new)
+                                  </MenuItem>
+                                );
+                              })}
                             </Select>
                           </FormControl>
                         </Stack>
