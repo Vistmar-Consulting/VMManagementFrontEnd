@@ -89,6 +89,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260605-Andrew-v0.3.4-vistamar-categories",
+      "developer": "Andrew",
+      "date": "2026-06-05",
+      "date_closed": "2026-06-05",
+      "version_start": "v0.3.4",
+      "version_end": "v0.3.4",
+      "commit_start": "cbc2583",
+      "commit_end": "cbc2583",
+      "summary": "Sync Meeting category blocker fix (removed topicHasCategory guard, cbc2583). Analyzed 19 internal Vistamar Fireflies meetings → designed + seeded 5 Vistamar-internal categories (console, studio, management, business-dev, platform-ops, sortOrder 11-15). Categorized all 18 existing Vistamar board items. Key lesson: gcloud REST API writes are not visible to Firebase client SDK onSnapshot — all Firestore writes for app reflection must go through the Firebase SDK via agent-browser eval + dynamic import.",
+      "folder": "dev/sessions/v0_3_4_Andrew_VISTAMAR_CATEGORIES/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260602-Andrew-v0.3.1-backlog",
       "developer": "Andrew",
       "date": "2026-06-02",
