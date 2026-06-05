@@ -27,11 +27,59 @@ export function validateProposal({ topics, boardChanges, existingTasks }) {
 
   const acceptedCreates = [];
   const rejectedCreates = [];
-  for (const c of boardChanges?.creates || []) {
+  const rejectedIdxs = new Set();
+  const creates = boardChanges?.creates || [];
+  for (let idx = 0; idx < creates.length; idx++) {
+    const c = creates[idx];
     const t = byId[c.topicId];
-    if (!t) { rejectedCreates.push({ ...c, reason: "owning topic no longer in proposal" }); continue; }
+    if (!t) {
+      rejectedCreates.push({ ...c, reason: "owning topic no longer in proposal" });
+      rejectedIdxs.add(idx);
+      continue;
+    }
+
+    const parentRef = c.parentRef || "";
+    if (parentRef) {
+      if (parentRef.startsWith("new:")) {
+        const n = parseInt(parentRef.slice(4), 10);
+        if (isNaN(n) || n < 0 || n >= creates.length) {
+          rejectedCreates.push({ ...c, reason: "parentRef new:N index out of range" });
+          rejectedIdxs.add(idx); continue;
+        }
+        if (n === idx) {
+          rejectedCreates.push({ ...c, reason: "parentRef self-reference" });
+          rejectedIdxs.add(idx); continue;
+        }
+        const targetParent = creates[n];
+        if (targetParent?.parentRef) {
+          rejectedCreates.push({ ...c, reason: "parentRef would exceed single nesting depth" });
+          rejectedIdxs.add(idx); continue;
+        }
+      } else {
+        if (!knownItemIds.has(parentRef)) {
+          rejectedCreates.push({ ...c, reason: "parentRef itemId not found on board" });
+          rejectedIdxs.add(idx); continue;
+        }
+      }
+    }
     acceptedCreates.push(c);
   }
+
+  // Second pass: reject subitems whose intra-run parent was itself rejected
+  const stillAccepted = [];
+  for (const c of acceptedCreates) {
+    const ref = c.parentRef || "";
+    if (ref.startsWith("new:")) {
+      const n = parseInt(ref.slice(4), 10);
+      if (rejectedIdxs.has(n)) {
+        rejectedCreates.push({ ...c, reason: "parentRef target was rejected" });
+        continue;
+      }
+    }
+    stillAccepted.push(c);
+  }
+  acceptedCreates.length = 0;
+  stillAccepted.forEach((c) => acceptedCreates.push(c));
 
   const acceptedMoves = [];
   const droppedMoves = [];
