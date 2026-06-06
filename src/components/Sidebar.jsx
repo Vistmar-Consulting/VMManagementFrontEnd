@@ -1,18 +1,24 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Box,
   Collapse,
+  IconButton,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
   Stack,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
+import { useLocalStorage } from "@uidotdev/usehooks";
 import {
   CalendarDays,
   Captions,
+  ChevronLeft,
+  ChevronRight,
   LayoutDashboard,
   Settings,
   SquareKanban,
@@ -53,6 +59,8 @@ const navItemSx = (theme) => ({
 });
 
 export default function Sidebar({ isAdmin }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const location = useLocation();
   const visibleSettingsChildren = SETTINGS_CHILDREN.filter(
     (c) => !c.requireAdmin || isAdmin,
@@ -60,43 +68,75 @@ export default function Sidebar({ isAdmin }) {
   const isOnSettingsChild = visibleSettingsChildren.some(
     (c) => c.to === location.pathname,
   );
-  // Always default to collapsed; user clicks to expand.
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Seed collapsed state once at mount. useRef + IIFE reads localStorage
+  // synchronously so the default is the correct isMobile value — not a
+  // stale snapshot from useLocalStorage's internal useEffect.
+  const defaultCollapsed = useRef(
+    (() => {
+      const stored = localStorage.getItem("vm-sidebar-collapsed");
+      return stored === null ? isMobile : JSON.parse(stored);
+    })()
+  );
+  const [collapsed, setCollapsed] = useLocalStorage(
+    "vm-sidebar-collapsed",
+    defaultCollapsed.current
+  );
 
   return (
     <Box
       component="nav"
       aria-label="Primary navigation"
       sx={(theme) => ({
-        width: theme.sidebar.width,
+        width: collapsed ? theme.sidebar.collapsedWidth : theme.sidebar.width,
         flexShrink: 0,
         minHeight: "100vh",
         bgcolor: theme.sidebar.background,
         color: theme.sidebar.color,
         display: "flex",
         flexDirection: "column",
+        // overflow: hidden clips label text during the collapse transition.
+        // NOTE: a box-shadow on this element would also be clipped; use
+        // filter: drop-shadow() instead if a shadow is ever added.
+        overflow: "hidden",
+        transition: "width 0.2s ease",
       })}
     >
       <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent={collapsed ? "center" : "space-between"}
         sx={(theme) => ({
           height: theme.appBar.height,
-          px: 5,
-          justifyContent: "center",
+          px: collapsed ? 0 : 5,
           bgcolor: theme.sidebar.header.background,
           color: theme.sidebar.header.color,
           borderBottom: "1px solid rgba(255,255,255,0.06)",
+          flexShrink: 0,
         })}
       >
-        <Typography
-          variant="h6"
-          sx={(theme) => ({
-            color: theme.sidebar.header.brand,
-            fontWeight: 600,
-            letterSpacing: 0.2,
-          })}
+        {!collapsed && (
+          <Typography
+            variant="h6"
+            sx={(theme) => ({
+              color: theme.sidebar.header.brand,
+              fontWeight: 600,
+              letterSpacing: 0.2,
+              whiteSpace: "nowrap",
+            })}
+          >
+            Vistamar Management
+          </Typography>
+        )}
+        <IconButton
+          onClick={() => setCollapsed((c) => !c)}
+          size="small"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          sx={{ color: "rgba(255,255,255,0.6)", "&:hover": { color: "#fff" } }}
         >
-          Vistamar Management
-        </Typography>
+          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </IconButton>
       </Stack>
 
       <List sx={{ py: 2 }}>
@@ -105,25 +145,36 @@ export default function Sidebar({ isAdmin }) {
             key={to}
             component={NavLink}
             to={to}
+            onClick={() => collapsed && setCollapsed(false)}
             sx={navItemSx}
           >
             <ListItemIcon sx={{ minWidth: 36, color: "inherit" }}>
               <Icon size={18} strokeWidth={2} />
             </ListItemIcon>
-            <ListItemText
-              primary={label}
-              primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
-            />
+            {!collapsed && (
+              <ListItemText
+                primary={label}
+                primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
+              />
+            )}
           </ListItemButton>
         ))}
 
         {/* Settings group — clickable parent that toggles expansion only,
             does NOT navigate. Children render indented inside <Collapse>. */}
         <ListItemButton
-          onClick={() => setSettingsOpen((o) => !o)}
+          onClick={() => {
+            if (collapsed) {
+              // Expand sidebar AND open settings children so the user
+              // reaches Settings on a single tap.
+              setCollapsed(false);
+              setSettingsOpen(true);
+            } else {
+              setSettingsOpen((o) => !o);
+            }
+          }}
           sx={(theme) => ({
             ...navItemSx(theme),
-            // Highlight the parent when a child is the current route.
             ...(isOnSettingsChild && {
               color: "#FFFFFF",
             }),
@@ -132,13 +183,15 @@ export default function Sidebar({ isAdmin }) {
           <ListItemIcon sx={{ minWidth: 36, color: "inherit" }}>
             <Settings size={18} strokeWidth={2} />
           </ListItemIcon>
-          <ListItemText
-            primary="Settings"
-            primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
-          />
+          {!collapsed && (
+            <ListItemText
+              primary="Settings"
+              primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
+            />
+          )}
         </ListItemButton>
 
-        <Collapse in={settingsOpen} timeout="auto" unmountOnExit>
+        <Collapse in={settingsOpen && !collapsed} timeout="auto" unmountOnExit>
           <List disablePadding>
             {visibleSettingsChildren.map(({ to, label }) => (
               <ListItemButton
