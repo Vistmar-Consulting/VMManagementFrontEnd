@@ -17,6 +17,7 @@ const theme = createMuiTheme({
 
 theme.sidebar = {
   width: 240,
+  collapsedWidth: 52,
   color: "#cfd8dc",
   background: "#233044",
   active: "#2f3e54",
