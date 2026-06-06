@@ -114,6 +114,7 @@ export default function Sidebar({ isAdmin }) {
           color: theme.sidebar.header.color,
           borderBottom: "1px solid rgba(255,255,255,0.06)",
           flexShrink: 0,
+          transition: "padding 0.2s ease",
         })}
       >
         {!collapsed && (
@@ -146,6 +147,7 @@ export default function Sidebar({ isAdmin }) {
             component={NavLink}
             to={to}
             onClick={() => collapsed && setCollapsed(false)}
+            aria-label={collapsed ? label : undefined}
             sx={navItemSx}
           >
             <ListItemIcon sx={{ minWidth: 36, color: "inherit" }}>
@@ -173,6 +175,7 @@ export default function Sidebar({ isAdmin }) {
               setSettingsOpen((o) => !o);
             }
           }}
+          aria-label={collapsed ? "Settings" : undefined}
           sx={(theme) => ({
             ...navItemSx(theme),
             ...(isOnSettingsChild && {
