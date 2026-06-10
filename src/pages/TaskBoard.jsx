@@ -483,23 +483,15 @@ export default function TaskBoard() {
     return generateKeyBetween(last, null);
   };
 
-  const handleAddItem = async () => {
-    // Fail loud rather than silent-return — the "New item" button is
-    // disabled in the "all orgs" state, so reaching here means the gate
-    // was bypassed (programmatic call, future keyboard shortcut, etc.).
-    if (orgFilter === "all") {
-      throw new Error("handleAddItem requires a specific org filter — pick a Client chip first.");
-    }
-    const orgRef = doc(db, "organizations", orgFilter);
+  const handleAddItem = async (orgId) => {
+    const orgRef = doc(db, "organizations", orgId);
     const newItemRef = doc(collection(db, "items"));
     const order = nextTopLevelOrder();
-    // Transaction atomically pulls the next item number from the org doc and
-    // bumps it — prevents race when two admins add at the same time.
     await runTransaction(db, async (tx) => {
       const orgSnap = await tx.get(orgRef);
       const next = orgSnap.data()?.nextItemNumber ?? 1;
       tx.set(newItemRef, {
-        organizationId: orgFilter,
+        organizationId: orgId,
         parentId: null,
         hasChildren: false,
         type: "task",
