@@ -28,10 +28,11 @@ The "New item" button on the Project Board is disabled when the org filter is se
 - Each button styled with the org's `accentColor` background (white or dark contrast text, same `getContrastText` logic used on the board chips). Width: full-width of the dialog content area.
 - If `orgFilter` is already set to a specific org when the modal opens, that org's button is visually pre-selected (e.g. filled/contained variant; others outlined). "All" state → no pre-selection.
 - Single tap on an org button:
-  1. Sets `orgFilter` to that org's id (board scopes to that org after close).
-  2. Calls `handleAddItem(orgId)` (creates blank item).
-  3. Closes the modal.
+  1. Calls `await handleAddItem(orgId)` (creates blank item).
+  2. On success: sets `orgFilter` to that org's id (board scopes to that org) and closes the modal.
+  3. On error: modal closes, `orgFilter` unchanged, error propagates (same error surface as today).
 - "Cancel" / dismiss (backdrop click or Escape) closes without creating anything; `orgFilter` unchanged.
+- If `orgs` is empty or still loading when the modal opens, the dialog body shows a single disabled "No organizations" fallback line. In practice this never occurs — the board itself requires orgs to render.
 
 ### `handleAddItem` signature change
 
