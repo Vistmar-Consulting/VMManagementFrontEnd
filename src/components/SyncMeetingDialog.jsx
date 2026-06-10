@@ -30,6 +30,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { snapshotAgenda } from "../lib/agendaVersions.js";
 import { composeAgendaHtml } from "../lib/agendaHtml.js";
@@ -129,6 +130,14 @@ export default function SyncMeetingDialog({
   const [selNotes, setSelNotes] = useState(() => new Set());
   // Inline promotions per create index: { [idx]: { statusId, assigneeIds } }.
   const [promotions, setPromotions] = useState({});
+  // Previous agenda — captured once at mount so refine can restore dropped topics.
+  const [prevTopicsSnapshot] = useState(() => topics || []);
+  const [prevOpen, setPrevOpen] = useState(false);
+  const oldAgendaHtml = useMemo(
+    () => composeAgendaHtml(agenda, prevTopicsSnapshot),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const previewHtml = useMemo(
     () => (proposal ? composeAgendaHtml(proposal, proposal.topics || []) : ""),
@@ -268,6 +277,7 @@ export default function SyncMeetingDialog({
         tagVocab: catCtx.tagVocab,
         master,
         orgMeta: catCtx.orgMeta,
+        prevTopics: prevTopicsSnapshot,
       });
       // Refine returns refreshed agenda content (topics/openFloor). It
       // does NOT touch the board changes, so carry those forward unchanged.
@@ -458,6 +468,32 @@ export default function SyncMeetingDialog({
                 </Box>
               </Alert>
             )}
+
+            {/* Previous agenda — collapsed by default; gives the user a reference when
+                refining (e.g. "Bring back the Content Workflow topic"). */}
+            <Box sx={{ mb: 2, border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
+              <Box
+                onClick={() => setPrevOpen((v) => !v)}
+                sx={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  px: 1.5, py: 1, cursor: "pointer", userSelect: "none",
+                  bgcolor: "action.hover", borderRadius: prevOpen ? "4px 4px 0 0" : 1,
+                }}
+              >
+                <Typography variant="subtitle2">Previous agenda</Typography>
+                {prevOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </Box>
+              {prevOpen && (
+                <Box
+                  sx={{
+                    p: 2, maxHeight: 360, overflow: "auto", fontSize: 13, lineHeight: 1.4,
+                    "& h2": { fontSize: 15, fontWeight: 700, mt: 2, mb: 0.5 },
+                    "& ul, & ol": { pl: 3, m: 0 }, "& li": { mb: 0.3 }, "& li p": { m: 0 },
+                  }}
+                  dangerouslySetInnerHTML={{ __html: oldAgendaHtml || "<em>No previous agenda</em>" }}
+                />
+              )}
+            </Box>
 
             <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
               Proposed agenda — review before applying

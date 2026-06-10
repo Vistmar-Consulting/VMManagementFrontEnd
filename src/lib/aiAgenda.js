@@ -334,14 +334,14 @@ export async function setAgendaStyle(agendaId, meetingStyle, uid = null) {
 // Topic `ref`s pass through as-is; the CALLER is responsible for running
 // normalizeTopicRefs() against the live agenda topics (so a hallucinated ref
 // becomes "" = new) before applying — SyncMeetingDialog does this.
-export async function refineProposal({ proposal, instruction, categories, tagVocab, master, orgMeta }) {
+export async function refineProposal({ proposal, instruction, categories, tagVocab, master, orgMeta, prevTopics }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
   const res = await fetch("/api/ai/refine", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Token": token },
-    body: JSON.stringify({ proposal, instruction, categories: categories || [], tagVocab: tagVocab || [], master: !!master, orgMeta: orgMeta || [] }),
+    body: JSON.stringify({ proposal, instruction, categories: categories || [], tagVocab: tagVocab || [], master: !!master, orgMeta: orgMeta || [], prevTopics: prevTopics || [] }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));

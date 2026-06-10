@@ -62,7 +62,7 @@ function orgListBlock(orgMeta) {
 function buildSystem(categories, tagVocab, master, orgMeta) {
   return `You are refining a DRAFT meeting agenda based on a single instruction from the user. You are given the current draft (topics, open floor) and an instruction.
 
-Apply ONLY what the instruction asks — add, edit, remove, or reorder as requested. Keep everything else EXACTLY as it is: same topics, same wording, same order, same categories/tags, same links. Do not invent unrelated content, do not re-summarize untouched topics, do not look for outside information — work only from the draft + the instruction.
+Apply ONLY what the instruction asks — add, edit, remove, or reorder as requested. Keep everything else EXACTLY as it is: same topics, same wording, same order, same categories/tags, same links. Do not invent unrelated content, do not re-summarize untouched topics, do not look for outside information — work only from the draft + the instruction. If the instruction references a topic from the previous agenda (e.g. "bring back X"), restore it faithfully using the ## Previous agenda section in the user message.
 
 PRESERVE HYPERLINKS: keep every existing <a href="…"> verbatim (exact href + text). If the instruction adds a link/URL, include it as an <a href> too.
 
@@ -76,7 +76,7 @@ ${master ? `\nThis is the MASTER Touch Base agenda — organized org by org. EVE
 Return the FULL refined agenda (not a diff) as JSON matching the schema: topics[{ ref, name, bodyHtml, categories, tags${master ? ", organizationId" : ""} }], openFloorHtml.${categorizationBlock(categories, tagVocab)}`;
 }
 
-function buildUserMessage(proposal, instruction, master) {
+function buildUserMessage(proposal, instruction, master, prevTopics) {
   const p = proposal || {};
   const lines = [];
   lines.push("## Current draft agenda");
@@ -90,6 +90,14 @@ function buildUserMessage(proposal, instruction, master) {
     if (t.tags?.length) lines.push(`  tags: ${t.tags.join(", ")}`);
   });
   if (p.openFloorHtml) lines.push(`Open Floor (HTML): ${p.openFloorHtml}`);
+  if (Array.isArray(prevTopics) && prevTopics.length) {
+    lines.push("");
+    lines.push("## Previous agenda (topics before this sync run — use when restoring dropped content)");
+    prevTopics.forEach((t, i) => {
+      lines.push(`Topic ${i + 1}: ${t.name || ""}`);
+      if (t.bodyHtml) lines.push(`  Body (HTML): ${t.bodyHtml}`);
+    });
+  }
   lines.push("");
   lines.push("## Instruction (apply ONLY this; leave everything else unchanged)");
   lines.push(String(instruction || "").trim());
@@ -104,7 +112,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server" });
 
-  const { proposal, instruction, categories, tagVocab, master, orgMeta } = req.body || {};
+  const { proposal, instruction, categories, tagVocab, master, orgMeta, prevTopics } = req.body || {};
   if (!proposal || !instruction || !String(instruction).trim()) {
     return res.status(400).json({ error: "Missing required field: proposal and instruction" });
   }
@@ -117,7 +125,7 @@ export default async function handler(req, res) {
       thinking: { type: "adaptive" },
       system: buildSystem(categories, tagVocab, !!master, orgMeta || []),
       output_config: { effort: "medium", format: { type: "json_schema", schema: buildSchema(!!master) } },
-      messages: [{ role: "user", content: buildUserMessage(proposal, instruction, !!master) }],
+      messages: [{ role: "user", content: buildUserMessage(proposal, instruction, !!master, prevTopics) }],
     }).finalMessage();
 
     if (message.stop_reason === "max_tokens") return res.status(502).json({ error: "Refine was cut off (token limit). Try again." });
