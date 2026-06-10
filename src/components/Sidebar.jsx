@@ -89,6 +89,8 @@ export default function Sidebar({ isAdmin }) {
       component="nav"
       aria-label="Primary navigation"
       sx={(theme) => ({
+        position: "sticky",
+        top: 0,
         width: collapsed ? theme.sidebar.collapsedWidth : theme.sidebar.width,
         flexShrink: 0,
         minHeight: "100vh",

@@ -345,7 +345,7 @@ export async function refineProposal({ proposal, instruction, categories, tagVoc
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(data.error || `HTTP ${res.status}`);
+    throw new Error((typeof data.error === "string" ? data.error : data.error?.message) || `HTTP ${res.status}`);
   }
   const data = await res.json();
   const refined = data.proposal;
@@ -394,7 +394,7 @@ export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(data.error || `HTTP ${res.status}`);
+    throw new Error((typeof data.error === "string" ? data.error : data.error?.message) || `HTTP ${res.status}`);
   }
   // /api/ai/prepare returns the proposal fields at the top level
   // ({ topics, openFloorHtml, boardChanges }) — no { proposal }
