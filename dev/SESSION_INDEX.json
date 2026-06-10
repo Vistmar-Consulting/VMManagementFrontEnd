@@ -167,6 +167,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260610-Andrew-v0.4.2-bullet-format",
+      "developer": "Andrew",
+      "date": "2026-06-10",
+      "date_closed": "2026-06-10",
+      "version_start": "v0.4.2",
+      "version_end": "v0.4.2",
+      "commit_start": "b53e58e",
+      "commit_end": "b494312",
+      "summary": "Agenda bullet format guide for Sync Meeting. Brainstorm → spec → plan → subagent-driven impl. api/ai/prepare.js + api/ai/refine.js gain bulletFormatBlock (non-master only): item — Person, Status (M/D); content-social topics omit owner. AIIntegration.jsx HOW_IT_WORKS updated with bullet format section + invoicing gate + topic-title freeze (both previously undocumented). CLAUDE.md rule 4: HOW_IT_WORKS must stay in sync with every prompt/workflow change. Master Touch Base excluded; Andy verifying.",
+      "folder": "dev/sessions/v0_4_2_Andrew_BULLET_FORMAT/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260610-Andrew-v0.4.1-org-picker",
       "developer": "Andrew",
       "date": "2026-06-10",
