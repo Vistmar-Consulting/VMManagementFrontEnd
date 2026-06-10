@@ -785,20 +785,14 @@ export default function TaskBoard() {
     <Stack spacing={4}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Typography variant="h4" component="h1">Project Board</Typography>
-        <Tooltip
-          title={orgFilter === "all" ? "Pick an organization filter to add an item to" : `Add item to ${orgs.find((o) => o.id === orgFilter)?.name || orgFilter}`}
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setOrgPickerOpen(true)}
+          disabled={!isAdmin}
         >
-          <span>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleAddItem}
-              disabled={orgFilter === "all" || !isAdmin}
-            >
-              New item
-            </Button>
-          </span>
-        </Tooltip>
+          New item
+        </Button>
       </Stack>
 
       {/* Scorecards */}
