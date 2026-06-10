@@ -154,6 +154,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260605-Andrew-v0.3.9-invoicing-sidebar",
+      "developer": "Andrew",
+      "date": "2026-06-05",
+      "date_closed": "2026-06-10",
+      "version_start": "v0.3.9",
+      "version_end": "v0.3.9",
+      "commit_start": "c98ffee",
+      "commit_end": "5576a36",
+      "summary": "Two features: (1) INVOICING GATE (brain-dump #7) — single bullet in buildSystem() client branch: AI never creates/retains invoicing/billing topics on client agendas. Prompt-only, narrow definition, client-only. (2) COLLAPSIBLE SIDEBAR — chevron toggle in header; 240px expanded / 52px icon-only rail; default collapsed on mobile (<600px), expanded on desktop; localStorage-persisted (vm-sidebar-collapsed); useRef IIFE seed to avoid useLocalStorage timing race; Settings icon click when collapsed expands+opens children in one tap; a11y labels + padding transition.",
+      "folder": "dev/sessions/v0_3_9_Andrew_INVOICING_SIDEBAR/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260602-Andrew-v0.3.1-backlog",
       "developer": "Andrew",
       "date": "2026-06-02",
