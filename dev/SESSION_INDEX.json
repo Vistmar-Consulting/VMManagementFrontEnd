@@ -154,6 +154,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260610-Andrew-v0.4.0-prev-agenda-card",
+      "developer": "Andrew",
+      "date": "2026-06-10",
+      "date_closed": "2026-06-10",
+      "version_start": "v0.4.0",
+      "version_end": "v0.4.0",
+      "commit_start": "4b1b035",
+      "commit_end": "c80d487",
+      "summary": "Previous Agenda collapsible card in Sync Meeting review step. Card appears above 'Proposed agenda', collapsed by default, renders pre-generation agenda HTML (captured at dialog-open via useState lazy init). Previous topics also threaded into /api/ai/refine so 'Bring back X and its contents' works — buildUserMessage gains ## Previous agenda block; system prompt gains one sentence directing restore from that section. 3 files: SyncMeetingDialog.jsx, aiAgenda.js, api/ai/refine.js.",
+      "folder": "dev/sessions/v0_4_0_Andrew_PREV_AGENDA_CARD/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260605-Andrew-v0.3.9-invoicing-sidebar",
       "developer": "Andrew",
       "date": "2026-06-05",
