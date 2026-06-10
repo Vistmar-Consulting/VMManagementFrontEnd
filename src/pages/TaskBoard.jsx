@@ -157,6 +157,7 @@ export default function TaskBoard() {
   // Org filter chip group — persisted in localStorage.
   const [orgFilter, setOrgFilter] = useLocalStorage("vm-board-org-filter", "all");
   const [orgPickerOpen, setOrgPickerOpen] = useState(false);
+  const [orgPickerCreating, setOrgPickerCreating] = useState(false);
 
   // Column sort + filter state.
   const [sortField, setSortField] = useState(null);
@@ -493,6 +494,8 @@ export default function TaskBoard() {
     const orgRef = doc(db, "organizations", orgId);
     const newItemRef = doc(collection(db, "items"));
     const order = nextTopLevelOrder();
+    // Transaction atomically pulls the next item number from the org doc and
+    // bumps it — prevents race when two admins add at the same time.
     await runTransaction(db, async (tx) => {
       const orgSnap = await tx.get(orgRef);
       const next = orgSnap.data()?.nextItemNumber ?? 1;
@@ -522,6 +525,7 @@ export default function TaskBoard() {
   };
 
   const handleOrgPickerSelect = async (orgId) => {
+    setOrgPickerCreating(true);
     try {
       await handleAddItem(orgId);
       setOrgFilter(orgId);
@@ -529,6 +533,8 @@ export default function TaskBoard() {
     } catch (err) {
       setOrgPickerOpen(false);
       throw err;
+    } finally {
+      setOrgPickerCreating(false);
     }
   };
 
@@ -1069,6 +1075,7 @@ export default function TaskBoard() {
                     key={org.id}
                     fullWidth
                     variant={selected ? "contained" : "outlined"}
+                    disabled={orgPickerCreating}
                     onClick={() => handleOrgPickerSelect(org.id)}
                     sx={selected && org.accentColor ? {
                       bgcolor: org.accentColor,
