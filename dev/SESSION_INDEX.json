@@ -180,6 +180,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260610-Andrew-v0.4.1-sticky-sidebar",
+      "developer": "Andrew",
+      "date": "2026-06-10",
+      "date_closed": "2026-06-10",
+      "version_start": "v0.4.1",
+      "version_end": "v0.4.1",
+      "commit_start": "ffcc50b",
+      "commit_end": "3147742",
+      "summary": "Sticky sidebar fix. position:sticky + height:100vh on the nav Box keeps the left nav pinned while page content scrolls. Key lesson: minHeight:100vh with flex align-self:stretch lets the sidebar grow to full page height, defeating sticky — height:100vh overrides flex stretch and gives sticky the room it needs. Also committed leftover aiAgenda error type guard from v0.4.0 (handles { error: { message } } shape).",
+      "folder": "dev/sessions/v0_4_1_Andrew_STICKY_SIDEBAR/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260602-Andrew-v0.3.1-backlog",
       "developer": "Andrew",
       "date": "2026-06-02",
