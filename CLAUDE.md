@@ -73,6 +73,7 @@ See spec section 5. Single role gate: signed-in `@vistamarconsulting.com` + `use
 1. **When something breaks → invoke `superpowers:systematic-debugging` immediately.** No guess-and-retry.
 2. **When approach needs to change → back to `superpowers:brainstorming` or `superpowers:writing-plans`.** No mid-code pivots.
 3. **UI VERIFICATION HARD GATE — verify yourself before asking Andy.** When developing/fixing anything that produces UI behavior, drive the dev server via `/agent-browser` or Playwright. Code change → open browser → click through → screenshot/DOM snapshot → only then report.
+4. **AI Integration page must stay in sync.** Any change to the Sync Meeting workflow or system prompts (`api/ai/prepare.js`, `api/ai/refine.js`) must also update the `HOW_IT_WORKS` constant in `src/pages/AIIntegration.jsx`. New guardrail, new format rule, new input source, changed behavior — add or update the relevant row. This is how the team sees what the AI actually does.
 
 ## Session Context — THE BRAIN
 
