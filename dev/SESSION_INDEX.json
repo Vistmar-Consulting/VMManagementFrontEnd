@@ -167,6 +167,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260610-Andrew-v0.4.1-org-picker",
+      "developer": "Andrew",
+      "date": "2026-06-10",
+      "date_closed": "2026-06-10",
+      "version_start": "v0.4.1",
+      "version_end": "v0.4.1",
+      "commit_start": "2e92eae",
+      "commit_end": "8be6c6f",
+      "summary": "New Item Org Picker (brain-dump #3). 'New item' button always enabled for admins; clicking opens org picker dialog. One accent-colored button per org, pre-selects current orgFilter, single-tap creates blank item + sets orgFilter. In-flight guard: orgPickerCreating disables buttons + blocks backdrop/Escape dismiss during Firestore txn. Cancel leaves orgFilter unchanged. handleAddItem refactored to take explicit orgId param. TaskBoard.jsx only.",
+      "folder": "dev/sessions/v0_4_1_Andrew_ORG_PICKER/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260605-Andrew-v0.3.9-invoicing-sidebar",
       "developer": "Andrew",
       "date": "2026-06-05",
