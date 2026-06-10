@@ -375,15 +375,19 @@ export default async function handler(req, res) {
     const client = new Anthropic({ apiKey });
     // Stream + finalMessage(): the unified Sync Meeting call uses a high
     // max_tokens that crosses the SDK's non-streaming 10-minute guard, which
-    // throws on messages.create(). Streaming lifts that guard; the call still
-    // completes well under the function's maxDuration (300s). Same params,
+    // throws on messages.create(). Streaming lifts that guard. Same params,
     // same structured output.
     const message = await client.messages.stream({
       model: MODEL,
       // PROPOSED higher ceiling — unified does more (agenda + board changes)
       // than either source; controller will latency-test these values.
       max_tokens: master ? 32000 : 24000,
-      thinking: { type: "adaptive" },
+      // Master disables thinking: the large cross-org input (120 board items,
+      // 25 transcripts, 25 agendas) causes adaptive thinking to generate enough
+      // tokens to exceed Vercel's maxDuration. The task is data organization +
+      // formatting — the detailed prompt + JSON schema fully guide the output
+      // without reasoning overhead.
+      thinking: master ? { type: "disabled" } : { type: "adaptive" },
       // medium effort — reconciliation + formatting, not hard reasoning;
       // medium roughly halves thinking time vs the default high, keeping the
       // call well under timeout without a quality hit.

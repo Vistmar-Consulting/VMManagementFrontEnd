@@ -141,6 +141,19 @@
       "status": "closed"
     },
     {
+      "session_id": "SES-20260610-Andrew-v0.3.8-touch-base-504",
+      "developer": "Andrew",
+      "date": "2026-06-10",
+      "date_closed": "2026-06-10",
+      "version_start": "v0.3.8",
+      "version_end": "v0.3.8",
+      "commit_start": "5576a36",
+      "commit_end": "5576a36",
+      "summary": "Fixed 504 timeout on VM Weekly Touch Base Sync Meeting. Root cause: adaptive thinking (effort:medium) on the large master input (25 transcripts, 120 board items, 25 agendas across all orgs) generated enough tokens to exceed Vercel's maxDuration. Fix: api/ai/prepare.js — thinking: master ? { type: 'disabled' } : { type: 'adaptive' }. Cross-org aggregation is formatting not reasoning; prompt+schema fully guide the output. Non-master syncs unaffected. Fix is local on main, NOT yet pushed to origin/dev.",
+      "folder": "dev/sessions/v0_3_8_Andrew_TOUCH_BASE_FIX/",
+      "status": "closed"
+    },
+    {
       "session_id": "SES-20260602-Andrew-v0.3.1-backlog",
       "developer": "Andrew",
       "date": "2026-06-02",
