@@ -1058,7 +1058,7 @@ export default function TaskBoard() {
       {/* Org picker — opens when "New item" is clicked */}
       <Dialog
         open={orgPickerOpen}
-        onClose={() => setOrgPickerOpen(false)}
+        onClose={() => { if (!orgPickerCreating) setOrgPickerOpen(false); }}
         maxWidth="xs"
         fullWidth
       >
