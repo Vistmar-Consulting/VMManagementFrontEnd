@@ -147,6 +147,21 @@ function orgListBlock(orgMeta) {
 }
 
 function buildSystem(prompt, style, categories, tagVocab, internal = false, master = false, orgMeta = []) {
+  const bulletFormatBlock = !master ? `\n\n## Bullet format within topic bodies
+Write each bullet as:  item text — Person, Status (M/D)
+Rules:
+- Person: include the owner's name when it is non-obvious. Exception: content-social category topics — omit the person name entirely.
+- Status: include only when it meaningfully qualifies the item (e.g., "In Review", "Blocked", "Done", or content workflow phases like "outline", "draft", "published"). The content workflow phases list is non-exhaustive — other reasonable phases (e.g. "scheduled", "awaiting approval") are also acceptable.
+- Date: include only when a specific date was explicitly discussed. Short M/D format in parens, always last.
+- Person and Status may appear together or alone.
+- Omit the — entirely when there is no metadata.
+- Note: "In Review" and "Blocked" are display labels for the agenda — they are not the same as board status values ("Review", "Pending") and the difference is intentional.
+
+Examples:
+• Google Business Profile audit complete
+• Provider directory redesign — Hugo (6/15)
+• Homepage hero — Cedric, In Review
+• Q3 blog post — outline` : "";
   const filled = String(prompt || "").replaceAll("{{meetingStyle}}", style);
   const howToUse = master
     ? `## How to use the inputs — MASTER weekly agenda (the Monday Touch Base)
@@ -194,7 +209,7 @@ HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>,
 
 PRESERVE HYPERLINKS: the current agenda and the inputs may contain <a href="…"> links (docs, sheets, dashboards, GBP listings, etc.). Carry every existing link forward into the new agenda VERBATIM — keep the exact href and link text on the topic it belongs to. Never strip a link or turn it into plain text. If a transcript or note surfaces a relevant URL, include it as a link too.
 
-TOPIC IDENTITY — DO NOT RENAME EXISTING TOPICS: the current agenda's topics are listed below, each tagged [ref: <id>]. For every topic you carry forward from the current agenda, set its "ref" to that exact id and keep its title unchanged — the title is fixed by the system and you may not reword it. Only a genuinely NEW topic may have a new title; set its "ref" to an empty string "". You may reorder topics and you may omit a topic whose work is fully complete.
+TOPIC IDENTITY — DO NOT RENAME EXISTING TOPICS: the current agenda's topics are listed below, each tagged [ref: <id>]. For every topic you carry forward from the current agenda, set its "ref" to that exact id and keep its title unchanged — the title is fixed by the system and you may not reword it. Only a genuinely NEW topic may have a new title; set its "ref" to an empty string "". You may reorder topics and you may omit a topic whose work is fully complete.${bulletFormatBlock}
 
 ## Board changes output (boardChanges)
 Propose three kinds of Project Board updates a human will review, derived from the SAME record. You are given the existing board tasks each with an itemId.
