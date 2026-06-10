@@ -60,6 +60,21 @@ function orgListBlock(orgMeta) {
 }
 
 function buildSystem(categories, tagVocab, master, orgMeta) {
+  const bulletFormatBlock = !master ? `\n\n## Bullet format within topic bodies
+Write each bullet as:  item text — Person, Status (M/D)
+Rules:
+- Person: include the owner's name when it is non-obvious. Exception: content-social category topics — omit the person name entirely.
+- Status: include only when it meaningfully qualifies the item (e.g., "In Review", "Blocked", "Done", or content workflow phases like "outline", "draft", "published"). The content workflow phases list is non-exhaustive — other reasonable phases (e.g. "scheduled", "awaiting approval") are also acceptable.
+- Date: include only when a specific date was explicitly discussed. Short M/D format in parens, always last.
+- Person and Status may appear together or alone.
+- Omit the — entirely when there is no metadata.
+- Note: "In Review" and "Blocked" are display labels for the agenda — they are not the same as board status values ("Review", "Pending") and the difference is intentional.
+
+Examples:
+• Google Business Profile audit complete
+• Provider directory redesign — Hugo (6/15)
+• Homepage hero — Cedric, In Review
+• Q3 blog post — outline` : "";
   return `You are refining a DRAFT meeting agenda based on a single instruction from the user. You are given the current draft (topics, open floor) and an instruction.
 
 Apply ONLY what the instruction asks — add, edit, remove, or reorder as requested. Keep everything else EXACTLY as it is: same topics, same wording, same order, same categories/tags, same links. Do not invent unrelated content, do not re-summarize untouched topics, do not look for outside information — work only from the draft + the instruction. If the instruction references a topic from the previous agenda (e.g. "bring back X"), restore it faithfully using the ## Previous agenda section in the user message.
@@ -70,7 +85,7 @@ PRESERVE TOPIC IDS: each input topic carries a topicId (e.g. "t0", "t2"). For ev
 
 PRESERVE TOPIC REFS: each input topic may carry a ref (e.g. "docABC123"). Copy each topic's ref into the output EXACTLY. Never invent or change a ref. A brand-new topic you add has ref "".
 
-HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise.
+HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Be concise.${bulletFormatBlock}
 ${master ? `\nThis is the MASTER Touch Base agenda — organized org by org. EVERY topic must keep/set its organizationId (slug from the list). Place any new topic under the right org and keep org grouping intact.\n\n## Organizations (use these slugs for organizationId)\n${orgListBlock(orgMeta)}\n` : ""}
 ## Output
 Return the FULL refined agenda (not a diff) as JSON matching the schema: topics[{ ref, name, bodyHtml, categories, tags${master ? ", organizationId" : ""} }], openFloorHtml.${categorizationBlock(categories, tagVocab)}`;
