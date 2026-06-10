@@ -43,7 +43,7 @@ const VARIABLES_HINT = "Available variables: {{meetingStyle}} (working | executi
 // Human-readable explanation of what the Meeting Agenda Gen engine actually
 // does — the parts that live in the code (inputs, window, guardrails), NOT in
 // the editable prompt below. Keep this in sync with src/lib/aiAgenda.js
-// (assembleGenInputs) + api/ai/generate.js (buildSystem). Organized by
+// (assembleGenInputs) + api/ai/prepare.js (buildSystem). Organized by
 // component so it's easy to refine: ask Claude Code to update a row when the
 // engine changes.
 const HOW_IT_WORKS = [
@@ -77,7 +77,18 @@ const HOW_IT_WORKS = [
     items: [
       ["Internal / client boundary", "Internal Vistamar meetings are for the assistant's awareness only — their mechanics and candor are never surfaced into a client-facing agenda. Vistamar always reads as strong and prepared."],
       ["Org coherence", "It won't duplicate or contradict what's already on the client's other agendas, and it surfaces cross-meeting dependencies."],
+      ["No invoicing topics", "Topics whose primary purpose is invoicing, billing, or payment status are never created or retained on a client agenda — that belongs on the private Project Board."],
+      ["Topic titles are frozen", "Existing topic titles are never renamed. The AI may only set a title on a brand-new topic; continuing topics keep their current title exactly."],
       ["Concise output", "A short, tight agenda — never a multi-page document."],
+    ],
+  },
+  {
+    group: "Bullet format (always on)",
+    items: [
+      ["Pattern", "Each bullet in a topic body follows: item text — Person, Status (M/D). The em-dash and what follows are only added when relevant — bare bullets are fine."],
+      ["Person", "Owner name is included when ownership is non-obvious. Exception: content-social topics — owner name is always omitted there."],
+      ["Status", "Included only when it meaningfully qualifies the item: canonical words (In Review, Blocked, Done) or content workflow phases (outline, draft, published, etc.)."],
+      ["Date", "Only when a specific date was explicitly discussed in the meeting. Short M/D format in parens, always last."],
     ],
   },
   {
