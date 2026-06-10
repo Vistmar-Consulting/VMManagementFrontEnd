@@ -156,6 +156,7 @@ export default function TaskBoard() {
 
   // Org filter chip group — persisted in localStorage.
   const [orgFilter, setOrgFilter] = useLocalStorage("vm-board-org-filter", "all");
+  const [orgPickerOpen, setOrgPickerOpen] = useState(false);
 
   // Column sort + filter state.
   const [sortField, setSortField] = useState(null);
@@ -303,6 +304,11 @@ export default function TaskBoard() {
     }
     return ids;
   }, [sorted, subitemsByParent, matchesNonOrgFilters, hasAnyFilter]);
+
+  const sortedOrgs = useMemo(
+    () => [...(orgs || [])].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)),
+    [orgs],
+  );
 
   const isItemExpanded = (id) => expandedItemIds.has(id) || filterForceExpandedIds.has(id);
 
@@ -513,6 +519,17 @@ export default function TaskBoard() {
       });
       tx.update(orgRef, { nextItemNumber: next + 1 });
     });
+  };
+
+  const handleOrgPickerSelect = async (orgId) => {
+    try {
+      await handleAddItem(orgId);
+      setOrgFilter(orgId);
+      setOrgPickerOpen(false);
+    } catch (err) {
+      setOrgPickerOpen(false);
+      throw err;
+    }
   };
 
   const handleAddSubitem = async (parentItem) => {
@@ -1035,6 +1052,45 @@ export default function TaskBoard() {
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDeleteTagConfirm(null)}>Cancel</Button>
           <Button variant="contained" color="error" onClick={handleConfirmDeleteTag}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Org picker — opens when "New item" is clicked */}
+      <Dialog
+        open={orgPickerOpen}
+        onClose={() => setOrgPickerOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Create item for…</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1} sx={{ pt: 0.5 }}>
+            {sortedOrgs.length === 0 ? (
+              <Button disabled fullWidth>No organizations</Button>
+            ) : (
+              sortedOrgs.map((org) => {
+                const selected = orgFilter === org.id;
+                return (
+                  <Button
+                    key={org.id}
+                    fullWidth
+                    variant={selected ? "contained" : "outlined"}
+                    onClick={() => handleOrgPickerSelect(org.id)}
+                    sx={selected && org.accentColor ? {
+                      bgcolor: org.accentColor,
+                      color: getContrastText(org.accentColor),
+                      "&:hover": { bgcolor: org.accentColor, filter: "brightness(0.92)" },
+                    } : {}}
+                  >
+                    {org.name}
+                  </Button>
+                );
+              })
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOrgPickerOpen(false)}>Cancel</Button>
         </DialogActions>
       </Dialog>
     </Stack>
