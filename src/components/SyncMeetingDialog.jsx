@@ -42,6 +42,7 @@ import { validateProposal, normalizeTopicRefs, classifyTopicChanges, inheritKeys
 import { useOthers } from "../lib/liveblocks.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
+import { getPillBg, getTextColor } from "../theme/pillColors.js";
 import ProposedBoardRow from "./ProposedBoardRow.jsx";
 
 const STATUS_BY_ID   = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id,   s]));
@@ -153,8 +154,6 @@ export default function SyncMeetingDialog({
     creates.forEach((c, i) => { if (accepted.has(c)) out.add(i); });
     return out;
   }, [proposal, validation]);
-
-  const statusName = (id) => STATUS_OPTIONS.find((s) => s.id === id)?.name || "";
 
   // Recompute validation; reset the board-change selections to "all valid
   // checked" and clear stale promotions. Used on receipt and after each refine.
@@ -607,25 +606,91 @@ export default function SyncMeetingDialog({
 
             {moves.length > 0 && (
               <Box sx={{ mb: 2 }}>
-                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>Status updates (existing tasks)</Typography>
-                <Divider sx={{ mb: 0.5 }} />
-                {moves.map((m, i) => {
-                  const dropped = droppedMoves.includes(m);
-                  if (dropped) return null; // shown in banner only
-                  const cur = statusName(itemsById.get(m.itemId)?.statusId) || "?";
-                  return (
-                    <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "flex-start", py: 0.75 }}>
-                      <Checkbox size="small" checked={selMoves.has(i)} onChange={() => toggle(setSelMoves)(i)} sx={{ mt: -0.5 }} />
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{m.title}</Typography>
-                        <Typography variant="caption" sx={{ display: "block" }}>
-                          <strong>{cur}</strong> → <strong>{m.toStatus}</strong>
+                {/* "Status Updates" group header — orange, matching MiniProjectBoard pattern */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.8,
+                    py: 0.5,
+                    px: 1,
+                    background: "#f57c000D",
+                    borderLeft: "3px solid #f57c00",
+                    borderRadius: 0.5,
+                    mb: 0.5,
+                    userSelect: "none",
+                  }}
+                >
+                  <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "#f57c00" }}>
+                    Status Updates
+                  </Typography>
+                  <Typography sx={{ fontSize: 10, color: "#f57c00", opacity: 0.7, ml: 0.3 }}>
+                    ({moves.filter((m) => !droppedMoves.includes(m)).length})
+                  </Typography>
+                </Box>
+                <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1, overflow: "hidden" }}>
+                  {moves.map((m, i) => {
+                    if (droppedMoves.includes(m)) return null;
+                    const curStatus = STATUS_BY_ID[itemsById.get(m.itemId)?.statusId];
+                    const toStatus = STATUS_BY_NAME[m.toStatus];
+                    return (
+                      <Box
+                        key={i}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.75,
+                          px: 1.5,
+                          py: 0.75,
+                          borderBottom: "1px solid",
+                          borderColor: "divider",
+                          "&:last-child": { borderBottom: "none" },
+                          opacity: selMoves.has(i) ? 1 : 0.5,
+                        }}
+                      >
+                        <Checkbox
+                          size="small"
+                          checked={selMoves.has(i)}
+                          onChange={() => toggle(setSelMoves)(i)}
+                          sx={{ p: 0.25, flexShrink: 0 }}
+                        />
+                        <Typography
+                          variant="body2"
+                          sx={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                        >
+                          {m.title}
                         </Typography>
-                        {m.reason && <Typography variant="caption" color="text.secondary">{m.reason}</Typography>}
+                        <Chip
+                          label={curStatus?.name || "?"}
+                          size="small"
+                          sx={{
+                            bgcolor: getPillBg(curStatus?.color),
+                            color: getTextColor(curStatus?.color),
+                            fontWeight: 600,
+                            fontSize: "0.68rem",
+                            height: 19,
+                            "& .MuiChip-label": { px: 0.6 },
+                            flexShrink: 0,
+                          }}
+                        />
+                        <Typography variant="caption" sx={{ color: "text.disabled", flexShrink: 0 }}>→</Typography>
+                        <Chip
+                          label={toStatus?.name || m.toStatus}
+                          size="small"
+                          sx={{
+                            bgcolor: getPillBg(toStatus?.color),
+                            color: getTextColor(toStatus?.color),
+                            fontWeight: 600,
+                            fontSize: "0.68rem",
+                            height: 19,
+                            "& .MuiChip-label": { px: 0.6 },
+                            flexShrink: 0,
+                          }}
+                        />
                       </Box>
-                    </Box>
-                  );
-                })}
+                    );
+                  })}
+                </Box>
               </Box>
             )}
 
