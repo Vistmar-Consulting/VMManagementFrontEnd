@@ -123,7 +123,7 @@ export default function SyncMeetingDialog({
   const [selCreates, setSelCreates] = useState(() => new Set());
   const [selMoves, setSelMoves] = useState(() => new Set());
   const [selNotes, setSelNotes] = useState(() => new Set());
-  // Inline promotions per create index: { [idx]: { statusId, assigneeIds } }.
+  // Inline promotions per create index: { [idx]: { statusId, assigneeIds?, categoryId, tagIds } }.
   const [promotions, setPromotions] = useState({});
   // Previous agenda — captured once at mount so refine can restore dropped topics.
   const [prevTopicsSnapshot] = useState(() => topics || []);
