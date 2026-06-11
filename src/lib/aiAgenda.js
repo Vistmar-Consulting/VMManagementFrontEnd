@@ -612,7 +612,9 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       const promo = promotions[idx];
       const statusId = promo?.statusId ?? AI_GEN_STATUS;
       const assigneeIds = Array.isArray(promo?.assigneeIds) ? promo.assigneeIds : [];
-      const { categoryId, tagIds } = inheritKeysForCreate(create, topicsById);
+      const inherited = inheritKeysForCreate(create, topicsById);
+      const categoryId = promo?.categoryId !== undefined ? promo.categoryId : inherited.categoryId;
+      const tagIds = promo?.tagIds !== undefined ? promo.tagIds : inherited.tagIds;
       let num = orgNum.get(org) ?? 1;
       order = generateKeyBetween(order, null);
 
