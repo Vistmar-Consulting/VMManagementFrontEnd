@@ -21,6 +21,27 @@ export function sanitizeHtml(html) {
   return DOMPurify.sanitize(String(html), { ALLOWED_TAGS, ALLOWED_ATTR, ADD_ATTR: ["target"] });
 }
 
+// Flatten an agenda rich-body HTML string (e.g. openFloorHtml) into an ordered
+// list of plain-text lines — one per block element (list item or paragraph).
+// The structured meeting-prep email builder renders each line as its own
+// bullet, so this bridges the rich-text body back to that line-oriented shape.
+// Returns [] for empty/whitespace-only input.
+export function htmlToLines(html) {
+  if (!html) return [];
+  const doc = new DOMParser().parseFromString(sanitizeHtml(html), "text/html");
+  const lines = [];
+  for (const el of doc.body.querySelectorAll("li, p")) {
+    const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+    if (text) lines.push(text);
+  }
+  // No block wrappers (e.g. a bare text node) — fall back to the whole body text.
+  if (lines.length === 0) {
+    const text = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+    if (text) lines.push(text);
+  }
+  return lines;
+}
+
 export function mergeBodyHtml(talkingPoints, notes) {
   return `${bulletsToHtml(talkingPoints)}${bulletsToHtml(notes)}`;
 }

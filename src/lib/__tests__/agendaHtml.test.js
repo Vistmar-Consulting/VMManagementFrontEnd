@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bulletsToHtml, sanitizeHtml, composeAgendaHtml } from "../agendaHtml.js";
+import { bulletsToHtml, sanitizeHtml, composeAgendaHtml, htmlToLines } from "../agendaHtml.js";
 
 describe("bulletsToHtml", () => {
   it("renders ordered plain-text items as a <ul>", () => {
@@ -56,6 +56,31 @@ describe("composeAgendaHtml", () => {
     expect(html).toContain("style=");
   });
 
+});
+
+describe("htmlToLines", () => {
+  it("returns one line per list item", () => {
+    expect(htmlToLines("<ul><li>First</li><li>Second</li></ul>")).toEqual(["First", "Second"]);
+  });
+  it("returns one line per paragraph", () => {
+    expect(htmlToLines("<p>Alpha</p><p>Beta</p>")).toEqual(["Alpha", "Beta"]);
+  });
+  it("collapses whitespace and drops empty blocks", () => {
+    expect(htmlToLines("<p>  a\n  b  </p><p></p><li>  </li><p>c</p>")).toEqual(["a b", "c"]);
+  });
+  it("strips inline formatting tags, keeping their text", () => {
+    expect(htmlToLines("<ul><li><strong>bold</strong> and <em>italic</em></li></ul>")).toEqual([
+      "bold and italic",
+    ]);
+  });
+  it("falls back to whole-body text when there are no block wrappers", () => {
+    expect(htmlToLines("bare text")).toEqual(["bare text"]);
+  });
+  it("returns [] for empty, null, or whitespace-only input", () => {
+    expect(htmlToLines("")).toEqual([]);
+    expect(htmlToLines(null)).toEqual([]);
+    expect(htmlToLines("<p>   </p>")).toEqual([]);
+  });
 });
 
 import { mergeBodyHtml } from "../agendaHtml.js";

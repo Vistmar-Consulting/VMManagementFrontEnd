@@ -88,6 +88,7 @@ import CollabBodyEditor from "../components/editor/CollabBodyEditor.jsx";
 import AgendaPresence from "../components/AgendaPresence.jsx";
 import SharedEditorToolbar from "../components/editor/SharedEditorToolbar.jsx";
 import AgendaTOC from "../components/AgendaTOC.jsx";
+import { htmlToLines } from "../lib/agendaHtml.js";
 import { GripVertical, Trash2 } from "lucide-react";
 import { t } from "../theme/tokens.js";
 
@@ -581,7 +582,7 @@ function TeamsLogo({ size = 18 }) {
   );
 }
 
-function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems }) {
+function ActionBar({ agenda, agendaId, calendarSeries, topics }) {
   const { user } = useAuth();
   const teamsUrl = agenda?.teamsUrl || calendarSeries?.teamsUrl || null;
   const [sendMenuEl, setSendMenuEl] = useState(null);
@@ -680,7 +681,7 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics, openFloorItems })
         title: agenda?.title || "(untitled)",
         dateFormatted: dt ? format(dt, "EEEE, MMMM d 'at' h:mm a") : "Date TBD",
         topics: (topics || []).map((tp) => ({ Topic_Name: tp.name })),
-        openFloor: (openFloorItems || []).map((it) => ({ Discussion_Item: it.text })),
+        openFloor: htmlToLines(agenda?.openFloorHtml).map((line) => ({ Discussion_Item: line })),
         attendees: visibleAttendees(agenda?.attendees).map((a) => ({
           email: a.email,
           name: a.name || a.email,
@@ -1602,16 +1603,6 @@ export default function AgendaDetail() {
     return m;
   }, [users]);
 
-  // V2.2.2b: agenda-level openFloor subscription so the ActionBar's Meeting
-  // Prep send can include the current discussion items in the payload.
-  // OpenFloorSection still owns its own writes — this read just mirrors so
-  // the parent has access for the Send menu.
-  const openFloorConstraints = useMemo(() => [orderBy("sortOrder", "asc")], []);
-  const { data: openFloorItems } = useCollection(
-    agendaId ? `agendas/${agendaId}/openFloor` : null,
-    openFloorConstraints
-  );
-
   // V2.2.2e: data sources for the embedded MiniProjectBoard. Items,
   // categories, tags are read once at this level and threaded down to every
   // topic card; each card filters them locally by its categoryIds + tagIds.
@@ -1884,7 +1875,6 @@ export default function AgendaDetail() {
             agendaId={agendaId}
             calendarSeries={calendarSeries}
             topics={topics}
-            openFloorItems={openFloorItems}
           />
           <Box
             sx={{

@@ -55,9 +55,26 @@ export async function sendRelay({ to, subject, htmlBody, textBody, icsBody, icsM
     body: JSON.stringify(body),
   });
 
+  // Postmark returns HTTP 200 with a non-zero ErrorCode in the JSON body for
+  // failures it accepts the request for but won't deliver (e.g. 406 inactive
+  // recipient, 300 invalid address). Checking res.ok alone reports those as
+  // success, so the caller's failed-count stays 0 and the mail silently never
+  // arrives. Parse the body and surface a non-zero ErrorCode as a hard failure.
+  const text = await res.text();
   if (!res.ok) {
-    const text = await res.text();
     throw new Error(`Postmark failed (${res.status}): ${text}`);
+  }
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Postmark returned an unparseable success body: ${text}`);
+  }
+  if (typeof data.ErrorCode !== "number") {
+    throw new Error(`Postmark response missing ErrorCode: ${text}`);
+  }
+  if (data.ErrorCode !== 0) {
+    throw new Error(`Postmark delivery error ${data.ErrorCode}: ${data.Message || "unknown"}`);
   }
 }
 
