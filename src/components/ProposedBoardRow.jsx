@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Checkbox,
@@ -33,6 +33,10 @@ export default function ProposedBoardRow({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(create.title || "");
   const [statusAnchor, setStatusAnchor] = useState(null);
+
+  useEffect(() => {
+    if (!editingTitle) setTitleValue(create.title || "");
+  }, [create.title, editingTitle]);
   const [assigneeAnchor, setAssigneeAnchor] = useState(null);
   const [categoryAnchor, setCategoryAnchor] = useState(null);
   const [tagsAnchor, setTagsAnchor] = useState(null);

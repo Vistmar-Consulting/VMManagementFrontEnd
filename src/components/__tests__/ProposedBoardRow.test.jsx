@@ -143,4 +143,17 @@ describe("ProposedBoardRow", () => {
     wrap(<ProposedBoardRow {...p} />);
     expect(screen.queryByText("Discussed in client call 2026-06-06")).not.toBeInTheDocument();
   });
+
+  it("syncs title display when create.title changes externally (not editing)", () => {
+    const p = makeProps();
+    const { rerender } = wrap(<ProposedBoardRow {...p} />);
+    expect(screen.getByText("Draft GBP post schedule")).toBeInTheDocument();
+    const updatedCreate = { ...baseCreate, title: "Updated by Refine" };
+    rerender(
+      <ThemeProvider theme={theme}>
+        <ProposedBoardRow {...makeProps({ create: updatedCreate })} />
+      </ThemeProvider>
+    );
+    expect(screen.getByText("Updated by Refine")).toBeInTheDocument();
+  });
 });
