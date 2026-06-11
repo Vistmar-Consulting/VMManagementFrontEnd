@@ -66,10 +66,9 @@
       "developer": "Andrew",
       "date": "2026-06-04",
       "version_start": "v0.3.2",
-      "version_end": "(pending)",
+      "version_end": "v0.3.2",
       "commit_start": "8080f4f",
       "date_closed": "2026-06-04",
-      "version_end": "v0.3.2",
       "commit_end": "4a14839",
       "summary": "Backlog #4: Pre-Brief deprecated everywhere (client render/export/versions + AI client + 3 AI serverless fns; data dormant). Live clickable Agenda TOC shipped: pure buildTocEntries (master-aware, 8 tests), AgendaTOC component, scroll anchors (ANCHOR_SCROLL_MT=56). All 7 plan tasks committed, 64 tests green, deployed prod jql2wuwu0. Two-profile cross-user reactivity deferred to manual. Post-close: fixed Fireflies stale cache (30-min TTL, initialDataUpdatedAt); Past Meetings redesign (collapsible white card, Refresh button, rich rows, NEW badge — aa7ed8a+dd581ee+c2d7736+b783f31, fixes Terser blank-agenda production incident); fixed Sync Meeting Vistamar transcript classification (Hugo/Scot non-VM emails in Fireflies, vistamarTitleSet fallback) and label bug (5a390de+4a14839). Deployed Vercel index-Cv650NrC.js. Deferred: Sync Meeting assignee pre-fill (inferAssigneeIds exists, not wired to initial promotions state).",
       "folder": "dev/sessions/v0_3_2_Andrew_TOC/",
@@ -229,6 +228,19 @@
       "commit_end": "6b8344e",
       "summary": "Picked #4 (deprecate Pre-Brief → live clickable TOC): wrote + reviewer-approved spec + 8-task plan (docs/superpowers/{specs,plans}/2026-06-03-prebrief-deprecation-agenda-toc*), build NOT started. An all-day COLLAB OUTAGE interrupted it: Vercel LIVEBLOCKS_SECRET_KEY had been set to an sk_live_ (production) key ~17h prior but the Liveblocks app is the dev environment (sk_dev_) → Liveblocks rejected every room (4001 'no access') → all agenda topic bodies blank. NOT data loss (Firestore bodyHtml intact), NOT the seed code. Fixed by restoring the sk_dev_ key in Vercel + `vercel deploy --prod`. Collab RESTORED + verified (two real users, live cursors). Also shipped: content-based self-healing reseed (bf6ee7a), bounded room ids for an over-long 181-char agenda doc id (6b8344e); reverted the server-AI Pre-Brief change (2f64228) to keep deploys collab-only. Doubling incident on the Biweekly agenda (two-window concurrent seed race) recovered via Liveblocks REST room-delete + single-client reseed → proves the single-writer seed guard is now HIGH priority. Prod alias → mka8mzc3i. Preview-scope Liveblocks key still unset (CLI quirk). Memory: reference_liveblocks_dev_key.",
       "folder": "dev/sessions/v0_3_1_Andrew_BACKLOG/",
+      "status": "closed"
+    },
+    {
+      "session_id": "SES-20260611-Andrew-v0.4.3-prep-email-fixes",
+      "developer": "Andrew",
+      "date": "2026-06-11",
+      "date_closed": "2026-06-11",
+      "version_start": "v0.4.3",
+      "version_end": "v0.4.3",
+      "commit_start": "115bf71",
+      "commit_end": "fd87919",
+      "summary": "Opened with /to-do; re-verified the reconstructed backlog against code/git (3 agents) — 6 items reconciled as shipped/obsolete, open list ~26→~13. Then fixed two confirmed-live, client-facing latent bugs in the Send Meeting Prep email path: (1) Postmark silent-success — relay-mail.js sendRelay() only checked res.ok, so HTTP-200-with-non-zero-ErrorCode failures (406 inactive recipient etc.) reported as sent and mail silently never arrived; now parses the body and throws on non-zero ErrorCode. (2) ActionBar read the dormant openFloor subcollection instead of the migrated agenda.openFloorHtml; new htmlToLines() helper in agendaHtml.js flattens it, dead subscription + prop removed. 11 new tests, suite 91/91, build clean. NOT live-sent (would email real attendees). Also committed 4 orphaned design docs. Deferred: send-prep.js still passes only Topic_Name (no talking points) — same staleness class, fast-follow candidate. Not pushed (pre-push code review pending).",
+      "folder": "dev/sessions/v0_4_3_Andrew_PREP_EMAIL_FIXES/",
       "status": "closed"
     }
   ]
