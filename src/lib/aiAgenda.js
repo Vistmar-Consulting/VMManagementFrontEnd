@@ -410,7 +410,7 @@ export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts
 // `accepted` = the dialog's review selections, indexes into
 // proposal.boardChanges.{creates,moves,notes}:
 //   { createIdxs:number[], moveIdxs:number[], noteIdxs:number[],
-//     promotions:{ [createIdx]: { statusId, assigneeIds } } }
+//     promotions:{ [createIdx]: { statusId, assigneeIds?, categoryId, tagIds } } }
 //
 // Firestore requires ALL reads before ANY write within a transaction, so the
 // body is split into a reads phase (org counters + note target items) and a
