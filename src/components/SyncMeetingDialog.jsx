@@ -19,11 +19,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  FormControl,
   FormControlLabel,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   TextField,
   ToggleButton,
@@ -46,6 +42,10 @@ import { validateProposal, normalizeTopicRefs, classifyTopicChanges, inheritKeys
 import { useOthers } from "../lib/liveblocks.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
+import ProposedBoardRow from "./ProposedBoardRow.jsx";
+
+const STATUS_BY_ID   = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id,   s]));
+const STATUS_BY_NAME = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.name, s]));
 
 // Parse "Owner: <name>" or "Action item for <name>" from a create note and
 // return the matching user's id, if found.
@@ -141,10 +141,6 @@ export default function SyncMeetingDialog({
   const lastGen = agenda?.lastUnifiedGenAt?.toDate ? agenda.lastUnifiedGenAt.toDate() : null;
 
   const itemsById = useMemo(() => new Map((items || []).map((it) => [it.id, it])), [items]);
-  const topicNameById = useMemo(
-    () => new Map((proposal?.topics || []).map((t) => [t.topicId, t.name])),
-    [proposal],
-  );
 
   // Indexes of VALID (accepted) creates — anything validateProposal rejected is
   // excluded here and never selectable. Compared by object identity against the
@@ -561,128 +557,51 @@ export default function SyncMeetingDialog({
 
             {creates.length > 0 && (
               <Box sx={{ mb: 2 }}>
-                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>New tasks & subitems → AI Gen</Typography>
-                <Divider sx={{ mb: 0.5 }} />
-                {creates.map((c, i) => {
-                  if (!validCreateIdxs.has(i)) return null; // rejected → shown in banner only
-                  const promo = promotions[i] || {};
-                  const topicName = topicNameById.get(c.topicId) || "—";
-                  return (
-                    <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "flex-start", py: 0.75, pl: c.parentRef ? 3 : 0 }}>
-                      <Checkbox
-                        size="small"
-                        checked={selCreates.has(i)}
-                        onChange={() => toggle(setSelCreates, (idx) => validCreateIdxs.has(idx))(i)}
-                        sx={{ mt: -0.5 }}
+                {/* "New Items" group header — matches MiniProjectBoard GroupHeader style */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.8,
+                    py: 0.5,
+                    px: 1,
+                    background: (theme) => `${theme.palette.primary.main}0D`,
+                    borderLeft: "3px solid",
+                    borderColor: "primary.main",
+                    borderRadius: 0.5,
+                    mb: 0.5,
+                    userSelect: "none",
+                  }}
+                >
+                  <Typography sx={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: "primary.main" }}>
+                    New Items
+                  </Typography>
+                  <Typography sx={{ fontSize: 10, color: "primary.main", opacity: 0.7, ml: 0.3 }}>
+                    ({creates.filter((_, i) => validCreateIdxs.has(i)).length})
+                  </Typography>
+                </Box>
+                <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1, overflow: "hidden" }}>
+                  {creates.map((c, i) => {
+                    if (!validCreateIdxs.has(i)) return null;
+                    return (
+                      <ProposedBoardRow
+                        key={i}
+                        create={c}
+                        idx={i}
+                        isChecked={selCreates.has(i)}
+                        onToggle={() => toggle(setSelCreates, (idx) => validCreateIdxs.has(idx))(i)}
+                        promotion={promotions[i]}
+                        onUpdateCreate={setCreateField}
+                        onUpdatePromotion={updatePromotion}
+                        itemsById={itemsById}
+                        creates={creates}
+                        users={users || []}
+                        categories={_categories || []}
+                        tags={_tags || []}
                       />
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <TextField
-                          size="small"
-                          fullWidth
-                          value={c.title}
-                          onChange={(e) => setCreateField(i, "title", e.target.value)}
-                          disabled={!selCreates.has(i)}
-                          sx={{ mb: 0.5, "& .MuiInputBase-input": { fontWeight: 600 } }}
-                        />
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                          Topic: {topicName}
-                        </Typography>
-                        {c.parentRef && (() => {
-                          const label = c.parentRef.startsWith("new:")
-                            ? (() => {
-                                const n = parseInt(c.parentRef.slice(4), 10);
-                                const parentCreate = creates[n];
-                                return parentCreate ? `${parentCreate.title} (new)` : `new task #${n}`;
-                              })()
-                            : itemsById.get(c.parentRef)?.title || c.parentRef;
-                          return (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                              Parent: {label}
-                            </Typography>
-                          );
-                        })()}
-                        <TextField
-                          size="small"
-                          fullWidth
-                          multiline
-                          minRows={2}
-                          maxRows={4}
-                          label="Description"
-                          value={c.note || ""}
-                          onChange={(e) => setCreateField(i, "note", e.target.value)}
-                          disabled={!selCreates.has(i)}
-                          sx={{ mb: 0.5 }}
-                        />
-                        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-                          <FormControl size="small" sx={{ minWidth: 140 }}>
-                            <InputLabel id={`status-${i}`}>Status</InputLabel>
-                            <Select
-                              labelId={`status-${i}`}
-                              label="Status"
-                              value={promo.statusId ?? AI_GEN_STATUS}
-                              onChange={(e) => setPromoStatus(i, e.target.value)}
-                              disabled={!selCreates.has(i)}
-                            >
-                              {AI_GEN_OPTION && (
-                                <MenuItem value={AI_GEN_OPTION.id}>{AI_GEN_OPTION.name}</MenuItem>
-                              )}
-                              {PROMOTE_STATUSES.map((s) => (
-                                <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          <FormControl size="small" sx={{ minWidth: 180, flex: 1 }}>
-                            <InputLabel id={`assignee-${i}`}>Assignee</InputLabel>
-                            <Select
-                              labelId={`assignee-${i}`}
-                              label="Assignee"
-                              multiple
-                              value={promo.assigneeIds || []}
-                              onChange={(e) => setPromoAssignees(i, e.target.value)}
-                              disabled={!selCreates.has(i)}
-                              renderValue={(sel) =>
-                                sel
-                                  .map((uid) => (users || []).find((u) => u.id === uid))
-                                  .filter(Boolean)
-                                  .map((u) => u.displayName || u.email)
-                                  .join(", ")
-                              }
-                            >
-                              {(users || []).map((u) => (
-                                <MenuItem key={u.id} value={u.id}>{u.displayName || u.email}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          <FormControl size="small" sx={{ minWidth: 180 }}>
-                            <InputLabel>Parent</InputLabel>
-                            <Select
-                              label="Parent"
-                              value={c.parentRef || ""}
-                              onChange={(e) => setCreateField(i, "parentRef", e.target.value)}
-                              disabled={!selCreates.has(i)}
-                            >
-                              <MenuItem value=""><em>None (top-level)</em></MenuItem>
-                              {(items || [])
-                                .filter((it) => !it.parentId)
-                                .map((it) => (
-                                  <MenuItem key={it.id} value={it.id}>{it.title}</MenuItem>
-                                ))}
-                              {creates.map((other, j) => {
-                                if (j === i) return null;
-                                if (other.parentRef) return null;
-                                return (
-                                  <MenuItem key={`new:${j}`} value={`new:${j}`}>
-                                    {other.title} (new)
-                                  </MenuItem>
-                                );
-                              })}
-                            </Select>
-                          </FormControl>
-                        </Stack>
-                      </Box>
-                    </Box>
-                  );
-                })}
+                    );
+                  })}
+                </Box>
               </Box>
             )}
 
