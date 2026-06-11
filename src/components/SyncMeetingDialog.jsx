@@ -42,15 +42,10 @@ import {
   applyUnified,
   setAgendaStyle,
 } from "../lib/aiAgenda.js";
-import { validateProposal, normalizeTopicRefs, classifyTopicChanges } from "../lib/syncMeeting.js";
+import { validateProposal, normalizeTopicRefs, classifyTopicChanges, inheritKeysForCreate } from "../lib/syncMeeting.js";
 import { useOthers } from "../lib/liveblocks.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
-import { STATUS_MAP, AI_GEN_STATUS } from "../lib/itemStatusMap.js";
-
-// Inline-promotion status choices for a new (AI Gen) create. AI Gen is always
-// the default; user can promote to any moveable lifecycle status.
-const AI_GEN_OPTION = STATUS_OPTIONS.find((s) => s.id === AI_GEN_STATUS);
-const PROMOTE_STATUSES = STATUS_OPTIONS.filter((s) => Object.prototype.hasOwnProperty.call(STATUS_MAP, s.name));
+import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
 
 // Parse "Owner: <name>" or "Action item for <name>" from a create note and
 // return the matching user's id, if found.
@@ -191,10 +186,17 @@ export default function SyncMeetingDialog({
     setSelNotes(nextNotes);
     // Pre-populate each valid create with AI Gen status and any inferrable assignee.
     const initPromotions = {};
+    const topicsById = Object.fromEntries((prop.topics || []).map((t) => [t.topicId, t]));
     creates.forEach((c, i) => {
       if (accepted.has(c)) {
         const assigneeIds = inferAssigneeIds(c.note, users);
-        initPromotions[i] = { statusId: AI_GEN_STATUS, ...(assigneeIds.length ? { assigneeIds } : {}) };
+        const { categoryId, tagIds } = inheritKeysForCreate(c, topicsById);
+        initPromotions[i] = {
+          statusId: AI_GEN_STATUS,
+          ...(assigneeIds.length ? { assigneeIds } : {}),
+          categoryId: categoryId ?? null,
+          tagIds: tagIds ?? [],
+        };
       }
     });
     setPromotions(initPromotions);
@@ -314,29 +316,8 @@ export default function SyncMeetingDialog({
     return { ...prev, boardChanges: { ...prev.boardChanges, creates } };
   });
 
-  const setPromoStatus = (idx, statusId) => setPromotions((prev) => {
-    const next = { ...prev };
-    const cur = next[idx] || {};
-    if (statusId === "") {
-      const { statusId: _drop, ...rest } = cur;
-      if (Object.keys(rest).length) next[idx] = rest; else delete next[idx];
-    } else {
-      next[idx] = { ...cur, statusId };
-    }
-    return next;
-  });
-
-  const setPromoAssignees = (idx, assigneeIds) => setPromotions((prev) => {
-    const next = { ...prev };
-    const cur = next[idx] || {};
-    if (!assigneeIds.length) {
-      const { assigneeIds: _drop, ...rest } = cur;
-      if (Object.keys(rest).length) next[idx] = rest; else delete next[idx];
-    } else {
-      next[idx] = { ...cur, assigneeIds };
-    }
-    return next;
-  });
+  const updatePromotion = (idx, patch) =>
+    setPromotions((prev) => ({ ...prev, [idx]: { ...(prev[idx] || {}), ...patch } }));
 
   const apply = async () => {
     // Presence-aware guard: applyUnified replaces ALL topics. If others are live
