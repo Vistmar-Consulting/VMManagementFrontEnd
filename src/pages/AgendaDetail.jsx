@@ -213,7 +213,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
       attendees: agenda.attendees || [],
       org_id: agenda.organizationId || calendarSeries?.organizationId || "unspecified",
     };
-  }, [agenda, calendarSeries]);
+  }, [agenda, calendarSeries, isRecurring, nextOccurrence]);
 
   // Boundness uses the same canonical signal as the action bar, cancel, and
   // manage-guests dialogs (agenda.graphEventId || calendarSeries.graphSeriesEventId).
