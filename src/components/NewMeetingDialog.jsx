@@ -55,7 +55,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { createMeeting } from "../lib/meetingsApi.js";
-import { isClientEmail, upsertOrgMember } from "../lib/orgMembers.js";
+import {
+  VISTAMAR_ORG_ID,
+  isClientEmail,
+  upsertOrgMember,
+  vistamarTeamChoices,
+} from "../lib/orgMembers.js";
 import { useOrgMembers } from "../hooks/useOrgMembers.js";
 import MemberAvatar from "./MemberAvatar.jsx";
 
@@ -118,19 +123,27 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
     [attendees]
   );
 
-  const internalChoices = useMemo(() => {
-    return (users || [])
-      .filter((u) => u.email && !attendeeEmails.has(u.email.toLowerCase()))
-      .map((u) => ({
-        email: u.email,
-        name: u.displayName || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email,
-      }));
-  }, [users, attendeeEmails]);
+  // Vistamar team dropdown — organizations/vistamar/members unioned with the
+  // `users` collection. Sourcing it from `users` alone was the original bug: a
+  // users/{uid} doc is only minted on that person's first sign-in, so teammates
+  // who had never logged into the app were missing entirely. See
+  // vistamarTeamChoices for why it's a union and why the domain gate matters.
+  const { data: vmOrgMembers } = useOrgMembers(VISTAMAR_ORG_ID);
+  const internalChoices = useMemo(
+    () => vistamarTeamChoices({ orgMembers: vmOrgMembers, users, exclude: attendeeEmails }),
+    [vmOrgMembers, users, attendeeEmails],
+  );
 
-  // Per-org client directory (organizations/{orgId}/members). Empty until an
-  // org is picked (useOrgMembers(null) short-circuits). Same dedup against the
-  // current attendee roster as the Vistamar dropdown.
-  const { data: orgMembers } = useOrgMembers(orgId);
+  // Per-org client directory (organizations/{orgId}/members). Skipped for
+  // Vistamar-org meetings — there are no external clients on those, and that
+  // roster is already the internal dropdown above. Empty until an org is picked
+  // (useOrgMembers(null) short-circuits). Same dedup against the current
+  // attendee roster as the Vistamar dropdown.
+  //
+  // No isMaster guard here (unlike ManageGuestsDialog): this dialog never
+  // writes masterAgenda, so a cross-org master isn't reachable from it.
+  const showClientSection = !!orgId && orgId !== VISTAMAR_ORG_ID;
+  const { data: orgMembers } = useOrgMembers(showClientSection ? orgId : null);
   const clientChoices = useMemo(() => {
     return (orgMembers || [])
       .filter((m) => m.email && !attendeeEmails.has(m.email.toLowerCase()))
@@ -270,15 +283,20 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
         );
       }
 
-      // Auto-capture non-Vistamar attendees into the org's member directory (best-effort).
-      try {
-        await Promise.all(
-          attendees
-            .filter((a) => isClientEmail(a.email))
-            .map((a) => upsertOrgMember(orgId, { name: a.name, email: a.email, source: "scheduler" })),
-        );
-      } catch {
-        // best-effort: directory capture must never fail the meeting create; idempotent, re-captured next save
+      // Auto-capture non-Vistamar attendees into the org's member directory
+      // (best-effort). Skip the Vistamar org: an external guest on an internal
+      // meeting (candidate, vendor) is not a Vistamar member, and capturing them
+      // would pollute the directory that feeds the teammate picker.
+      if (orgId !== VISTAMAR_ORG_ID) {
+        try {
+          await Promise.all(
+            attendees
+              .filter((a) => isClientEmail(a.email))
+              .map((a) => upsertOrgMember(orgId, { name: a.name, email: a.email, source: "scheduler" })),
+          );
+        } catch {
+          // best-effort: directory capture must never fail the meeting create; idempotent, re-captured next save
+        }
       }
 
       // 5. Refresh the Calendar's cached meeting list so the new meeting is
@@ -319,7 +337,12 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
             select
             label="Organization"
             value={orgId}
-            onChange={(e) => setOrgId(e.target.value)}
+            onChange={(e) => {
+              setOrgId(e.target.value);
+              // Drop any half-made client selection — it belongs to the old org
+              // and would otherwise be attachable after the dropdown greys out.
+              setClientPick(null);
+            }}
             size="small"
             fullWidth
             helperText="Drives org-scoped item filtering inside the agenda's topics."
@@ -500,12 +523,12 @@ export default function NewMeetingDialog({ orgs, users, onClose }) {
                 options={clientChoices}
                 getOptionLabel={(o) => o.name || o.email}
                 isOptionEqualToValue={(a, b) => a.email === b.email}
-                disabled={!orgId}
+                disabled={!showClientSection}
                 renderInput={(params) => (
                   <TextField {...params} placeholder="Add client attendee…" size="small" />
                 )}
               />
-              <Button size="small" variant="outlined" onClick={handleAddClient} disabled={!clientPick}>
+              <Button size="small" variant="outlined" onClick={handleAddClient} disabled={!showClientSection || !clientPick}>
                 Add
               </Button>
             </Stack>

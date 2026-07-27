@@ -38,6 +38,52 @@ export function isClientEmail(email) {
   return !!id && !id.endsWith(`@${VM_DOMAIN}`) && !isBotOrProxy(id);
 }
 
+// Vistamar's own organization doc. Its members are teammates, not clients, so
+// it is special-cased in the schedulers (internal picker, no client dropdown,
+// no external-guest capture).
+export const VISTAMAR_ORG_ID = "vistamar";
+
+// Teammate = a valid Vistamar-domain email that is NOT a bot/scheduling proxy.
+// The inverse of isClientEmail on the domain test, but proxies fail both.
+export function isVistamarTeamEmail(email) {
+  const id = memberIdFromEmail(email);
+  return !!id && id.endsWith(`@${VM_DOMAIN}`) && !isBotOrProxy(id);
+}
+
+// Options for the "Add Vistamar teammate…" picker, shared by NewMeetingDialog
+// and ManageGuestsDialog so the two can't drift.
+//
+// Unions organizations/vistamar/members (admin-maintained, needs no app login)
+// with the `users` collection (minted on first sign-in). Neither is complete on
+// its own: a teammate who has never signed in has no users/ doc, and a teammate
+// who signed in may never have been added to the directory. Taking both means
+// nobody silently disappears from the scheduler.
+//
+// The isVistamarTeamEmail gate is load-bearing, not belt-and-braces: external
+// guests on a Vistamar-org meeting could otherwise be auto-captured into
+// organizations/vistamar/members and then be offered as "teammates" forever.
+//
+// Org-directory entries are added first so their (admin-curated) display name
+// wins over the Google SSO one. Deduped by lowercased email, sorted by name.
+export function vistamarTeamChoices({ orgMembers = [], users = [], exclude } = {}) {
+  const skip = exclude instanceof Set ? exclude : new Set(exclude || []);
+  const byEmail = new Map();
+
+  const add = (email, name) => {
+    if (!isVistamarTeamEmail(email)) return;
+    const id = memberIdFromEmail(email);
+    if (skip.has(id) || byEmail.has(id)) return;
+    byEmail.set(id, { email: id, name: name || id });
+  };
+
+  for (const m of orgMembers || []) add(m?.email, m?.name);
+  for (const u of users || []) {
+    add(u?.email, u?.displayName || `${u?.firstName || ""} ${u?.lastName || ""}`.trim());
+  }
+
+  return [...byEmail.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // One-line summary for the deliverables card header: the labels of deliverables
 // with a positive quantity, joined by " · "; "—" when none.
 export function deliverablesSummary(deliverables) {

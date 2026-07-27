@@ -34,7 +34,12 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
-import { isClientEmail, upsertOrgMember } from "../lib/orgMembers.js";
+import {
+  VISTAMAR_ORG_ID,
+  isClientEmail,
+  upsertOrgMember,
+  vistamarTeamChoices,
+} from "../lib/orgMembers.js";
 import { useOrgMembers } from "../hooks/useOrgMembers.js";
 import MemberAvatar from "./MemberAvatar.jsx";
 
@@ -68,18 +73,18 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
     [working]
   );
 
-  // Vistamar team dropdown — always sourced from organizations/vistamar/members
-  // so the roster matches what Settings > Organizations shows.
-  const { data: vmOrgMembers } = useOrgMembers("vistamar");
-  const internalChoices = useMemo(() => {
-    return (vmOrgMembers || [])
-      .filter((m) => m.email && !workingEmails.has(m.email.toLowerCase()))
-      .map((m) => ({ email: m.email, name: m.name || m.email }));
-  }, [vmOrgMembers, workingEmails]);
+  // Vistamar team dropdown — organizations/vistamar/members unioned with the
+  // `users` collection, gated to real VM-domain humans. Shared with
+  // NewMeetingDialog so the two pickers can't drift.
+  const { data: vmOrgMembers } = useOrgMembers(VISTAMAR_ORG_ID);
+  const internalChoices = useMemo(
+    () => vistamarTeamChoices({ orgMembers: vmOrgMembers, users, exclude: workingEmails }),
+    [vmOrgMembers, users, workingEmails],
+  );
 
   // Per-org client directory. Skip for master agendas, Vistamar-org meetings
   // (no external clients), and when there's no org at all.
-  const showClientSection = !isMaster && !!orgSlug && orgSlug !== "vistamar";
+  const showClientSection = !isMaster && !!orgSlug && orgSlug !== VISTAMAR_ORG_ID;
   const { data: orgMembers } = useOrgMembers(showClientSection ? orgSlug : null);
   const clientOptions = useMemo(() => {
     return (orgMembers || [])
@@ -150,8 +155,10 @@ export default function ManageGuestsDialog({ agenda, agendaId, calendarSeries, u
 
       // Auto-capture non-Vistamar attendees into the org's member directory
       // (best-effort). Skip the cross-org master agenda — its attendees span
-      // many orgs and would be misfiled into a single directory.
-      if (orgSlug && !isMaster) {
+      // many orgs and would be misfiled into a single directory. Skip the
+      // Vistamar org too: an external guest on an internal meeting is not a
+      // Vistamar member, and would pollute the teammate picker's source.
+      if (orgSlug && !isMaster && orgSlug !== VISTAMAR_ORG_ID) {
         try {
           await Promise.all(
             working
