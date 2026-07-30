@@ -255,6 +255,32 @@
       "summary": "Opened with /to-do; re-verified the reconstructed backlog against code/git (3 agents) — 6 items reconciled as shipped/obsolete, open list ~26→~13. Then fixed two confirmed-live, client-facing latent bugs in the Send Meeting Prep email path: (1) Postmark silent-success — relay-mail.js sendRelay() only checked res.ok, so HTTP-200-with-non-zero-ErrorCode failures (406 inactive recipient etc.) reported as sent and mail silently never arrived; now parses the body and throws on non-zero ErrorCode. (2) ActionBar read the dormant openFloor subcollection instead of the migrated agenda.openFloorHtml; new htmlToLines() helper in agendaHtml.js flattens it, dead subscription + prop removed. 11 new tests, suite 91/91, build clean. NOT live-sent (would email real attendees). Also committed 4 orphaned design docs. Deferred: send-prep.js still passes only Topic_Name (no talking points) — same staleness class, fast-follow candidate. Not pushed (pre-push code review pending).",
       "folder": "dev/sessions/v0_4_3_Andrew_PREP_EMAIL_FIXES/",
       "status": "closed"
+    },
+    {
+      "session_id": "SES-20260702-Andrew-v0.4.4-reschedule-fix",
+      "developer": "Andrew",
+      "date": "2026-07-02",
+      "date_closed": "2026-07-02",
+      "version_start": "v0.4.4",
+      "version_end": "v0.4.4",
+      "commit_start": "115bf71",
+      "commit_end": "69894af",
+      "summary": "Reschedule bug fix + meeting calendar hygiene. Root-caused 'can't reschedule BMD biweekly' (Graph ErrorOccurrenceCrossingBoundary): the RescheduleDialog's meeting object was built by a useMemo missing nextOccurrence from its deps, so it stayed frozen on the stored meetingDatetime (Aug 13) while the hero showed the live next occurrence (Jul 2); moving the wrong instance backward across neighbors triggered the Graph error. Fix (AgendaDetail.jsx, fe23ea8): add nextOccurrence+isRecurring to deps -> dialog + hero agree. Deployed prod (READY, vm-management-front-end.vercel.app), Andy confirmed BMD works. Then full recurring-meeting audit: built dev/audit-recurring-meetings.mjs + diag/cancel toolkit (10 scripts, commit 69894af, gitignore .env.vercel). Found + cancelled 3 Apr-8 internal-only ghost series (GV, Unio-Weekly, Unio-Biweekly) that shadowed real client meetings on meetings@ Graph (Graph-only, not Google-mirrored, no clients). Final audit 0 dup/0 diverged/0 ghost. Key learning: FE meeting list aggregates Google mirror across meetings@/Tate/Cedric; a Graph-only series is never FE-attached. Memory added: project_meeting_calendar_architecture, reference_meeting_diagnostics_toolkit. Fix+toolkit on main->dev + cherry-picked onto studio-integration-proxy (d75275a, 1f85ee6). Deferred: dependabot 37 vulns, reschedule cross-boundary UX pre-flight, audit-across-all-calendars, Firestore linkage audit.",
+      "folder": "dev/sessions/v0_4_4_Andrew_RESCHEDULE_FIX/",
+      "status": "complete"
+    },
+    {
+      "session_id": "SES-20260713-Andrew-v0.4.5-bmd-strand-fix",
+      "developer": "Andrew",
+      "date": "2026-07-13",
+      "date_closed": "2026-07-14",
+      "version_start": "v0.4.5",
+      "version_end": "v0.4.5",
+      "commit_start": "1f85ee6",
+      "commit_end": "1f85ee6",
+      "summary": "BMD - Biweekly blank-agenda incident, root-caused + repaired + swept. Root cause: the Google mirror of 'BMD - Biweekly' split into a new recurrence master (_R20260702T183000) at the Jul 2 boundary while Graph stayed one intact series; agendas are keyed by the Google recurrence-master id, so reconcileMeetings minted a fresh EMPTY agenda for the new master and the app routed upcoming occurrences (Jul 16+) there, stranding the team's 4 topics + Fireflies history on the prior master's doc (_R20260521T183000). The 'BMD ad hoc Content Strategy' meeting Andy made the night before was a separate series (5pk0be...), NOT the cause. Fix: copy-forward the stranded content (topics + firefliesTitles + 5 versions) to the live master doc via dev/repair-bmd-biweekly-content.mjs (dry-run-first, guarded, gcloud->Firestore REST); Firestore bodyHtml is canonical and the Liveblocks room self-seeds from it, so no collab surgery. Verified server-side (bodyHtml byte-for-byte) + Andy confirmed live. Then full strand audit across BOTH vectors (recurrence-split + dual-id NewMeetingDialog shadow) via dev/audit-agenda-strands.mjs across meetings@/Tate/Cedric Google calendars: BMD was the only recoverable strand; GV-Vistamar has an empty live agenda but no content stored anywhere (not a strand). No app code changed — production data repair only. 4 new dev scripts untracked (not committed). Memory added: project_agenda_recurrence_split_bug. DEFERRED: durable fix = key agendas by stable Graph seriesMasterId/iCalUID or carry content forward on split (else re-strands on next this-and-following reschedule); GV empty-agenda question; commit the new scripts; + carried v0.4.4 deferrals (dependabot 37 vulns, reschedule UX pre-flight).",
+      "folder": "dev/sessions/v0_4_5_Andrew_BMD_STRAND_FIX/",
+      "status": "complete"
     }
   ]
 }
