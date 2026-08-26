@@ -20,6 +20,7 @@
 
 import { collection, doc, documentId, getDocs, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
+import { agendaIdForMeeting } from "./agendaIds.js";
 import { resolveOrgFromAttendees, resolveOrgSlug } from "./orgMapping.js";
 
 // Stable seriesId for a meeting. For recurring events the Google series_id
@@ -32,10 +33,19 @@ function seriesIdFor(meeting) {
 }
 
 // For V2.1.1 recurring agendas are series-level (one shared agenda per series,
-// updated each instance — matches Console pattern + reference doc §6). The
-// agenda's stable ID equals the series ID. Ad-hoc gets a 1:1 mapping too.
+// updated each instance — matches Console pattern + reference doc §6).
+//
+// The agenda id is the BASE series id, NOT the raw recurringEventId. Google
+// re-mints a recurrence master ({originalId}_R{splitStartUTC}) on every "this
+// and following" edit, so keying agendas on the raw id minted a fresh empty
+// agenda per reschedule and stranded the previous one's topics — the
+// 2026-08-26 strand incident. See src/lib/agendaIds.js.
+//
+// calendarSeriesId on the payload deliberately keeps the RAW live master id,
+// so calendar_series stays 1:1 with Google and reschedule/cancel keep talking
+// to the event that actually exists.
 function agendaIdFor(meeting) {
-  return seriesIdFor(meeting);
+  return agendaIdForMeeting(meeting);
 }
 
 // Shape the calendar_series doc payload from a /api/meetings/list entry.
@@ -96,12 +106,17 @@ function isDriftedSeries(payload, existing) {
   );
 }
 
+// calendarSeriesId is in the drift check because a recurrence split re-mints
+// the Google master: the agenda doc id stays put (it's the BASE id) but its
+// pointer at calendar_series must follow the live master, or the hero binds to
+// a dead series and Reschedule/Cancel target an event that no longer exists.
 function isDriftedAgenda(payload, existing) {
   if (!existing) return false;
   const existingDt = existing.meetingDatetime?.toMillis?.() ?? null;
   const newDt = payload.meetingDatetime?.getTime?.() ?? null;
   return (
-    existing.graphEventId !== payload.graphEventId
+    existing.calendarSeriesId !== payload.calendarSeriesId
+    || existing.graphEventId !== payload.graphEventId
     || existing.googleEventId !== payload.googleEventId
     || existing.teamsUrl !== payload.teamsUrl
     || existingDt !== newDt
@@ -134,9 +149,12 @@ export async function reconcileMeetingsToFirestore({ meetings, orgs, uid }) {
   // Build the seriesId set this batch will touch. Skip events that don't have
   // any stable identifier — they can't be meaningfully bound.
   const wantedSeriesIds = new Set();
+  const wantedAgendaIds = new Set();
   for (const m of meetings) {
     const sid = seriesIdFor(m);
     if (sid) wantedSeriesIds.add(sid);
+    const aid = agendaIdFor(m);
+    if (aid) wantedAgendaIds.add(aid);
   }
   if (wantedSeriesIds.size === 0) {
     return { created: 0, updated: 0, unchanged: 0, unassigned: 0 };
@@ -144,22 +162,36 @@ export async function reconcileMeetingsToFirestore({ meetings, orgs, uid }) {
 
   // One query for the relevant slice of each collection. Firestore `in`
   // queries cap at 30 IDs per batch; chunk if needed.
-  const seriesIdList = Array.from(wantedSeriesIds);
-  const chunks = [];
-  for (let i = 0; i < seriesIdList.length; i += 30) {
-    chunks.push(seriesIdList.slice(i, i + 30));
-  }
+  //
+  // calendar_series is keyed by the RAW series id and agendas by the BASE id,
+  // so the two collections MUST be probed with their own id sets. Probing
+  // agendas with raw series ids would miss every base-keyed doc, and the
+  // "doesn't exist" branch below would then batch.set() straight over a live
+  // agenda, wiping its fields.
+  const chunk30 = (arr) => {
+    const out = [];
+    for (let i = 0; i < arr.length; i += 30) out.push(arr.slice(i, i + 30));
+    return out;
+  };
+  const seriesChunks = chunk30(Array.from(wantedSeriesIds));
+  const agendaChunks = chunk30(Array.from(wantedAgendaIds));
 
   const existingSeriesById = new Map();
   const existingAgendasById = new Map();
-  for (const chunk of chunks) {
-    const [seriesSnap, agendasSnap] = await Promise.all([
-      getDocs(query(collection(db, "calendar_series"), where(documentId(), "in", chunk))),
-      getDocs(query(collection(db, "agendas"), where(documentId(), "in", chunk))),
-    ]);
-    seriesSnap.forEach((d) => existingSeriesById.set(d.id, d.data()));
-    agendasSnap.forEach((d) => existingAgendasById.set(d.id, d.data()));
-  }
+  await Promise.all([
+    ...seriesChunks.map(async (chunk) => {
+      const snap = await getDocs(
+        query(collection(db, "calendar_series"), where(documentId(), "in", chunk)),
+      );
+      snap.forEach((d) => existingSeriesById.set(d.id, d.data()));
+    }),
+    ...agendaChunks.map(async (chunk) => {
+      const snap = await getDocs(
+        query(collection(db, "agendas"), where(documentId(), "in", chunk)),
+      );
+      snap.forEach((d) => existingAgendasById.set(d.id, d.data()));
+    }),
+  ]);
 
   let created = 0;
   let updated = 0;
@@ -249,16 +281,31 @@ export async function reconcileMeetingsToFirestore({ meetings, orgs, uid }) {
       });
       opsInCurrent++;
     } else if (isDriftedAgenda(agendaPayloadObj, existingAgenda)) {
-      // Agendas have a denylist on graphEventId/googleEventId/meetingDatetime/
-      // attendees in the security rules — these can only be patched by a
-      // callable. For V2.1.1 the agenda doc's reschedule path goes through the
-      // RescheduleDialog dual-write (FE → callable, then FE updates Firestore
-      // via the same callable's success handler). For genuine first-time
-      // auto-bind we need the FE writer to bypass — security rules allow this
-      // because the create branch above handles it. Drift between an existing
-      // agenda and the Graph state surfaces as a UI warning in V2.2 rather
-      // than an automatic Firestore update.
-      // (No-op here; left explicit so the future fixer sees the gap.)
+      // Re-point the agenda at the live calendar_series + instance.
+      //
+      // This branch used to be an intentional no-op, on the belief that
+      // firestore.rules denylisted these fields. It does not — the agendas
+      // rule is `allow read, create, update: if isActiveUser()` with no
+      // affectedKeys() guard (the denylist is deferred to V2.2). While it
+      // stayed a no-op, an agenda that survived a recurrence split kept
+      // pointing at the dead master forever.
+      //
+      // attendees is deliberately NOT synced here: ManageGuestsDialog curates
+      // that list, and overwriting it from the Google mirror would silently
+      // discard the user's edits.
+      batch2.update(agendaRef, {
+        calendarSeriesId: agendaPayloadObj.calendarSeriesId,
+        graphEventId: agendaPayloadObj.graphEventId,
+        googleEventId: agendaPayloadObj.googleEventId,
+        iCalUID: agendaPayloadObj.iCalUID,
+        teamsUrl: agendaPayloadObj.teamsUrl,
+        meetingDatetime: agendaPayloadObj.meetingDatetime,
+        durationMinutes: agendaPayloadObj.durationMinutes,
+        updatedAt: serverTimestamp(),
+        updatedByUid: uid,
+      });
+      opsInCurrent++;
+      updated++;
     }
     pushBatchIfFull();
   }

@@ -54,6 +54,7 @@ import { useCollection } from "../hooks/useCollection.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { db } from "../firebase.js";
 import { listMeetings } from "../lib/meetingsApi.js";
+import { agendaIdForMeeting } from "../lib/agendaIds.js";
 import { groupRecurringMeetings, detectCadence, visibleAttendees } from "../lib/meetingHelpers.js";
 import { getTextColor, getContrastText, hexToRgba } from "../theme/pillColors.js";
 import { reconcileMeetingsToFirestore } from "../lib/reconcileMeetings.js";
@@ -958,10 +959,12 @@ export default function Calendar() {
                 component="button"
                 onClick={() => {
                   closePopover();
-                  // Agenda doc id == series_id for recurring or event_id for ad-hoc.
-                  // The reconciliation worker uses the same key, so this URL
-                  // always lines up with a real agendas/{id} doc.
-                  const agendaIdForRoute = popoverMeeting.series_id || popoverMeeting.event_id;
+                  // Agenda doc id == BASE series id for recurring, event_id for
+                  // ad-hoc. Must go through the same helper the reconciliation
+                  // worker uses, or a series that Google has recurrence-split
+                  // routes to an empty agenda while its topics sit on the base
+                  // doc (the 2026-08-26 strand incident).
+                  const agendaIdForRoute = agendaIdForMeeting(popoverMeeting);
                   navigate(`/agendas/${agendaIdForRoute}`);
                 }}
                 sx={{
