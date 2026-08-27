@@ -1,4 +1,4 @@
-// api/ai/[action].js
+// api/ai/dispatch.js
 //
 // Single catch-all for every /api/ai/* route. Vercel counts one Serverless
 // Function per file under api/, and the Hobby plan caps a deployment at 12.
@@ -16,6 +16,15 @@
 // URLs are unchanged — /api/ai/prepare, /api/ai/refine, /api/ai/generate all
 // still resolve here and dispatch to the same code as before. No frontend
 // change; src/lib/aiAgenda.js keeps calling the same paths.
+//
+// WHY A STATIC FILENAME + AN EXPLICIT REWRITE, NOT api/ai/[action].js:
+// the dynamic-segment version deployed and showed up in the build output as
+// `λ api/ai/[action]`, but Vercel never registered a route for it in this
+// (non-Next.js) project — every /api/ai/* request fell through to the SPA
+// catch-all in vercel.json and returned index.html with a 200. Statically
+// named function files route reliably, so this file is static and
+// vercel.json rewrites /api/ai/:action onto it (that rewrite MUST stay
+// ordered before the /(.*) SPA catch-all, or the SPA swallows it again).
 
 import generate from "./_handlers/generate.js";
 import prepare from "./_handlers/prepare.js";

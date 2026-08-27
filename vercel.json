@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/ai/:action", "destination": "/api/ai/dispatch?action=:action" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
