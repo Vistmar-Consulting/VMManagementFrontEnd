@@ -13,8 +13,8 @@
 // The model returns content via structured outputs (output_config.format), so
 // the JSON is schema-conformant — no brittle text parsing.
 import Anthropic from "@anthropic-ai/sdk";
-import { applyCors } from "../meetings/_lib/cors.js";
-import { requireAuth } from "../meetings/_lib/auth.js";
+import { applyCors } from "../../meetings/_lib/cors.js";
+import { requireAuth } from "../../meetings/_lib/auth.js";
 
 // Sonnet 4.6 — same model as generate.js (fast + cheap, strong quality;
 // admin-triggered low volume). Bump to Opus per-org later if needed.

@@ -6,8 +6,8 @@
 // blogs", "drop the GBP topic", "tighten the Unio section"). Used by the AI Gen
 // review step's Refine box; the result replaces the displayed proposal.
 import Anthropic from "@anthropic-ai/sdk";
-import { applyCors } from "../meetings/_lib/cors.js";
-import { requireAuth } from "../meetings/_lib/auth.js";
+import { applyCors } from "../../meetings/_lib/cors.js";
+import { requireAuth } from "../../meetings/_lib/auth.js";
 
 const MODEL = "claude-sonnet-4-6";
 export const config = { maxDuration: 300 };
