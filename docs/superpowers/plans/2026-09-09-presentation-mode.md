@@ -8,6 +8,13 @@
 
 **Tech Stack:** React 18, MUI 5 + Emotion `sx`, `@uidotdev/usehooks` `useLocalStorage`, Vitest + React Testing Library.
 
+**Always pass `--pool=threads` to vitest.** Vitest's default `forks` pool fails on this machine with "Failed to start forks worker /
+Timeout waiting for worker to respond" after 61 seconds, producing zero test
+results. The `threads` pool works and is far faster: the same single file ran in
+24 seconds on threads against a 360-second full-suite run on forks. Measured
+2026-09-09 during Task 1. This is an environment issue, not a code issue, and
+fixing it repo-wide in `vite.config.js` is out of scope for this feature.
+
 **Spec:** `docs/superpowers/specs/2026-09-09-presentation-mode-design.md`
 
 ---
@@ -57,7 +64,7 @@ describe("presentationClassName", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npx vitest run src/components/editor/__tests__/caretVisibility.test.js`
+Run: `npx vitest run --pool=threads src/components/editor/__tests__/caretVisibility.test.js`
 
 Expected: FAIL — cannot resolve `../caretVisibility.js`.
 
@@ -116,7 +123,7 @@ export const presentationClassName = (active) =>
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npx vitest run src/components/editor/__tests__/caretVisibility.test.js`
+Run: `npx vitest run --pool=threads src/components/editor/__tests__/caretVisibility.test.js`
 
 Expected: PASS, 2 tests.
 
@@ -172,7 +179,7 @@ describe("PresentationModeToggle", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npx vitest run src/components/__tests__/PresentationModeToggle.test.jsx`
+Run: `npx vitest run --pool=threads src/components/__tests__/PresentationModeToggle.test.jsx`
 
 Expected: FAIL — cannot resolve `../PresentationModeToggle.jsx`.
 
@@ -221,7 +228,7 @@ Active state is a color change only, so the header does not shift when it flips.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npx vitest run src/components/__tests__/PresentationModeToggle.test.jsx`
+Run: `npx vitest run --pool=threads src/components/__tests__/PresentationModeToggle.test.jsx`
 
 Expected: PASS, 3 tests.
 
