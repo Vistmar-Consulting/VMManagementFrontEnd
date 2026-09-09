@@ -16,6 +16,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
+import { useLocalStorage } from "@uidotdev/usehooks";
 import {
   Box,
   Button,
@@ -86,6 +87,8 @@ import { LiveblocksRoot, RoomProvider } from "../lib/liveblocks.js";
 import { CollabFlushRegistryProvider, useCollabFlushRegistry } from "../components/editor/CollabFlushRegistry.jsx";
 import CollabBodyEditor from "../components/editor/CollabBodyEditor.jsx";
 import AgendaPresence from "../components/AgendaPresence.jsx";
+import PresentationModeToggle from "../components/PresentationModeToggle.jsx";
+import { presentationModeSx, presentationClassName } from "../components/editor/caretVisibility.js";
 import SharedEditorToolbar from "../components/editor/SharedEditorToolbar.jsx";
 import AgendaTOC from "../components/AgendaTOC.jsx";
 import { htmlToLines } from "../lib/agendaHtml.js";
@@ -1566,6 +1569,12 @@ function SyncMeetingHeaderButton({ onOpen }) {
 
 export default function AgendaDetail() {
   const { agendaId } = useParams();
+  // Presentation Mode — local to this viewer, sticky per agenda. Matches the
+  // vm- key convention used by vm-calendar-org-filter / vm-board-org-filter.
+  const [presentationMode, setPresentationMode] = useLocalStorage(
+    `vm-agenda-presentation-mode-${agendaId}`,
+    false,
+  );
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const [viewMode, setViewMode] = useState("overview");
@@ -1752,7 +1761,10 @@ export default function AgendaDetail() {
   };
 
   return (
-    <Box sx={{ maxWidth: 1280, mx: "auto", pb: 8 }}>
+    <Box
+      className={presentationClassName(presentationMode)}
+      sx={{ maxWidth: 1280, mx: "auto", pb: 8, ...presentationModeSx }}
+    >
       <LiveblocksRoot>
         <RoomProvider id={agendaRoomId(agendaId)} initialPresence={{}}>
           <CollabFlushRegistryProvider>
@@ -1777,6 +1789,10 @@ export default function AgendaDetail() {
             </Tooltip>
           )}
           <AgendaPresence />
+          <PresentationModeToggle
+            active={presentationMode}
+            onToggle={() => setPresentationMode(!presentationMode)}
+          />
           {isAdmin && <SyncMeetingHeaderButton onOpen={() => setSyncMeetingOpen(true)} />}
           <Tooltip title="Version history">
             <IconButton
