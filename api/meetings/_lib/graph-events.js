@@ -495,3 +495,33 @@ export function graphResponseToGoogle(graphResponse) {
       return "needsAction";
   }
 }
+
+// ── LOBBY BYPASS ──
+//
+// Graph mints every /onlineMeetings row with lobbyBypassSettings.scope
+// "organization". The Fireflies notetaker joins Teams ANONYMOUSLY, so it is
+// not "in the organization" and gets parked in the lobby until someone admits
+// it — which nobody does, so the meeting goes unrecorded. Widening the scope
+// is a hard prerequisite for unattended note-taking (Fireflies documents the
+// same requirement for their Teams integration).
+//
+// Root cause found 2026-09-14: the VM Weekly Touch Base had never recorded
+// under seo@ because of this default, on both the hand-made Tate series and
+// the scheduler-created replacement.
+export async function setLobbyBypass({ onlineMeetingId, scope = "everyone" }) {
+  if (!onlineMeetingId) {
+    throw new Error("graph-events.setLobbyBypass: onlineMeetingId is required");
+  }
+  const res = await graphFetch(`/onlineMeetings/${onlineMeetingId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      lobbyBypassSettings: { scope, isDialInBypassEnabled: true },
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `graph-events.setLobbyBypass failed: ${res.status} ${await res.text()}`
+    );
+  }
+  return scope;
+}

@@ -22,7 +22,7 @@
 //
 // Spec: docs/specs/2026-04-28-m365-primary-meeting-scheduler-design.md
 
-import { createEvent as graphCreateEvent } from "./_lib/graph-events.js";
+import { createEvent as graphCreateEvent, setLobbyBypass } from "./_lib/graph-events.js";
 import { createEvent as googleCreateEvent, cadenceToRrule } from "./_lib/google-calendar.js";
 import { withSilentProxies } from "./_lib/attendee-helpers.js";
 import { requireAuth, requireV2_2Enabled } from "./_lib/auth.js";
@@ -87,6 +87,33 @@ export default async function handler(req, res) {
       console.error("graph-events.createEvent returned no joinUrl. Event:", graphResult.eventId);
     }
 
+    // Step 1b — Widen the Teams lobby to "everyone". Graph defaults every
+    // minted onlineMeeting to scope "organization", which parks the Fireflies
+    // notetaker (an anonymous join) in the lobby forever and silently breaks
+    // unattended recording. See graph-events.setLobbyBypass.
+    //
+    // Deliberately non-fatal: by this point the Graph event exists and Step 2
+    // is about to fan real invites, so a 500 here would leave a live meeting
+    // behind with no Google mirror. The outcome is surfaced in the response
+    // and logged loudly instead of being swallowed — callers can assert on it.
+    let lobbyBypass;
+    if (graphResult.teamsDetails?.onlineMeetingId) {
+      try {
+        lobbyBypass = await setLobbyBypass({
+          onlineMeetingId: graphResult.teamsDetails.onlineMeetingId,
+        });
+      } catch (err) {
+        console.error("create.js: setLobbyBypass failed —", err.message);
+        lobbyBypass = `failed: ${err.message}`;
+      }
+    } else {
+      lobbyBypass = "skipped: no onlineMeetingId from Graph";
+      console.error(
+        "create.js: no onlineMeetingId — lobby left at Graph default 'organization'; the notetaker will be held in the lobby for event",
+        graphResult.eventId
+      );
+    }
+
     // Step 2 — Mirror to Google with sendUpdates:"none" and conferenceData so
     // Google Calendar renders the prominent Teams card when the meetings@
     // calendar is viewed directly. Console read path consumes this mirror.
@@ -111,6 +138,7 @@ export default async function handler(req, res) {
       seriesId: googleResult.seriesId,
       teamsUrl: graphResult.joinUrl,
       iCalUID: googleResult.iCalUID,
+      lobbyBypass,
     });
   } catch (err) {
     console.error("POST /api/meetings/create error:", err);
