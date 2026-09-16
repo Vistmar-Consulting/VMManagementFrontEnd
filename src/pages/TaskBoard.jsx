@@ -101,7 +101,7 @@ function isDueThisWeek(date) {
 }
 
 export default function TaskBoard() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const { data: allItems, loading: itemsLoading, error: itemsError } = useItems();
   const { data: orgs } = useCollection("organizations");
   const { data: users } = useCollection("users");
@@ -658,7 +658,6 @@ export default function TaskBoard() {
                       users={users}
                       categories={categories}
                       tags={tags}
-                      canUpdate={isAdmin}
                       expanded={isItemExpanded(item.id)}
                       onSetExpanded={(val) => setItemExpanded(item.id, val)}
                       getCommentCount={getCommentCount}
@@ -795,7 +794,6 @@ export default function TaskBoard() {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setOrgPickerOpen(true)}
-          disabled={!isAdmin}
         >
           New item
         </Button>

@@ -35,8 +35,10 @@ service cloud.firestore {
           && userDoc().active == true;
     }
 
+    // Every active @vistamarconsulting.com user has full access (decided
+    // 2026-09-16). The role field is no longer a permission gate.
     function isAdmin() {
-      return isActiveUser() && userDoc().role == 'admin';
+      return isActiveUser();
     }
 
     match /users/{uid} {

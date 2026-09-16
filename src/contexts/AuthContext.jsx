@@ -142,7 +142,8 @@ export function AuthProvider({ children }) {
     setBootstrapNonce((n) => n + 1);
   }, []);
 
-  const isAdmin = profile?.role === "admin" && profile?.active === true;
+  // Every active user has full access; mirrors isAdmin() in firestore.rules.
+  const isAdmin = profile?.active === true;
 
   return (
     <AuthContext.Provider
