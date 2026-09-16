@@ -65,6 +65,7 @@ import { useCollectionGroup } from "../hooks/useCollectionGroup.js";
 import { useItems } from "../hooks/useItems.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
+import { buildBoardGroups } from "../lib/boardGroups.js";
 import { tsToDate } from "../utils/firestoreTime.js";
 
 const DONE = 5;
@@ -278,9 +279,7 @@ export default function TaskBoard() {
     });
   }, [topLevel, sortField, sortDirection, categories]);
 
-  const activeItems = sorted.filter((i) => i.statusId !== DONE && i.statusId !== ARCHIVE);
-  const completedItems = sorted.filter((i) => i.statusId === DONE);
-  const archiveItems = sorted.filter((i) => i.statusId === ARCHIVE);
+  const boardGroups = buildBoardGroups(sorted, visibleSubitemsByParent);
 
   // Toggle-all logic: expand-all button shows when at least one expandable
   // item is collapsed; otherwise collapse-all. Only items with children
@@ -650,16 +649,17 @@ export default function TaskBoard() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  groupItems.map((item) => (
+                  groupItems.map(({ item, subitems, ghost }) => (
                     <TaskBoardRow
-                      key={item.id}
+                      key={ghost ? `ghost:${item.id}` : item.id}
                       item={item}
-                      subitems={visibleSubitemsByParent[item.id] || []}
+                      subitems={subitems}
+                      ghost={ghost}
                       users={users}
                       categories={categories}
                       tags={tags}
-                      expanded={isItemExpanded(item.id)}
-                      onSetExpanded={(val) => setItemExpanded(item.id, val)}
+                      expanded={ghost || isItemExpanded(item.id)}
+                      onSetExpanded={(val) => !ghost && setItemExpanded(item.id, val)}
                       getCommentCount={getCommentCount}
                       getFileCount={getFileCount}
                       onUpdate={handleUpdate}
@@ -887,9 +887,9 @@ export default function TaskBoard() {
 
       {!itemsLoading && (
         <>
-          {renderGroup("Active", activeItems, activeExpanded, setActiveExpanded, "#4a90d9")}
-          {renderGroup("Completed", completedItems, completedExpanded, setCompletedExpanded, "#4caf50")}
-          {renderGroup("Archive", archiveItems, archiveExpanded, setArchiveExpanded, "#9e9e9e")}
+          {renderGroup("Active", boardGroups.active, activeExpanded, setActiveExpanded, "#4a90d9")}
+          {renderGroup("Completed", boardGroups.completed, completedExpanded, setCompletedExpanded, "#4caf50")}
+          {renderGroup("Archive", boardGroups.archive, archiveExpanded, setArchiveExpanded, "#9e9e9e")}
         </>
       )}
 
