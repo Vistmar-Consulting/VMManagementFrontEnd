@@ -332,6 +332,19 @@
       "summary": "Data-only: rebuilt the Vistamar internal Task Board from 2 months of Fireflies (2 Business Dev + 8 Platform Dev transcripts) reconciled against the 57 existing items and Cedric's xlsx. One atomic prod Firestore commit (172 writes): 22 active categorized parents, 0 AI Gen left, 3 items moved to client boards, platform-ops renamed Platform Ops & Compliance, new tags hipaa/serp-data/sales-blocker. Deferred: global tag hygiene; org-scoped categories/tags; AI Gen subitem numbering.",
       "folder": "dev/sessions/v0_4_7_Andrew_TASK_LIST_CLEANUP/",
       "status": "closed"
+    },
+    {
+      "session_id": "SES-20260916-Andrew-v0.4.8-open-permissions",
+      "developer": "Andrew",
+      "date": "2026-09-16",
+      "date_closed": "2026-09-16",
+      "version_start": "v0.4.8",
+      "version_end": "v0.4.8",
+      "commit_start": "c083160",
+      "commit_end": "af60b5e",
+      "summary": "Only adeemer@ could edit Project Board tasks: TaskBoard.jsx gated canUpdate + New item on isAdmin (port regression; Console had canUpdate = true). Per Andy, every active @vistamarconsulting.com user now has full access: isAdmin() in rules and AuthContext = active user. Admin-only carve-outs via new isRoleAdmin: Sync Meeting button (FE-only gate; /api/ai/* still domain-only) and users/{uid} role/active changes + delete. Shipped to Vercel production (dev branch) and Firestore rules deployed; Andy verified seo@ can edit tasks. Also switched CLAUDE.md to per-session worktrees.",
+      "folder": "dev/sessions/v0_4_8_Andrew_OPEN_PERMISSIONS/",
+      "status": "complete"
     }
   ]
 }
