@@ -279,7 +279,7 @@ export default function TaskBoard() {
     });
   }, [topLevel, sortField, sortDirection, categories]);
 
-  const boardGroups = buildBoardGroups(sorted, visibleSubitemsByParent);
+  const boardGroups = buildBoardGroups(sorted, visibleSubitemsByParent, matchesNonOrgFilters);
 
   // Toggle-all logic: expand-all button shows when at least one expandable
   // item is collapsed; otherwise collapse-all. Only items with children
@@ -632,7 +632,7 @@ export default function TaskBoard() {
           </IconButton>
           <Typography variant="h6" sx={{ color, fontWeight: 600, fontSize: "1rem" }}>{title}</Typography>
           <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500 }}>
-            {groupItems.length}
+            {groupItems.reduce((n, row) => n + (row.ghost ? row.subitems.length : 1), 0)}
           </Typography>
         </Box>
         <Collapse in={expanded}>

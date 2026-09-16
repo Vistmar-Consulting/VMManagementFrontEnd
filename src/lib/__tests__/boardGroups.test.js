@@ -39,3 +39,14 @@ describe("buildBoardGroups", () => {
     expect(summarize(groups)).toEqual({ active: ["ghost:p[s1]"], completed: [], archive: ["p[s2]"] });
   });
 });
+
+describe("buildBoardGroups with a filter", () => {
+  it("hides a non-matching parent's own row when it has no matching subitems in its group", () => {
+    const groups = buildBoardGroups(
+      [{ id: "p", statusId: 1 }],
+      { p: [{ id: "s1", statusId: 5 }] },
+      () => false,
+    );
+    expect(summarize(groups)).toEqual({ active: [], completed: ["ghost:p[s1]"], archive: [] });
+  });
+});

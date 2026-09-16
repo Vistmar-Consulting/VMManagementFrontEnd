@@ -155,7 +155,7 @@ export default function TaskBoardRow({
       >
         {/* Expand chevron */}
         <TableCell sx={{ width: 40, p: 0.5 }}>
-          {!isSubitem && (hasSubitems || expanded) ? (
+          {ghost ? null : !isSubitem && (hasSubitems || expanded) ? (
             <IconButton size="small" onClick={() => onSetExpanded(!expanded)}>
               {expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
             </IconButton>
