@@ -24,7 +24,7 @@ const ROUTE_TITLES = {
 };
 
 export default function AppTopBar() {
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, profile, isRoleAdmin, signOut } = useAuth();
   const location = useLocation();
   const [menuAnchor, setMenuAnchor] = useState(null);
 
@@ -49,7 +49,7 @@ export default function AppTopBar() {
       </Typography>
 
       <Stack direction="row" spacing={2} alignItems="center">
-        {isAdmin ? (
+        {isRoleAdmin ? (
           <Chip size="small" label="admin" color="primary" variant="outlined" />
         ) : null}
         <IconButton

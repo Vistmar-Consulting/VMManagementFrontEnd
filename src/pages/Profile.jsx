@@ -4,7 +4,7 @@ import MemberAvatar from "../components/MemberAvatar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 export default function Profile() {
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile, isRoleAdmin } = useAuth();
 
   if (!profile) return null;
 
@@ -18,8 +18,8 @@ export default function Profile() {
             <Typography variant="body2" color="text.secondary">{profile.email}</Typography>
           </Stack>
           <Chip
-            label={isAdmin ? "admin" : "member"}
-            color={isAdmin ? "primary" : "default"}
+            label={isRoleAdmin ? "admin" : "member"}
+            color={isRoleAdmin ? "primary" : "default"}
             variant="outlined"
             size="small"
           />
