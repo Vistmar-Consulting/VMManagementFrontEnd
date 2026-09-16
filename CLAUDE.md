@@ -93,7 +93,9 @@ When a session closes and a new one starts, the next session's `context.md` carr
 ## Push Workflow
 
 - Push target: **`origin/dev`** always (matches console convention)
-- **Local stays local — no local feature branches.** Work on local `main`, push that to `origin/dev` (`git push origin main:dev`).
+- **Work in worktrees.** Andy runs parallel sessions, so every session works in its own git worktree under `.claude/worktrees/<name>` on its own branch cut from local `main`. Never edit the main checkout directly.
+- Push a worktree branch to `origin/dev`: `git pull --rebase origin dev`, then `git push origin HEAD:dev`.
+- New worktrees have no `node_modules` or `.env.local`: symlink `node_modules` from the main checkout; Andy supplies `.env.local` (tests that init Firebase fail without it).
 - Never push `main`/`stage` directly to remote
 - Pre-push: `superpowers:requesting-code-review`, address findings before push
 
