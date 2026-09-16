@@ -144,10 +144,12 @@ export function AuthProvider({ children }) {
 
   // Every active user has full access; mirrors isAdmin() in firestore.rules.
   const isAdmin = profile?.active === true;
+  // Real role gate, reserved for Sync Meeting; mirrors isRoleAdmin() in firestore.rules.
+  const isRoleAdmin = profile?.role === "admin" && profile?.active === true;
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, error, isAdmin, signOut, retryBootstrap }}
+      value={{ user, profile, loading, error, isAdmin, isRoleAdmin, signOut, retryBootstrap }}
     >
       {children}
     </AuthContext.Provider>

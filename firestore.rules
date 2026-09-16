@@ -36,9 +36,14 @@ service cloud.firestore {
     }
 
     // Every active @vistamarconsulting.com user has full access (decided
-    // 2026-09-16). The role field is no longer a permission gate.
+    // 2026-09-16). Only role/active changes on users/{uid} (deactivation)
+    // stay behind the real role gate, isRoleAdmin().
     function isAdmin() {
       return isActiveUser();
+    }
+
+    function isRoleAdmin() {
+      return isActiveUser() && userDoc().role == 'admin';
     }
 
     match /users/{uid} {
@@ -51,13 +56,12 @@ service cloud.firestore {
 
       allow update: if (
                        isActiveUser()
-                       && request.auth.uid == uid
                        && !('role' in request.resource.data.diff(resource.data).affectedKeys())
                        && !('active' in request.resource.data.diff(resource.data).affectedKeys())
                      )
-                     || isAdmin();
+                     || isRoleAdmin();
 
-      allow delete: if isAdmin();
+      allow delete: if isRoleAdmin();
     }
 
     match /organizations/{orgId} {

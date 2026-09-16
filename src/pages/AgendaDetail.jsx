@@ -1576,7 +1576,7 @@ export default function AgendaDetail() {
     false,
   );
   const navigate = useNavigate();
-  const { user, isAdmin } = useAuth();
+  const { user, isRoleAdmin } = useAuth();
   const [viewMode, setViewMode] = useState("overview");
   // Working-view filters. Set from Meeting Focus / Attendees clicks; will
   // drive topic-card auto-expand + Mini Project Board row filtering once
@@ -1781,7 +1781,7 @@ export default function AgendaDetail() {
           </IconButton>
         </Tooltip>
         <Stack direction="row" alignItems="center" spacing={0.5}>
-          {isAdmin && agenda?.lastUnifiedGenAt?.toDate && (
+          {isRoleAdmin && agenda?.lastUnifiedGenAt?.toDate && (
             <Tooltip title={`Last synced ${format(agenda.lastUnifiedGenAt.toDate(), "MMM d, yyyy · h:mm a")}`}>
               <Typography variant="caption" sx={{ color: t.ink3, mr: 0.5 }}>
                 synced {formatDistanceToNow(agenda.lastUnifiedGenAt.toDate(), { addSuffix: true })}
@@ -1793,7 +1793,7 @@ export default function AgendaDetail() {
             active={presentationMode}
             onToggle={() => setPresentationMode(!presentationMode)}
           />
-          {isAdmin && <SyncMeetingHeaderButton onOpen={() => setSyncMeetingOpen(true)} />}
+          {isRoleAdmin && <SyncMeetingHeaderButton onOpen={() => setSyncMeetingOpen(true)} />}
           <Tooltip title="Version history">
             <IconButton
               onClick={() => setHistoryOpen(true)}
