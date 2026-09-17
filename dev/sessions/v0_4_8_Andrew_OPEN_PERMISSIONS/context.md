@@ -5,7 +5,7 @@
 **Date closed:** 2026-09-16
 **Status:** complete
 **Commit start:** `c083160`
-**Commit end:** `af60b5e` (pushed to `origin/dev` = Vercel production)
+**Commit end:** `e3ac815` (pushed to `origin/dev` = Vercel production)
 **Branch:** worktree `fix/task-edit-permissions` → fast-forwarded into local `main` → `origin/dev`
 
 ---
@@ -46,12 +46,25 @@ user to write `items`, and Andy's account is the only `role: 'admin'`.
 - **Firestore rules:** deployed to `management-db9eb` via `npx firebase-tools` as `adeemer@vistamarconsulting.com` (CLI default account was `deemerwsp@gmail.com` → 403).
 - **Verified:** build passes; unit tests 126/126 (orgMembers file errored on missing `.env.local` in the worktree; `PresentationModeToggle` known flake). Andy confirmed `seo@` can edit tasks in production.
 
+## Shipped — part 2: status moves rows between groups
+
+| Commit | What |
+|---|---|
+| `f1def36` | Project Board groups subitems by their OWN status: a Done/Archive subitem moves to Completed/Archive under a greyed, read-only ghost copy of its parent (and vice versa for open subitems of a done/archived parent). `src/lib/boardGroups.js` + 5 tests |
+| `e3ac815` | Review fixes: filtered-out parent's empty row hidden, no chevron on ghosts, group counts count ghost subitems not ghost rows |
+
+- Vercel did NOT auto-deploy the `origin/dev` push of `e3ac815`; deployed manually with `vercel deploy --prod` (twice, same code) → `vm-management-front-90aedhccr`, aliased to `management.vistamarconsulting.com`.
+- Also added `management.vistamarconsulting.com` to Firebase Auth authorized domains (API); Andy added it to the OAuth client's JS origins. Login confirmed working.
+- Andy confirmed the board behaviour looks good.
+
 ## Deferred
 
 | What | Why deferred | Trigger to pick up |
 |---|---|---|
 | Sync Meeting gate is FE-only — `/api/ai/prepare` + `/api/ai/refine` only check email domain | Serverless handlers have no Firestore admin SDK to read `role` | If a non-admin should be hard-blocked from the Anthropic spend |
 | Rules not exercised end-to-end by a non-admin for categories/tags/orgs/AI prompts | Only task editing was tested by Andy | First report of a permission error |
+| Vercel git auto-deploy from `dev` is unreliable (missed `e3ac815`) | Not investigated | Next push that doesn't show up in `vercel ls` |
+| New subtask under a Done/Archived parent starts Assigned → appears in Active under a ghost | Accepted as consistent with the grouping rule | If the team finds it confusing |
 | `firestore.rules` header comment (lines 5-15) doesn't describe the open model | Cosmetic; comment above `isAdmin()` covers it | Next rules edit |
 | Backfill lobby bypass on the 4 existing `meetings@` meetings | Carried from v0.4.7 | Before each meeting's next occurrence |
 | Verify tenant-level Teams bot/anonymous settings | Carried from v0.4.7; needs Teams Admin Center | If notetaker still fails after per-meeting bypass |

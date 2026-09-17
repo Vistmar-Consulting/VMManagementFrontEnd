@@ -341,8 +341,8 @@
       "version_start": "v0.4.8",
       "version_end": "v0.4.8",
       "commit_start": "c083160",
-      "commit_end": "af60b5e",
-      "summary": "Only adeemer@ could edit Project Board tasks: TaskBoard.jsx gated canUpdate + New item on isAdmin (port regression; Console had canUpdate = true). Per Andy, every active @vistamarconsulting.com user now has full access: isAdmin() in rules and AuthContext = active user. Admin-only carve-outs via new isRoleAdmin: Sync Meeting button (FE-only gate; /api/ai/* still domain-only) and users/{uid} role/active changes + delete. Shipped to Vercel production (dev branch) and Firestore rules deployed; Andy verified seo@ can edit tasks. Also switched CLAUDE.md to per-session worktrees.",
+      "commit_end": "e3ac815",
+      "summary": "Only adeemer@ could edit Project Board tasks: TaskBoard.jsx gated canUpdate + New item on isAdmin (port regression; Console had canUpdate = true). Per Andy, every active @vistamarconsulting.com user now has full access: isAdmin() in rules and AuthContext = active user. Admin-only carve-outs via new isRoleAdmin: Sync Meeting button (FE-only gate; /api/ai/* still domain-only) and users/{uid} role/active changes + delete. Shipped to Vercel production (dev branch) and Firestore rules deployed; Andy verified seo@ can edit tasks. Also switched CLAUDE.md to per-session worktrees. Part 2: Project Board groups subitems by their own status (Done/Archive subitems move under a read-only ghost parent); Vercel missed the git auto-deploy, shipped via vercel deploy --prod.",
       "folder": "dev/sessions/v0_4_8_Andrew_OPEN_PERMISSIONS/",
       "status": "complete"
     }
