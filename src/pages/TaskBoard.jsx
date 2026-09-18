@@ -74,6 +74,7 @@ const ARCHIVE = 7;
 const SCORECARDS = [
   { key: "assigned",   label: "Assigned",     color: "#7b61ff", match: (i) => i.statusId === 1 && !i.onHold },
   { key: "inProgress", label: "In Progress",  color: "#2196f3", match: (i) => i.statusId === 2 && !i.onHold },
+  { key: "blocked",    label: "Blocked",      color: "#e65100", match: (i) => i.statusId === 9 && !i.onHold },
   { key: "review",     label: "Review",       color: "#9c6ade", match: (i) => i.statusId === 4 },
   { key: "onHold",     label: "On Hold",      color: "#e74c3c", match: (i) => i.onHold === true },
   { key: "done",       label: "Done",         color: "#4caf50", match: (i) => i.statusId === DONE },

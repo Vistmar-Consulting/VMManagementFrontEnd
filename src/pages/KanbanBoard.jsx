@@ -86,7 +86,10 @@ export default function KanbanBoard() {
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "repeat(4, minmax(0, 1fr))" },
+          gridTemplateColumns: {
+            xs: "1fr",
+            md: `repeat(${BOARD_COLUMNS.length}, minmax(0, 1fr))`,
+          },
           gap: 3,
           alignItems: "start",
         }}
