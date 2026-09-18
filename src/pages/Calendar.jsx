@@ -1023,6 +1023,7 @@ export default function Calendar() {
                         agenda: agendaForMeeting,
                         agendaId: agendaForMeeting?.id || seriesId,
                         calendarSeries: seriesDoc,
+                        occurrenceDate: meetingDate,
                       });
                       closePopover();
                     }}
@@ -1094,6 +1095,7 @@ export default function Calendar() {
           agenda={cancelTarget.agenda}
           agendaId={cancelTarget.agendaId}
           calendarSeries={cancelTarget.calendarSeries}
+          occurrenceDate={cancelTarget.occurrenceDate}
           onClose={() => setCancelTarget(null)}
         />
       )}

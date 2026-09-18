@@ -35,7 +35,10 @@ import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { cancelMeeting } from "../lib/meetingsApi.js";
 
-export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, onClose }) {
+// occurrenceDate: start of the specific occurrence the user picked (Calendar
+// popover). A recurring series' running agenda keeps a stale meetingDatetime,
+// so it is only the fallback.
+export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, occurrenceDate = null, onClose }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isRecurring = !!calendarSeries?.recurrence;
@@ -47,9 +50,10 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
   const [error, setError] = useState(null);
 
   const meetingDt = useMemo(() => {
+    if (occurrenceDate) return occurrenceDate;
     if (!agenda?.meetingDatetime) return null;
     return agenda.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null;
-  }, [agenda?.meetingDatetime]);
+  }, [occurrenceDate, agenda?.meetingDatetime]);
 
   const handleCancel = async () => {
     setError(null);
@@ -82,7 +86,9 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
       // stays accessible — meetingCancelledAt records when this happened.
       // Series-scope cancel (= "cancel all future") also archives the agenda
       // so it migrates out of the active set into the archived view.
-      if (agendaId) {
+      // Cancelling ONE occurrence of a recurring series leaves the running
+      // agenda bound to the series — later occurrences still use it.
+      if (agendaId && !(isRecurring && mode === "instance")) {
         await updateDoc(doc(db, "agendas", agendaId), {
           graphEventId: null,
           googleEventId: null,
