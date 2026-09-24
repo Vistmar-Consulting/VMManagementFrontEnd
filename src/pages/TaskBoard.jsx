@@ -180,9 +180,11 @@ export default function TaskBoard() {
   // subitems (used by the parent-or-subitem-match logic below).
   // Note: organizationId is parent-level — subitems inherit their parent's
   // org at create-time, so the org filter is checked against the parent only.
-  const matchesNonOrgFilters = useMemo(() => {
+  // Search + column filters only. The scorecard counts use this directly so
+  // they respond to the column filters without zeroing each other out when a
+  // card is selected.
+  const matchesSearchAndColumns = useMemo(() => {
     const q = (titleSearch || "").trim().toLowerCase();
-    const card = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
     const activeCols = Object.entries(columnFilters).filter(([, v]) => v && v.length > 0);
     return (item) => {
       if (q) {
@@ -190,7 +192,6 @@ export default function TaskBoard() {
         const desc = (item.description || "").toLowerCase();
         if (!title.includes(q) && !desc.includes(q)) return false;
       }
-      if (card && !card.match(item)) return false;
       for (const [field, values] of activeCols) {
         if (field === "assigneeIds") {
           if (!(item.assigneeIds || []).some((id) => values.includes(id))) return false;
@@ -202,7 +203,12 @@ export default function TaskBoard() {
       }
       return true;
     };
-  }, [titleSearch, scorecardFilter, columnFilters]);
+  }, [titleSearch, columnFilters]);
+
+  const matchesNonOrgFilters = useMemo(() => {
+    const card = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
+    return (item) => (!card || card.match(item)) && matchesSearchAndColumns(item);
+  }, [scorecardFilter, matchesSearchAndColumns]);
 
   // Subitems map: parentId → subitems array. Built first because the
   // top-level filter consults it to do the parent-or-subitem-match check.
@@ -580,21 +586,30 @@ export default function TaskBoard() {
 
   // Categories + tags are global; pass the full list to every row.
 
-  // Scorecard counts (computed against the full unfiltered item set, but
-  // respecting the org filter so the chips reflect what the user is looking at).
-  const orgScopedTopLevel = useMemo(() => {
-    let r = allItems.filter((i) => i.parentId == null);
-    if (orgFilter !== "all") r = r.filter((i) => i.organizationId === orgFilter);
-    return r;
-  }, [allItems, orgFilter]);
+  // Scorecard counts are over tasks: a parent with subitems contributes its
+  // subitems, not itself. Archived items (and everything under an archived
+  // parent) are excluded. Narrowed by the org filter, title search and column
+  // filters — but not by the selected scorecard itself.
+  const scorecardTasks = useMemo(() => {
+    const tasks = [];
+    for (const parent of allItems) {
+      if (parent.parentId != null || parent.statusId === ARCHIVE) continue;
+      if (orgFilter !== "all" && parent.organizationId !== orgFilter) continue;
+      const subs = subitemsByParent[parent.id];
+      for (const task of subs?.length ? subs : [parent]) {
+        if (task.statusId !== ARCHIVE && matchesSearchAndColumns(task)) tasks.push(task);
+      }
+    }
+    return tasks;
+  }, [allItems, orgFilter, subitemsByParent, matchesSearchAndColumns]);
 
   const scorecardCounts = useMemo(() => {
     const counts = {};
     SCORECARDS.forEach((s) => {
-      counts[s.key] = orgScopedTopLevel.filter(s.match).length;
+      counts[s.key] = scorecardTasks.filter(s.match).length;
     });
     return counts;
-  }, [orgScopedTopLevel]);
+  }, [scorecardTasks]);
 
   // Filter chip values for column popovers
   const priorityFilterValues = PRIORITY_LIST.map((p) => ({ value: p.id, label: p.label, color: p.color }));
