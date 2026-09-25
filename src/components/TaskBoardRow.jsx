@@ -53,6 +53,8 @@ export default function TaskBoardRow({
   users = [],
   categories = [],
   tags = [],
+  // Subitems inherit their parent's category; the parent row passes it down.
+  parentCategoryId = null,
   // Compact mode (embedded Mini Project Board on the agenda Working view):
   // hide the Category + Comments cells and keep each row to a single line.
   compact = false,
@@ -96,6 +98,7 @@ export default function TaskBoardRow({
   const status = STATUS_BY_ID[item.statusId];
   const priority = PRIORITY_BY_ID[item.priorityId];
   const category = categories.find((c) => c.id === item.categoryId);
+  const inheritedCategory = isSubitem ? categories.find((c) => c.id === parentCategoryId) : null;
   const assigneeIds = item.assigneeIds || [];
   const assignees = assigneeIds.map((uid) => users.find((u) => u.id === uid)).filter(Boolean);
   const hasSubitems = subitems && subitems.length > 0;
@@ -330,14 +333,40 @@ export default function TaskBoardRow({
           )}
         </TableCell>
 
-        {/* Category (subitems inherit — render empty). Linear-style:
+        {/* Category (subitems inherit — show the parent's, muted and
+            read-only). Linear-style:
             colored dot + plain text. No chip border/caret so full names
             like "Provider Onboarding" fit; wraps to two lines if cell
             is narrow rather than truncating with ellipsis.
             Hidden in compact (Mini Project Board) mode. */}
         {!compact && (
         <TableCell>
-          {isSubitem ? null : (
+          {isSubitem ? (
+            inheritedCategory && (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minHeight: 24, opacity: 0.5 }}>
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: inheritedCategory.color,
+                    flexShrink: 0,
+                  }}
+                />
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontSize: "0.75rem",
+                    lineHeight: 1.3,
+                    whiteSpace: "normal",
+                    overflowWrap: "break-word",
+                  }}
+                >
+                  {inheritedCategory.name}
+                </Typography>
+              </Box>
+            )
+          ) : (
             <>
               <Box
                 onClick={canUpdate ? (e) => setCategoryAnchor(e.currentTarget) : undefined}
@@ -690,6 +719,7 @@ export default function TaskBoardRow({
           item={sub}
           isSubitem
           subitems={[]}
+          parentCategoryId={item.categoryId}
           users={users}
           categories={categories}
           tags={tags}
