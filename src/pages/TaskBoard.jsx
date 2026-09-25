@@ -66,6 +66,8 @@ import { useItems } from "../hooks/useItems.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups } from "../lib/boardGroups.js";
+import { buildItemMatcher } from "../lib/boardFilters.js";
+import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { tsToDate } from "../utils/firestoreTime.js";
 
 const DONE = 5;
@@ -162,9 +164,7 @@ export default function TaskBoard() {
   const [orgPickerCreating, setOrgPickerCreating] = useState(false);
 
   // Column sort + filter state.
-  const [sortField, setSortField] = useState(null);
-  const [sortDirection, setSortDirection] = useState("asc");
-  const [userHasSorted, setUserHasSorted] = useState(false);
+  const [sorts, setSorts] = useState([]);
   const [columnFilters, setColumnFilters] = useState({});
   const [titleSearch, setTitleSearch] = useState("");
 
@@ -183,27 +183,10 @@ export default function TaskBoard() {
   // Search + column filters only. The scorecard counts use this directly so
   // they respond to the column filters without zeroing each other out when a
   // card is selected.
-  const matchesSearchAndColumns = useMemo(() => {
-    const q = (titleSearch || "").trim().toLowerCase();
-    const activeCols = Object.entries(columnFilters).filter(([, v]) => v && v.length > 0);
-    return (item) => {
-      if (q) {
-        const title = (item.title || "").toLowerCase();
-        const desc = (item.description || "").toLowerCase();
-        if (!title.includes(q) && !desc.includes(q)) return false;
-      }
-      for (const [field, values] of activeCols) {
-        if (field === "assigneeIds") {
-          if (!(item.assigneeIds || []).some((id) => values.includes(id))) return false;
-        } else if (field === "tagIds") {
-          if (!(item.tagIds || []).some((id) => values.includes(id))) return false;
-        } else if (!values.includes(item[field])) {
-          return false;
-        }
-      }
-      return true;
-    };
-  }, [titleSearch, columnFilters]);
+  const matchesSearchAndColumns = useMemo(
+    () => buildItemMatcher({ titleSearch, columnFilters }),
+    [titleSearch, columnFilters],
+  );
 
   const matchesNonOrgFilters = useMemo(() => {
     const card = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
@@ -260,31 +243,9 @@ export default function TaskBoard() {
 
   // Sort
   const sorted = useMemo(() => {
-    if (!sortField) return topLevel;
     const categoryNameById = new Map(categories.map((c) => [c.id, (c.name || "").toLowerCase()]));
-    const getVal = (item) => {
-      switch (sortField) {
-        case "title": return (item.title || "").toLowerCase();
-        case "id": return item.itemNumber ?? Infinity;
-        case "statusId":
-        case "priorityId": return item[sortField] ?? 999;
-        case "dueDate": return item.dueDate ? tsToDate(item.dueDate).getTime() : Infinity;
-        case "updatedAt": return item.updatedAt ? tsToDate(item.updatedAt).getTime() : 0;
-        case "createdAt": return item.createdAt ? tsToDate(item.createdAt).getTime() : 0;
-        // Sort categories by NAME (the visible label), not by raw id —
-        // raw ids are numeric-string sequences and produce nonsense order.
-        case "categoryId": return categoryNameById.get(item.categoryId) || "zzz";
-        default: return item[sortField] ?? "";
-      }
-    };
-    return [...topLevel].sort((a, b) => {
-      const av = getVal(a);
-      const bv = getVal(b);
-      if (av < bv) return sortDirection === "asc" ? -1 : 1;
-      if (av > bv) return sortDirection === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [topLevel, sortField, sortDirection, categories]);
+    return sortItems(topLevel, sorts, { categoryNameById });
+  }, [topLevel, sorts, categories]);
 
   const boardGroups = buildBoardGroups(sorted, visibleSubitemsByParent, matchesNonOrgFilters);
 
@@ -327,19 +288,8 @@ export default function TaskBoard() {
     else setExpandedItemIds(new Set(expandableIds));
   };
 
-  // Sort handler
-  const handleSort = (field, direction) => {
-    setUserHasSorted(true);
-    if (direction) {
-      setSortField(field);
-      setSortDirection(direction);
-    } else if (sortField === field) {
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-    }
-  };
+  const handleSort = (field, direction) => setSorts((prev) => applySort(prev, field, direction));
+  const handleRemoveSort = (field) => setSorts((prev) => removeSort(prev, field));
 
   const handleFilterChange = (field, values) => {
     setColumnFilters((prev) => {
@@ -712,42 +662,36 @@ export default function TaskBoard() {
         </TableCell>
         <TaskBoardColumnHeader
           label="Item" field="title" width="18%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted} sortOnly
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort} sortOnly
         />
         <TaskBoardColumnHeader
           label="ID" field="id" align="center" width="5%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted} sortOnly
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort} sortOnly
         />
         <TaskBoardColumnHeader
           label="Priority" field="priorityId" width="10%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted}
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort}
           filterValues={priorityFilterValues}
           selectedFilters={columnFilters.priorityId}
           onFilterChange={handleFilterChange}
         />
         <TaskBoardColumnHeader
           label="Status" field="statusId" width="10%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted}
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort}
           filterValues={statusFilterValues}
           selectedFilters={columnFilters.statusId}
           onFilterChange={handleFilterChange}
         />
         <TaskBoardColumnHeader
           label="Assigned" field="assigneeIds" align="center" width="10%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted}
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort}
           filterValues={assigneeFilterValues}
           selectedFilters={columnFilters.assigneeIds}
           onFilterChange={handleFilterChange}
         />
         <TaskBoardColumnHeader
           label="Category" field="categoryId" width="12%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted}
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort}
           filterValues={categoryFilterValues}
           selectedFilters={columnFilters.categoryId}
           onFilterChange={handleFilterChange}
@@ -758,8 +702,7 @@ export default function TaskBoard() {
         />
         <TaskBoardColumnHeader
           label="Tags" field="tagIds" width="8%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted}
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort}
           filterValues={tagFilterValues}
           selectedFilters={columnFilters.tagIds}
           onFilterChange={handleFilterChange}
@@ -770,28 +713,23 @@ export default function TaskBoard() {
         />
         <TaskBoardColumnHeader
           label="Due" field="dueDate" width="7%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted} sortOnly
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort} sortOnly
         />
         <TaskBoardColumnHeader
           label="Updated" field="updatedAt" width="8%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted} sortOnly
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort} sortOnly
         />
         <TaskBoardColumnHeader
           label="Created" field="createdAt" width="7%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted} sortOnly
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort} sortOnly
         />
         <TaskBoardColumnHeader
           label="Notes" field="notes" width="4%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted} sortOnly
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort} sortOnly
         />
         <TaskBoardColumnHeader
           label="Files" field="files" width="4%"
-          sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
-          userSorted={userHasSorted} sortOnly
+          sorts={sorts} onSort={handleSort} onRemoveSort={handleRemoveSort} sortOnly
         />
         <TableCell sx={{ width: "5%" }} />
       </TableRow>

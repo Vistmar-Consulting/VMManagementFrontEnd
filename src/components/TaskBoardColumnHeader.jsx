@@ -1,6 +1,6 @@
 // Ported from _PM_Archive_From_Console_2026-05-12/src/pages/pages/TaskBoardColumnHeader.jsx
 // Sortable + filterable column header cell. Opens a Popover with: search box,
-// sort asc/desc, filter checkboxes (multi-select with select-all), per-row
+// sort asc/desc (added to the board's multi-column sort stack) + remove sort, filter checkboxes (multi-select with select-all), per-row
 // edit/delete icons (for Category/Tag columns), and "+ Add New" link.
 //
 // Translated from PascalCase callback names to camelCase. Drops the
@@ -24,6 +24,7 @@ import {
 import {
   ArrowDownward as ArrowDownwardIcon,
   ArrowUpward as ArrowUpwardIcon,
+  Close as CloseIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
 } from "@mui/icons-material";
@@ -35,10 +36,9 @@ export default function TaskBoardColumnHeader({
   field,
   align,
   width,
-  sortField,
-  sortDirection,
+  sorts,
   onSort,
-  userSorted,
+  onRemoveSort,
   filterValues,
   selectedFilters,
   onFilterChange,
@@ -53,7 +53,8 @@ export default function TaskBoardColumnHeader({
   const [anchorEl, setAnchorEl] = useState(null);
   const [searchText, setSearchText] = useState("");
   const open = Boolean(anchorEl);
-  const isSorted = sortField === field;
+  const sortIndex = sorts.findIndex((s) => s.field === field);
+  const sortDirection = sortIndex >= 0 ? sorts[sortIndex].direction : null;
 
   const handleOpen = (e) => {
     if (anchorEl) {
@@ -73,6 +74,7 @@ export default function TaskBoardColumnHeader({
 
   const handleSortAsc = () => onSort(field, "asc");
   const handleSortDesc = () => onSort(field, "desc");
+  const handleRemoveSort = () => onRemoveSort(field);
 
   const handleToggleFilter = (value) => {
     const current = selectedFilters || [];
@@ -114,10 +116,19 @@ export default function TaskBoardColumnHeader({
         }}
         onClick={handleOpen}
       >
-        {userSorted && isSorted && (
+        {sortDirection && (
           sortDirection === "asc"
             ? <ArrowUpwardIcon sx={{ fontSize: 14, color: "primary.main" }} />
             : <ArrowDownwardIcon sx={{ fontSize: 14, color: "primary.main" }} />
+        )}
+        {sortDirection && sorts.length > 1 && (
+          <Typography
+            component="span"
+            aria-label={`Sort priority ${sortIndex + 1}`}
+            sx={{ fontSize: "0.65rem", fontWeight: 700, color: "primary.main", ml: -0.25 }}
+          >
+            {sortIndex + 1}
+          </Typography>
         )}
         <Typography
           variant="subtitle2"
@@ -160,6 +171,12 @@ export default function TaskBoardColumnHeader({
               <ListItemIcon sx={{ minWidth: 28 }}><ArrowDownwardIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Sort Descending</ListItemText>
             </MenuItem>
+            {sortDirection && (
+              <MenuItem dense onClick={handleRemoveSort}>
+                <ListItemIcon sx={{ minWidth: 28 }}><CloseIcon fontSize="small" /></ListItemIcon>
+                <ListItemText>Remove Sort</ListItemText>
+              </MenuItem>
+            )}
 
             {!sortOnly && filterValues && filterValues.length > 0 && (
               <>
