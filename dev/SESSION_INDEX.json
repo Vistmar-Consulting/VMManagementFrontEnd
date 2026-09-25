@@ -368,6 +368,16 @@
       "summary": "Task Board scorecards now follow the title search and column filters (not the selected card itself), count a parent's subitems instead of the parent when it has any, and exclude Archived items and everything under an Archived parent. Root cause: scorecardCounts only applied the org filter. Shipped e9f9dd1 to origin/dev + vercel deploy --prod; Andy confirmed live.",
       "folder": "dev/sessions/v0_4_9_Andrew_SCORECARD_FILTERS/",
       "status": "complete"
+    },
+    {
+      "session_id": "SES-20260924-Andrew-v0.4.10-subitem-category",
+      "developer": "Andrew",
+      "date": "2026-09-24",
+      "date_closed": "2026-09-25",
+      "commit_start": "25c6e96",
+      "summary": "Category 'not editable' on subitems was by design (inherit parent). Subitem rows now show the parent's category muted + read-only (b14830e), deployed to prod.",
+      "folder": "dev/sessions/v0_4_10_Andrew_SUBITEM_CATEGORY/",
+      "status": "complete"
     }
   ]
 }
