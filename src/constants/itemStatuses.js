@@ -54,3 +54,8 @@ export const STATUS_OPTIONS = [
   { id: 5, name: "Done",        color: "#4caf50" },
   { id: 7, name: "Archive",     color: "#9e9e9e" },
 ];
+
+// Column-sort rank: position in the dropdown, so sorting by Status follows the
+// lifecycle rather than raw ids (AI Gen is 8 and Blocked is 9, yet they sort
+// before Assigned and after Pending respectively).
+export const STATUS_SORT_RANK = Object.fromEntries(STATUS_OPTIONS.map((s, i) => [s.id, i]));

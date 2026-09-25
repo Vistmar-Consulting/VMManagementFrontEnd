@@ -19,3 +19,6 @@ export const PRIORITY_BY_ID = Object.fromEntries(PRIORITY_LIST.map((p) => [p.id,
 
 export const PRIORITY_LABEL = Object.fromEntries(PRIORITY_LIST.map((p) => [p.id, p.label]));
 export const PRIORITY_COLOR = Object.fromEntries(PRIORITY_LIST.map((p) => [p.id, p.color]));
+
+// Column-sort rank, taken from the dropdown's sortOrder rather than the raw id.
+export const PRIORITY_SORT_RANK = Object.fromEntries(PRIORITY_LIST.map((p) => [p.id, p.sortOrder]));

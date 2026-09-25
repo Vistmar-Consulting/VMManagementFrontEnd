@@ -1,4 +1,6 @@
 import { tsToDate } from "../utils/firestoreTime.js";
+import { STATUS_SORT_RANK } from "../constants/itemStatuses.js";
+import { PRIORITY_SORT_RANK } from "../constants/itemPriorities.js";
 
 // Task Board multi-column sort. `sorts` is an ordered array of
 // { field, direction }; earlier entries take precedence, later ones break ties.
@@ -20,8 +22,8 @@ function sortValue(item, field, categoryNameById) {
   switch (field) {
     case "title": return (item.title || "").toLowerCase();
     case "id": return item.itemNumber ?? Infinity;
-    case "statusId":
-    case "priorityId": return item[field] ?? 999;
+    case "statusId": return STATUS_SORT_RANK[item.statusId] ?? 999;
+    case "priorityId": return PRIORITY_SORT_RANK[item.priorityId] ?? 999;
     case "dueDate": return item.dueDate ? tsToDate(item.dueDate).getTime() : Infinity;
     case "updatedAt": return item.updatedAt ? tsToDate(item.updatedAt).getTime() : 0;
     case "createdAt": return item.createdAt ? tsToDate(item.createdAt).getTime() : 0;
