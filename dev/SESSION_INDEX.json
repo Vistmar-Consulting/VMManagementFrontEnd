@@ -378,6 +378,16 @@
       "summary": "Category 'not editable' on subitems was by design (inherit parent). Subitem rows now show the parent's category muted + read-only (b14830e), deployed to prod.",
       "folder": "dev/sessions/v0_4_10_Andrew_SUBITEM_CATEGORY/",
       "status": "complete"
+    },
+    {
+      "session_id": "SES-20260925-Andrew-v0.4.12-bizdev-fireflies",
+      "developer": "Andrew",
+      "date": "2026-09-25",
+      "date_closed": "2026-09-25",
+      "commit_start": "fd408c9",
+      "summary": "Business Dev Fireflies: added seo@ attendee (Graph+Google), widened Teams lobby to everyone, mapped dash-variant Fireflies titles onto the agenda. Live data only, no code. Auto-join unverified until 2026-10-02.",
+      "folder": "dev/sessions/v0_4_12_Andrew_BIZDEV_FIREFLIES/",
+      "status": "complete"
     }
   ]
 }
