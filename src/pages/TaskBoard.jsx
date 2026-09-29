@@ -188,10 +188,12 @@ export default function TaskBoard() {
     [titleSearch, columnFilters],
   );
 
-  const matchesNonOrgFilters = useMemo(() => {
-    const card = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
-    return (item) => (!card || card.match(item)) && matchesSearchAndColumns(item);
-  }, [scorecardFilter, matchesSearchAndColumns]);
+  const selectedCard = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
+
+  const matchesNonOrgFilters = useMemo(
+    () => (item) => (!selectedCard || selectedCard.match(item)) && matchesSearchAndColumns(item),
+    [selectedCard, matchesSearchAndColumns],
+  );
 
   // Subitems map: parentId → subitems array. Built first because the
   // top-level filter consults it to do the parent-or-subitem-match check.
@@ -621,6 +623,7 @@ export default function TaskBoard() {
                       item={item}
                       subitems={subitems}
                       ghost={ghost}
+                      dimmed={Boolean(selectedCard) && !selectedCard.match(item)}
                       users={users}
                       categories={categories}
                       tags={tags}

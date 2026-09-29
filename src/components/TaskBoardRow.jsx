@@ -59,9 +59,13 @@ export default function TaskBoardRow({
   // hide the Category + Comments cells and keep each row to a single line.
   compact = false,
   canUpdate: canUpdateProp = true,
-  // Ghost: read-only greyed placeholder of a parent whose subitems moved to
-  // another group (Completed / Archive). Its subitems stay editable.
+  // Ghost: a second copy of a parent, shown in another group (Active /
+  // Completed / Archive) because some of its subitems landed there. Always
+  // expanded, otherwise a normal editable row.
   ghost = false,
+  // Dimmed: the row is shown only because a subitem matches the selected
+  // scorecard. Visual only; every control still works.
+  dimmed = false,
   expanded = false,
   onSetExpanded = () => {},
   getCommentCount = () => 0,
@@ -72,7 +76,7 @@ export default function TaskBoardRow({
   onOpenComments,
   onOpenFiles,
 }) {
-  const canUpdate = canUpdateProp && !ghost;
+  const canUpdate = canUpdateProp;
   const [editingTitle, setEditingTitle] = useState(!item.title && canUpdate);
   const [titleValue, setTitleValue] = useState(item.title || "");
   const [priorityAnchor, setPriorityAnchor] = useState(null);
@@ -150,7 +154,7 @@ export default function TaskBoardRow({
       <TableRow
         sx={{
           "&:hover": { backgroundColor: "action.hover" },
-          ...(ghost && { opacity: 0.5, "& *": { color: "text.disabled" } }),
+          ...(dimmed && { opacity: 0.5 }),
           // Compact (Mini Project Board): tight rows — minimal vertical padding
           // (chip height drives the ~22px row) so it reads as a dense list.
           ...(compact && { "& > td": { py: 0, lineHeight: 1.2 } }),
@@ -598,7 +602,7 @@ export default function TaskBoardRow({
         <TableCell sx={{ overflow: "hidden", textAlign: "center", p: 0.5 }}>
           {commentCount > 0 ? (
             <Tooltip title={`${commentCount} comment${commentCount > 1 ? "s" : ""}`} enterDelay={500} placement="top">
-              <IconButton size="small" onClick={() => !ghost && onOpenComments?.(item)} sx={{ position: "relative" }}>
+              <IconButton size="small" onClick={() => onOpenComments?.(item)} sx={{ position: "relative" }}>
                 <DescriptionIcon sx={{ fontSize: 18, color: "text.secondary" }} />
                 <Box
                   sx={{
@@ -623,7 +627,7 @@ export default function TaskBoardRow({
             </Tooltip>
           ) : (
             <Tooltip title="Add note" enterDelay={500} placement="top">
-              <IconButton size="small" onClick={() => !ghost && onOpenComments?.(item)}>
+              <IconButton size="small" onClick={() => onOpenComments?.(item)}>
                 <DescriptionIcon sx={{ fontSize: 18, color: "#e0e0e0", "&:hover": { color: "text.secondary" }, transition: "color 0.15s" }} />
               </IconButton>
             </Tooltip>
@@ -636,7 +640,7 @@ export default function TaskBoardRow({
         <TableCell sx={{ overflow: "hidden", textAlign: "center", p: 0.5 }}>
           {fileCount > 0 ? (
             <Tooltip title={`${fileCount} file link${fileCount > 1 ? "s" : ""}`} enterDelay={500} placement="top">
-              <IconButton size="small" onClick={() => !ghost && onOpenFiles?.(item)} sx={{ position: "relative" }}>
+              <IconButton size="small" onClick={() => onOpenFiles?.(item)} sx={{ position: "relative" }}>
                 <FileIcon sx={{ fontSize: 18, color: "text.secondary" }} />
                 <Box
                   sx={{
@@ -661,7 +665,7 @@ export default function TaskBoardRow({
             </Tooltip>
           ) : (
             <Tooltip title="Add file link" enterDelay={500} placement="top">
-              <IconButton size="small" onClick={() => !ghost && onOpenFiles?.(item)}>
+              <IconButton size="small" onClick={() => onOpenFiles?.(item)}>
                 <FileIcon sx={{ fontSize: 18, color: "#e0e0e0", "&:hover": { color: "text.secondary" }, transition: "color 0.15s" }} />
               </IconButton>
             </Tooltip>

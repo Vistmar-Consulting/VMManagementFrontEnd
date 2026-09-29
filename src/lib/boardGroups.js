@@ -8,7 +8,7 @@ export function groupKeyOf(statusId) {
 
 // Splits top-level items and their subitems into the Active / Completed /
 // Archive groups by each row's OWN status. A subitem whose group differs from
-// its parent's is rendered under a read-only "ghost" copy of the parent in the
+// its parent's is rendered under an editable "ghost" copy of the parent in the
 // subitem's group, so status changes move rows immediately. A parent that
 // fails the active filter (kept only for a matching subitem) shows only where
 // that subitem lands.
