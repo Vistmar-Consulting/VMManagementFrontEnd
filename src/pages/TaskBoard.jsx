@@ -628,7 +628,7 @@ export default function TaskBoard() {
                       categories={categories}
                       tags={tags}
                       expanded={ghost || isItemExpanded(item.id)}
-                      onSetExpanded={(val) => !ghost && setItemExpanded(item.id, val)}
+                      onSetExpanded={(val) => setItemExpanded(item.id, val)}
                       getCommentCount={getCommentCount}
                       getFileCount={getFileCount}
                       onUpdate={handleUpdate}

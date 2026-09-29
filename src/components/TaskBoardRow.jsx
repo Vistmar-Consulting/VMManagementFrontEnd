@@ -77,7 +77,8 @@ export default function TaskBoardRow({
   onOpenFiles,
 }) {
   const canUpdate = canUpdateProp;
-  const [editingTitle, setEditingTitle] = useState(!item.title && canUpdate);
+  // Only the real row auto-opens an untitled item for editing, not its ghost copy.
+  const [editingTitle, setEditingTitle] = useState(!item.title && canUpdate && !ghost);
   const [titleValue, setTitleValue] = useState(item.title || "");
   const [priorityAnchor, setPriorityAnchor] = useState(null);
   const [statusAnchor, setStatusAnchor] = useState(null);
