@@ -1108,7 +1108,7 @@ function PreparedByPanel() {
 
 // ─── Working view — Topic KPI scorecard strip (§4.3 item 1) ────────────
 //
-// 7-cell horizontal strip — Assigned · In Progress · Review · On Hold ·
+// 7-cell horizontal strip — Assigned · In Progress · Review · Blocked ·
 // Done · Overdue · Due This Wk. Each cell clickable to filter the
 // embedded MiniProjectBoard's items. Counts wire to real item data when
 // V2.2.2e ports the MiniProjectBoard; until then every cell is "—" and

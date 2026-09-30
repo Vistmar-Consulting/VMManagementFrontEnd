@@ -211,7 +211,7 @@ Drag-to-reorder via `react-beautiful-dnd` (`DragDropContext` + `Droppable` + `Dr
 
 In order:
 
-1. **Topic KPI Scorecard** (`Agenda.jsx:2314-2387`) — 7-column strip (Assigned · In Progress · Review · On Hold · Done · Overdue · Due This Wk), each cell clickable to filter the embedded MiniProjectBoard. Active cell gets `rgba(184,115,51,0.08)` background + 2px colored bottom border. Zero-value cells are 0.4 opacity, non-clickable.
+1. **Topic KPI Scorecard** (`Agenda.jsx:2314-2387`) — 7-column strip (Assigned · In Progress · Review · Blocked · Done · Overdue · Due This Wk), each cell clickable to filter the embedded MiniProjectBoard. Active cell gets `rgba(184,115,51,0.08)` background + 2px colored bottom border. Zero-value cells are 0.4 opacity, non-clickable.
 
 2. **Talking Points** (`Agenda.jsx:2389-2489`) — cream card (`background: t.cream`, `border: 1px solid cream2`), copper uppercase label. Bulleted list with 5px copper dot. Each point is click-to-edit (inline TextField). Hover reveals trash `Close` icon. Bottom is an "+ Add a talking point…" dashed-border input that adds on Enter.
 
@@ -223,7 +223,7 @@ In order:
 #### Filter coupling
 
 Topic cards react to two page-level filters set on the sidebar:
-- `meetingFocusFilter` — set by clicking a Meeting Focus scorecard (`done | review | onHold | overdue | dueThisWeek`)
+- `meetingFocusFilter` — set by clicking a Meeting Focus scorecard (`done | review | blocked | overdue | dueThisWeek`)
 - `attendeeFilter` — set by clicking an attendee chip
 
 When either filter is active (`hasExternalFilter`), the topic card auto-expands if it has any matching items, auto-collapses if not. On filter clear, it restores its prior expanded state via `savedExpandedExt`. See `Agenda.jsx:2095-2135` for the logic — port it carefully because it has the "remember user's prior choice" UX nuance.
@@ -284,7 +284,7 @@ Below Open Floor. Lists past Fireflies transcripts for this org. **Important con
 |---|---|---|
 | `done` | Done | `t.green` |
 | `review` | Review | `#9c6ade` |
-| `onHold` | On Hold | `t.red` |
+| `blocked` | Blocked (statusId 9) | `#e65100` |
 | `overdue` | Overdue | `t.red` |
 
 Plus a "Due this week" `MiniPill` next to the section header when `dueSoon > 0` (amber on active, cream on inactive).
@@ -449,7 +449,7 @@ This is **not** the same as the Send menu (which sends prep emails). It's an exp
 | `viewMode` | toggle click | `"working" | "overview"` |
 | `manageGuestsOpen` | sidebar / Manage Guests button | Dialog open flag |
 | `attendeeFilter` | sidebar attendee row click | Page-level attendee filter (string member name or null) |
-| `meetingFocusFilter` | sidebar KPI click | `"done" | "review" | "onHold" | "overdue" | "dueThisWeek" | null` |
+| `meetingFocusFilter` | sidebar KPI click | `"done" | "review" | "blocked" | "overdue" | "dueThisWeek" | null` |
 | `editingFloorIdx`, `editingFloorValue` | Open Floor row click | Inline-edit state |
 | `newFloorItem` | Open Floor + Add input | Controlled input |
 | `sendMenuAnchor` | Send ▾ button | Menu anchor el |
