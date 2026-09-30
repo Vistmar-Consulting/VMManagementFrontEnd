@@ -155,7 +155,7 @@ Rules:
 - Date: include only when a specific date was explicitly discussed. Short M/D format in parens, always last.
 - Person and Status may appear together or alone.
 - Omit the — entirely when there is no metadata.
-- Note: "In Review" and "Blocked" are display labels for the agenda — they are not the same as board status values ("Review", "Pending") and the difference is intentional.
+- Note: "In Review" is a display label for the agenda — the board status value is "Review" and the difference is intentional.
 
 Examples:
 • Google Business Profile audit complete
@@ -225,8 +225,8 @@ ${boardScope}### boardChanges.creates — NEW tasks
   - Leave \`parentRef\` empty or omit for top-level tasks.
 
 ### boardChanges.moves — STATUS MOVES on EXISTING tasks
-- When the record clearly indicates an existing task progressed, propose a move. Set itemId (exact, from the existing list), title (copy the existing title), toStatus (one of: Assigned, In Progress, Review, Done, Pending), and a one-line reason citing the source.
-- Examples: transcript says something shipped/aired/published → toStatus "Done"; work actively underway → "In Progress"; awaiting sign-off → "Review"; blocked/waiting → "Pending". Only move when the record is clear — when unsure, omit.
+- When the record clearly indicates an existing task progressed, propose a move. Set itemId (exact, from the existing list), title (copy the existing title), toStatus (one of: Assigned, In Progress, Blocked, Review, Done), and a one-line reason citing the source.
+- Examples: transcript says something shipped/aired/published → toStatus "Done"; work actively underway → "In Progress"; awaiting sign-off → "Review"; blocked/waiting → "Blocked". Only move when the record is clear — when unsure, omit.
 
 ### boardChanges.notes — context on EXISTING tasks
 - When the record adds useful context to an existing task without changing its status, propose a note: itemId, title (copy existing), and the note text (cite the source).

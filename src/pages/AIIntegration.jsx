@@ -53,7 +53,7 @@ const HOW_IT_WORKS = [
       ["Current agenda", "The meeting's existing topics and Open Floor — the starting point it moves forward."],
       ["Meeting transcripts", "Every Fireflies meeting since this meeting last occurred — this client's meetings plus internal Vistamar meetings (auto-detected by who attended). What was said."],
       ["Other client agendas", "The current content of the client's other meeting agendas, whatever stage they're in. What's planned across the org."],
-      ["Project Board", "The client's tasks created or updated in the window — with status, on-hold, and brand-new flags. Task state."],
+      ["Project Board", "The client's tasks created or updated in the window — with status and brand-new flags. Task state."],
       ["Your note", "The optional “Additional context” you type when you click Generate (e.g. “these two articles are published”)."],
       ["Client SOPs", "Category descriptions guide topic categorization (fast, ~1 min). For deeper who-to-contact context in the agenda draft, tick “Include full Client SOPs” in the AI Gen modal (slower, ~2 min). AI-suggested tasks always use the full SOPs."],
     ],
@@ -80,6 +80,7 @@ const HOW_IT_WORKS = [
       ["No invoicing topics", "Topics whose primary purpose is invoicing, billing, or payment status are never created or retained on a client agenda — that belongs on the private Project Board."],
       ["Topic titles are frozen", "Existing topic titles are never renamed. The AI may only set a title on a brand-new topic; continuing topics keep their current title exactly."],
       ["Concise output", "A short, tight agenda — never a multi-page document."],
+      ["Status moves", "Proposed moves on existing tasks only target Assigned, In Progress, Blocked, Review or Done. Work that is blocked or waiting on someone moves to Blocked."],
     ],
   },
   {

@@ -68,7 +68,7 @@ Rules:
 - Date: include only when a specific date was explicitly discussed. Short M/D format in parens, always last.
 - Person and Status may appear together or alone.
 - Omit the — entirely when there is no metadata.
-- Note: "In Review" and "Blocked" are display labels for the agenda — they are not the same as board status values ("Review", "Pending") and the difference is intentional.
+- Note: "In Review" is a display label for the agenda — the board status value is "Review" and the difference is intentional.
 
 Examples:
 • Google Business Profile audit complete

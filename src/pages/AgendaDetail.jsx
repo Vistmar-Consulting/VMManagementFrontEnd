@@ -957,7 +957,7 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics }) {
 const FOCUS_KEYS = [
   { key: "done", label: "Done", color: "#2e7d32" },
   { key: "review", label: "Review", color: "#9c6ade" },
-  { key: "onHold", label: "On Hold", color: "#c62828" },
+  { key: "blocked", label: "Blocked", color: "#e65100" },
   { key: "overdue", label: "Overdue", color: "#c62828" },
 ];
 
@@ -1118,7 +1118,7 @@ const KPI_CELLS = [
   { key: "assigned", label: "Assigned", color: "#376fd0" },
   { key: "inProgress", label: "In Progress", color: "#b87333" },
   { key: "review", label: "Review", color: "#9c6ade" },
-  { key: "onHold", label: "On Hold", color: "#c62828" },
+  { key: "blocked", label: "Blocked", color: "#e65100" },
   { key: "done", label: "Done", color: "#2e7d32" },
   { key: "overdue", label: "Overdue", color: "#c62828" },
   { key: "dueThisWeek", label: "Due This Wk", color: "#ef6c00" },
@@ -1277,7 +1277,7 @@ function AgendaTopicCard({
       if (!focusFilter) return true;
       if (focusFilter === "done" && it.statusId === 5) return true;
       if (focusFilter === "review" && it.statusId === 4) return true;
-      if (focusFilter === "onHold" && it.onHold) return true;
+      if (focusFilter === "blocked" && it.statusId === 9) return true;
       if (focusFilter === "overdue" || focusFilter === "dueThisWeek") {
         if (!it.dueDate || it.statusId === 5 || it.statusId === 7) continue;
         const dd = it.dueDate?.toDate ? it.dueDate.toDate() : new Date(it.dueDate);
@@ -1302,9 +1302,9 @@ function AgendaTopicCard({
   // Mon-Fri business-week logic loosely (within next 7 days).
   const kpiCounts = useMemo(() => {
     const now = new Date();
-    const counts = { assigned: 0, inProgress: 0, review: 0, onHold: 0, done: 0, overdue: 0, dueThisWeek: 0 };
+    const counts = { assigned: 0, inProgress: 0, review: 0, blocked: 0, done: 0, overdue: 0, dueThisWeek: 0 };
     for (const it of matchedItems) {
-      if (it.onHold) counts.onHold += 1;
+      if (it.statusId === 9) counts.blocked += 1;
       if (it.statusId === 1) counts.assigned += 1;
       else if (it.statusId === 2) counts.inProgress += 1;
       else if (it.statusId === 4) counts.review += 1;
@@ -1669,9 +1669,9 @@ export default function AgendaDetail() {
   // the helper.
   const meetingFocusCounts = useMemo(() => {
     const now = new Date();
-    const counts = { done: 0, review: 0, onHold: 0, overdue: 0, dueThisWeek: 0 };
+    const counts = { done: 0, review: 0, blocked: 0, overdue: 0, dueThisWeek: 0 };
     for (const it of allMatchedItems) {
-      if (it.onHold) counts.onHold += 1;
+      if (it.statusId === 9) counts.blocked += 1;
       if (it.statusId === 5) counts.done += 1;
       if (it.statusId === 4) counts.review += 1;
       if (it.dueDate && it.statusId !== 5 && it.statusId !== 7) {

@@ -214,7 +214,7 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
   const cappedItems = recentItems.slice(0, master ? 120 : MAX_BOARD_ITEMS);
   const projectBoard = cappedItems.map((it) => ({
     name: it.name || "",
-    status: it.onHold ? `${statusLabel(it.statusId)} (on hold)` : statusLabel(it.statusId),
+    status: statusLabel(it.statusId),
     isNew: toMs(it.createdAt) >= windowStart,
     project: it.parentId ? nameById.get(it.parentId) || null : null,
     org: it.organizationId || null,
@@ -640,7 +640,6 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
         priorityId: null,
         categoryId,
         tagIds,
-        onHold: false,
         dueDate: null,
         completedAt: null,
         assigneeIds,

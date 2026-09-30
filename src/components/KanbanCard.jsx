@@ -1,5 +1,5 @@
 import { Box, Chip, Stack, Typography } from "@mui/material";
-import { Calendar, PauseCircle } from "lucide-react";
+import { Calendar } from "lucide-react";
 
 import { useCollection } from "../hooks/useCollection.js";
 import { getContrastText } from "../theme/pillColors.js";
@@ -32,7 +32,6 @@ export default function ItemCard({ item, orgLookup, userLookup }) {
         bgcolor: "background.paper",
         boxShadow: 1,
         border: `1px solid ${theme.palette.divider}`,
-        opacity: item.onHold ? 0.7 : 1,
       })}
     >
       <Stack spacing={2}>
@@ -52,16 +51,6 @@ export default function ItemCard({ item, orgLookup, userLookup }) {
                 fontSize: 11,
                 height: 20,
               }}
-            />
-          ) : null}
-
-          {item.onHold ? (
-            <Chip
-              size="small"
-              icon={<PauseCircle size={12} />}
-              label="On hold"
-              variant="outlined"
-              sx={{ fontSize: 11, height: 20 }}
             />
           ) : null}
 

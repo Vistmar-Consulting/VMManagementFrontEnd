@@ -398,6 +398,15 @@
       "summary": "Ghost parents editable (dim = scorecard mismatch only, opacity only); expand/collapse all reaches ghost + filter-forced rows; blank subtasks no longer steal focus, empty new subtasks discarded, double-click guard. Shipped 2412267, cd37a62, 1f4eb75, d68f1a9 to origin/dev; prod deploys succeeded.",
       "folder": "dev/sessions/v0_4_13_Andrew_TASKBOARD_ROW_FIXES/",
       "status": "complete"
+    },
+    {
+      "session_id": "SES-20260930-Andrew-v0.4.14-retire-on-hold",
+      "developer": "Andrew",
+      "date": "2026-09-30",
+      "commit_start": "d27292c",
+      "summary": "Retire On Hold flag and Pending status; Blocked (9) is the single stuck status. Sync Meeting moves now target Blocked.",
+      "folder": "dev/sessions/v0_4_14_Andrew_RETIRE_ON_HOLD/",
+      "status": "in progress"
     }
   ]
 }
