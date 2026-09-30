@@ -65,7 +65,7 @@ import { useCollectionGroup } from "../hooks/useCollectionGroup.js";
 import { useItems } from "../hooks/useItems.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
-import { buildBoardGroups } from "../lib/boardGroups.js";
+import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { tsToDate } from "../utils/firestoreTime.js";
@@ -145,18 +145,6 @@ export default function TaskBoard() {
   // Notes + Files modal state — which item's modal is currently open.
   const [notesModalItem, setNotesModalItem] = useState(null);
   const [filesModalItem, setFilesModalItem] = useState(null);
-
-  // Per-row expansion state lifted from TaskBoardRow so the "expand all /
-  // collapse all" header button can toggle everything at once.
-  const [expandedItemIds, setExpandedItemIds] = useState(() => new Set());
-  const setItemExpanded = (id, val) => {
-    setExpandedItemIds((prev) => {
-      const next = new Set(prev);
-      if (val) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  };
 
   // Org filter chip group — persisted in localStorage.
   const [orgFilter, setOrgFilter] = useLocalStorage("vm-board-org-filter", "all");
@@ -251,17 +239,6 @@ export default function TaskBoard() {
 
   const boardGroups = buildBoardGroups(sorted, visibleSubitemsByParent, matchesNonOrgFilters);
 
-  // Toggle-all logic: expand-all button shows when at least one expandable
-  // item is collapsed; otherwise collapse-all. Only items with children
-  // count toward "expandable" — leaves don't matter.
-  const expandableIds = useMemo(() => {
-    const ids = new Set();
-    for (const item of sorted) {
-      if ((subitemsByParent[item.id] || []).length > 0) ids.add(item.id);
-    }
-    return ids;
-  }, [sorted, subitemsByParent]);
-
   // Filter-driven auto-expand: if a parent is in the visible set only
   // because one of its subitems matches the filter, force-expand it so
   // the matching subitem is actually rendered.
@@ -280,15 +257,69 @@ export default function TaskBoard() {
     [orgs],
   );
 
-  const isItemExpanded = (id) => expandedItemIds.has(id) || filterForceExpandedIds.has(id);
+  // Per-row expansion state lifted from TaskBoardRow so the "expand all /
+  // collapse all" header button can toggle everything at once. Rows are keyed
+  // by rowKey, so a ghost copy expands independently of its real row. Ghost
+  // rows and filter-matched parents open by default; an explicit collapse
+  // overrides that default and is cleared whenever the filters change.
+  const [expansion, setExpansion] = useState(() => ({
+    filters: [scorecardFilter, titleSearch, columnFilters],
+    open: new Set(),
+    closed: new Set(),
+  }));
+  const filtersChanged = expansion.filters[0] !== scorecardFilter
+    || expansion.filters[1] !== titleSearch
+    || expansion.filters[2] !== columnFilters;
+  if (filtersChanged) {
+    setExpansion((prev) => ({
+      ...prev,
+      filters: [scorecardFilter, titleSearch, columnFilters],
+      closed: new Set(),
+    }));
+  }
+  const closedRowKeys = filtersChanged ? new Set() : expansion.closed;
 
-  const allExpanded = expandableIds.size > 0
-    && Array.from(expandableIds).every(isItemExpanded);
+  const rowKey = (groupKey, id, ghost) => (ghost ? `ghost:${groupKey}:${id}` : id);
 
-  const toggleAllExpanded = () => {
-    if (allExpanded) setExpandedItemIds(new Set());
-    else setExpandedItemIds(new Set(expandableIds));
+  const isRowExpanded = (key, defaultOpen) =>
+    !closedRowKeys.has(key) && (defaultOpen || expansion.open.has(key));
+
+  const setRowsExpanded = (keys, val) => {
+    setExpansion((prev) => {
+      const open = new Set(prev.open);
+      const closed = new Set(prev.closed);
+      for (const key of keys) {
+        if (val) {
+          open.add(key);
+          closed.delete(key);
+        } else {
+          open.delete(key);
+          closed.add(key);
+        }
+      }
+      return { ...prev, open, closed };
+    });
   };
+
+  // The rows the header toggle acts on: rows with visible subitems, in the
+  // group sections that are open.
+  const groupOpen = { active: activeExpanded, completed: completedExpanded, archive: archiveExpanded };
+  const toggleableRows = [];
+  for (const [groupKey, rows] of Object.entries(boardGroups)) {
+    if (!groupOpen[groupKey]) continue;
+    for (const { item, subitems, ghost } of rows) {
+      if (subitems.length === 0) continue;
+      toggleableRows.push({
+        key: rowKey(groupKey, item.id, ghost),
+        defaultOpen: ghost || filterForceExpandedIds.has(item.id),
+      });
+    }
+  }
+
+  const allExpanded = toggleableRows.length > 0
+    && toggleableRows.every((r) => isRowExpanded(r.key, r.defaultOpen));
+
+  const toggleAllExpanded = () => setRowsExpanded(toggleableRows.map((r) => r.key), !allExpanded);
 
   const handleSort = (field, direction) => setSorts((prev) => applySort(prev, field, direction));
   const handleRemoveSort = (field) => setSorts((prev) => removeSort(prev, field));
@@ -497,6 +528,9 @@ export default function TaskBoard() {
   };
 
   const handleAddSubitem = async (parentItem) => {
+    // New subitems start Active, so open the parent's row in the Active group
+    // (its ghost copy there when the parent itself is Done / Archived).
+    setRowsExpanded([rowKey("active", parentItem.id, groupKeyOf(parentItem.statusId) !== "active")], true);
     const newItemRef = doc(collection(db, "items"));
     const parentRef = doc(db, "items", parentItem.id);
     const order = nextSubitemOrder(parentItem.id);
@@ -579,7 +613,7 @@ export default function TaskBoard() {
   const tagFilterValues = tags.map((t) => ({ value: t.id, label: t.name, color: t.color }));
 
   // Group renderer
-  const renderGroup = (title, groupItems, expanded, setExpanded, color) => (
+  const renderGroup = (title, groupKey, groupItems, expanded, setExpanded, color) => (
     <Box sx={{ mb: 3 }}>
       <Paper sx={{ overflow: "hidden", border: "1px solid rgba(0,0,0,0.12)" }}>
         <Box
@@ -627,8 +661,8 @@ export default function TaskBoard() {
                       users={users}
                       categories={categories}
                       tags={tags}
-                      expanded={ghost || isItemExpanded(item.id)}
-                      onSetExpanded={(val) => setItemExpanded(item.id, val)}
+                      expanded={isRowExpanded(rowKey(groupKey, item.id, ghost), ghost || filterForceExpandedIds.has(item.id))}
+                      onSetExpanded={(val) => setRowsExpanded([rowKey(groupKey, item.id, ghost)], val)}
                       getCommentCount={getCommentCount}
                       getFileCount={getFileCount}
                       onUpdate={handleUpdate}
@@ -651,7 +685,7 @@ export default function TaskBoard() {
     <TableHead>
       <TableRow>
         <TableCell sx={{ width: "2%", whiteSpace: "nowrap", textAlign: "center", p: 0.5 }}>
-          {expandableIds.size > 0 && (
+          {toggleableRows.length > 0 && (
             <Tooltip title={allExpanded ? "Collapse all" : "Expand all"} placement="top">
               <IconButton
                 size="small"
@@ -844,9 +878,9 @@ export default function TaskBoard() {
 
       {!itemsLoading && (
         <>
-          {renderGroup("Active", boardGroups.active, activeExpanded, setActiveExpanded, "#4a90d9")}
-          {renderGroup("Completed", boardGroups.completed, completedExpanded, setCompletedExpanded, "#4caf50")}
-          {renderGroup("Archive", boardGroups.archive, archiveExpanded, setArchiveExpanded, "#9e9e9e")}
+          {renderGroup("Active", "active", boardGroups.active, activeExpanded, setActiveExpanded, "#4a90d9")}
+          {renderGroup("Completed", "completed", boardGroups.completed, completedExpanded, setCompletedExpanded, "#4caf50")}
+          {renderGroup("Archive", "archive", boardGroups.archive, archiveExpanded, setArchiveExpanded, "#9e9e9e")}
         </>
       )}
 

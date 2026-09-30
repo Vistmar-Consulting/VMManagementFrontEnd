@@ -60,8 +60,8 @@ export default function TaskBoardRow({
   compact = false,
   canUpdate: canUpdateProp = true,
   // Ghost: a second copy of a parent, shown in another group (Active /
-  // Completed / Archive) because some of its subitems landed there. Always
-  // expanded, otherwise a normal editable row.
+  // Completed / Archive) because some of its subitems landed there. Opens
+  // expanded by default, otherwise a normal editable row.
   ghost = false,
   // Dimmed: the row is shown only because a subitem matches the selected
   // scorecard. Visual only; every control still works.
@@ -163,7 +163,7 @@ export default function TaskBoardRow({
       >
         {/* Expand chevron */}
         <TableCell sx={{ width: 40, p: 0.5 }}>
-          {ghost ? null : !isSubitem && (hasSubitems || expanded) ? (
+          {!isSubitem && (hasSubitems || expanded) ? (
             <IconButton size="small" onClick={() => onSetExpanded(!expanded)}>
               {expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
             </IconButton>
