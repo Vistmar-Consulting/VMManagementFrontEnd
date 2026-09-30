@@ -10,7 +10,7 @@
 // Active default expanded; Completed expanded only when non-empty; Archive
 // always collapsed by default.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 // (useState already imported above; this comment kept for diff clarity.)
 import {
   Box,
@@ -21,6 +21,7 @@ import {
 import { ExpandMore } from "@mui/icons-material";
 import {
   collection,
+  deleteDoc,
   doc,
   runTransaction,
   serverTimestamp,
@@ -176,43 +177,64 @@ export default function MiniProjectBoard({
     await batch.commit();
   };
 
+  // The item the user just created, so only its row opens into title edit.
+  const [newItemId, setNewItemId] = useState(null);
+
+  const handleNewSettled = () => setNewItemId(null);
+
+  // Set while a subitem is being created, so a double click adds one, not two.
+  const addingSubitemRef = useRef(false);
+
+  // A just-created subitem left untitled is dropped: the user backed out.
+  const handleDiscardNew = (item) => {
+    setNewItemId(null);
+    return deleteDoc(doc(db, "items", item.id));
+  };
+
   // Add subitem under a parent. Same per-parent SI counter pattern as
   // TaskBoard.handleAddSubitem so SI-1, SI-2, ... stay unique within the
   // parent. Auto-expands the parent so the new row is visible.
   const handleAddSubitem = async (parentItem) => {
-    const newItemRef = doc(collection(db, "items"));
-    const parentRef = doc(db, "items", parentItem.id);
-    await runTransaction(db, async (tx) => {
-      const parentSnap = await tx.get(parentRef);
-      const next = parentSnap.data()?.nextSubitemNumber ?? 1;
-      tx.set(newItemRef, {
-        organizationId: parentItem.organizationId,
-        parentId: parentItem.id,
-        hasChildren: false,
-        type: "task",
-        title: "",
-        description: "",
-        statusId: 1,
-        priorityId: null,
-        categoryId: null,
-        tagIds: [],
-        onHold: false,
-        dueDate: null,
-        completedAt: null,
-        assigneeIds: [],
-        itemNumber: next,
-        createdBy: user?.uid || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        order: generateKeyBetween(null, null),
+    if (addingSubitemRef.current) return;
+    addingSubitemRef.current = true;
+    try {
+      const newItemRef = doc(collection(db, "items"));
+      setNewItemId(newItemRef.id);
+      const parentRef = doc(db, "items", parentItem.id);
+      await runTransaction(db, async (tx) => {
+        const parentSnap = await tx.get(parentRef);
+        const next = parentSnap.data()?.nextSubitemNumber ?? 1;
+        tx.set(newItemRef, {
+          organizationId: parentItem.organizationId,
+          parentId: parentItem.id,
+          hasChildren: false,
+          type: "task",
+          title: "",
+          description: "",
+          statusId: 1,
+          priorityId: null,
+          categoryId: null,
+          tagIds: [],
+          onHold: false,
+          dueDate: null,
+          completedAt: null,
+          assigneeIds: [],
+          itemNumber: next,
+          createdBy: user?.uid || null,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          order: generateKeyBetween(null, null),
+        });
+        tx.update(parentRef, {
+          nextSubitemNumber: next + 1,
+          hasChildren: true,
+          updatedAt: serverTimestamp(),
+        });
       });
-      tx.update(parentRef, {
-        nextSubitemNumber: next + 1,
-        hasChildren: true,
-        updatedAt: serverTimestamp(),
-      });
-    });
-    setItemExpanded(parentItem.id, true);
+      setItemExpanded(parentItem.id, true);
+    } finally {
+      addingSubitemRef.current = false;
+    }
   };
 
   const handleAddItem = async () => {
@@ -228,6 +250,7 @@ export default function MiniProjectBoard({
     }
     const orgRef = doc(db, "organizations", organizationId);
     const newItemRef = doc(collection(db, "items"));
+    setNewItemId(newItemRef.id);
     const lastActive = grouped.active[grouped.active.length - 1];
     const order = generateKeyBetween(lastActive?.order || null, null);
     await runTransaction(db, async (tx) => {
@@ -316,6 +339,9 @@ export default function MiniProjectBoard({
                       onUpdate={handleUpdate}
                       onRequestDelete={handleRequestDelete}
                       onAddSubitem={handleAddSubitem}
+                      newItemId={newItemId}
+                      onDiscardNew={handleDiscardNew}
+                      onNewSettled={handleNewSettled}
                       onOpenComments={onOpenComments}
                       onOpenFiles={onOpenFiles}
                       getCommentCount={getCommentCount}

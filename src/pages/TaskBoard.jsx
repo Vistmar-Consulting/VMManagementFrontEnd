@@ -8,11 +8,12 @@
 // per-org categories/tags scoped via subcollections. DnD reorder + comments
 // modal are follow-up slices.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   runTransaction,
   serverTimestamp,
@@ -479,9 +480,24 @@ export default function TaskBoard() {
     return generateKeyBetween(last, null);
   };
 
+  // The item the user just created, so only its row opens into title edit.
+  const [newItemId, setNewItemId] = useState(null);
+
+  const handleNewSettled = () => setNewItemId(null);
+
+  // Set while a subitem is being created, so a double click adds one, not two.
+  const addingSubitemRef = useRef(false);
+
+  // A just-created subitem left untitled is dropped: the user backed out.
+  const handleDiscardNew = (item) => {
+    setNewItemId(null);
+    return deleteDoc(doc(db, "items", item.id));
+  };
+
   const handleAddItem = async (orgId) => {
     const orgRef = doc(db, "organizations", orgId);
     const newItemRef = doc(collection(db, "items"));
+    setNewItemId(newItemRef.id);
     const order = nextTopLevelOrder();
     // Transaction atomically pulls the next item number from the org doc and
     // bumps it — prevents race when two admins add at the same time.
@@ -528,46 +544,53 @@ export default function TaskBoard() {
   };
 
   const handleAddSubitem = async (parentItem) => {
-    // New subitems start Active, so open the parent's row in the Active group
-    // (its ghost copy there when the parent itself is Done / Archived).
-    setRowsExpanded([rowKey("active", parentItem.id, groupKeyOf(parentItem.statusId) !== "active")], true);
-    const newItemRef = doc(collection(db, "items"));
-    const parentRef = doc(db, "items", parentItem.id);
-    const order = nextSubitemOrder(parentItem.id);
-    // Subitem counter is per-parent — SI-N is unique within a single
-    // parent, not across an org. Reading + bumping the counter inside
-    // the transaction also makes the `hasChildren` update race-safe
-    // (we read the parent in-tx, so concurrent writers serialize).
-    await runTransaction(db, async (tx) => {
-      const parentSnap = await tx.get(parentRef);
-      const next = parentSnap.data()?.nextSubitemNumber ?? 1;
-      tx.set(newItemRef, {
-        organizationId: parentItem.organizationId,
-        parentId: parentItem.id,
-        hasChildren: false,
-        type: "task",
-        title: "",
-        description: "",
-        statusId: 1,
-        priorityId: null,
-        categoryId: null,
-        tagIds: [],
-        onHold: false,
-        dueDate: null,
-        completedAt: null,
-        assigneeIds: [],
-        itemNumber: next,
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        order,
+    if (addingSubitemRef.current) return;
+    addingSubitemRef.current = true;
+    try {
+      // New subitems start Active, so open the parent's row in the Active group
+      // (its ghost copy there when the parent itself is Done / Archived).
+      setRowsExpanded([rowKey("active", parentItem.id, groupKeyOf(parentItem.statusId) !== "active")], true);
+      const newItemRef = doc(collection(db, "items"));
+      setNewItemId(newItemRef.id);
+      const parentRef = doc(db, "items", parentItem.id);
+      const order = nextSubitemOrder(parentItem.id);
+      // Subitem counter is per-parent — SI-N is unique within a single
+      // parent, not across an org. Reading + bumping the counter inside
+      // the transaction also makes the `hasChildren` update race-safe
+      // (we read the parent in-tx, so concurrent writers serialize).
+      await runTransaction(db, async (tx) => {
+        const parentSnap = await tx.get(parentRef);
+        const next = parentSnap.data()?.nextSubitemNumber ?? 1;
+        tx.set(newItemRef, {
+          organizationId: parentItem.organizationId,
+          parentId: parentItem.id,
+          hasChildren: false,
+          type: "task",
+          title: "",
+          description: "",
+          statusId: 1,
+          priorityId: null,
+          categoryId: null,
+          tagIds: [],
+          onHold: false,
+          dueDate: null,
+          completedAt: null,
+          assigneeIds: [],
+          itemNumber: next,
+          createdBy: user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          order,
+        });
+        tx.update(parentRef, {
+          nextSubitemNumber: next + 1,
+          hasChildren: true,
+          updatedAt: serverTimestamp(),
+        });
       });
-      tx.update(parentRef, {
-        nextSubitemNumber: next + 1,
-        hasChildren: true,
-        updatedAt: serverTimestamp(),
-      });
-    });
+    } finally {
+      addingSubitemRef.current = false;
+    }
   };
 
   // Categories + tags are global; pass the full list to every row.
@@ -668,6 +691,9 @@ export default function TaskBoard() {
                       onUpdate={handleUpdate}
                       onRequestDelete={handleRequestDelete}
                       onAddSubitem={handleAddSubitem}
+                      newItemId={newItemId}
+                      onDiscardNew={handleDiscardNew}
+                      onNewSettled={handleNewSettled}
                       onOpenComments={(it) => setNotesModalItem(it)}
                       onOpenFiles={(it) => setFilesModalItem(it)}
                     />

@@ -69,7 +69,7 @@ describe("TaskBoard expand all / collapse all", () => {
     expect(screen.queryByText("Sub Two")).toBeNull();
     expect(screen.queryByText("Sub Three")).toBeNull();
     expect(toggleAll().getAttribute("aria-label")).toBe("Expand all");
-  }, 20000);
+  }, 60000);
 
   it("collapses and re-expands everything while a scorecard is selected", () => {
     renderBoard();

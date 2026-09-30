@@ -67,6 +67,12 @@ export default function TaskBoardRow({
   // scorecard. Visual only; every control still works.
   dimmed = false,
   expanded = false,
+  // Id of the item the user just created. Only that row opens straight into
+  // title edit; an untitled subitem left empty is discarded via onDiscardNew.
+  // onNewSettled fires once that first edit ends with a kept item.
+  newItemId = null,
+  onDiscardNew,
+  onNewSettled,
   onSetExpanded = () => {},
   getCommentCount = () => 0,
   getFileCount = () => 0,
@@ -77,8 +83,10 @@ export default function TaskBoardRow({
   onOpenFiles,
 }) {
   const canUpdate = canUpdateProp;
-  // Only the real row auto-opens an untitled item for editing, not its ghost copy.
-  const [editingTitle, setEditingTitle] = useState(!item.title && canUpdate && !ghost);
+  // Latched at mount: a title cleared later must never make an old item "new".
+  const [isNew, setIsNew] = useState(item.id === newItemId && !item.title);
+  // Only the real row auto-opens a just-created item for editing, not its ghost copy.
+  const [editingTitle, setEditingTitle] = useState(isNew && canUpdate && !ghost);
   const [titleValue, setTitleValue] = useState(item.title || "");
   const [priorityAnchor, setPriorityAnchor] = useState(null);
   const [statusAnchor, setStatusAnchor] = useState(null);
@@ -128,8 +136,26 @@ export default function TaskBoardRow({
 
   const handleField = (patch) => onUpdate?.(item.id, patch);
 
-  const handleTitleBlur = () => {
+  const discardIfEmptyNewSubitem = () => {
+    if (!isSubitem || !isNew || titleValue.trim()) return false;
     setEditingTitle(false);
+    setIsNew(false);
+    onDiscardNew?.(item);
+    return true;
+  };
+
+  const settleNew = () => {
+    if (!isNew) return;
+    setIsNew(false);
+    onNewSettled?.();
+  };
+
+  const handleTitleBlur = () => {
+    // Switching windows blurs the input too; that is not the user backing out.
+    if (isNew && !document.hasFocus()) return;
+    if (discardIfEmptyNewSubitem()) return;
+    setEditingTitle(false);
+    settleNew();
     if (titleValue !== item.title) {
       titleSavedRef.current = true;
       handleField({ title: titleValue });
@@ -142,6 +168,8 @@ export default function TaskBoardRow({
       titleRef.current?.blur();
     }
     if (e.key === "Escape") {
+      if (discardIfEmptyNewSubitem()) return;
+      settleNew();
       setTitleValue(item.title || "");
       setEditingTitle(false);
     }
@@ -730,6 +758,9 @@ export default function TaskBoardRow({
           tags={tags}
           compact={compact}
           canUpdate={canUpdateProp}
+          newItemId={newItemId}
+          onDiscardNew={onDiscardNew}
+          onNewSettled={onNewSettled}
           getCommentCount={getCommentCount}
           getFileCount={getFileCount}
           onUpdate={onUpdate}
