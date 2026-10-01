@@ -39,3 +39,26 @@ describe("AgendaTOC collapse controls", () => {
     expect(onExpandTopic).not.toHaveBeenCalled();
   });
 });
+
+describe("AgendaTOC jump-to-collapsed ordering", () => {
+  it("commits the expand before scrolling", async () => {
+    const { useState } = await import("react");
+    let bodyDisplayAtScroll;
+    Element.prototype.scrollIntoView = vi.fn(() => {
+      bodyDisplayAtScroll = document.getElementById("body-b").style.display;
+    });
+    function Harness() {
+      const [collapsed, setCollapsed] = useState(true);
+      return (
+        <>
+          <AgendaTOC topics={topics} onToggleAll={() => {}} onExpandTopic={() => setCollapsed(false)} />
+          <div id="topic-b" />
+          <div id="body-b" style={{ display: collapsed ? "none" : "block" }} />
+        </>
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("link", { name: "Jump to Reporting" }));
+    expect(bodyDisplayAtScroll).toBe("block");
+  });
+});

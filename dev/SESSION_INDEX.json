@@ -416,7 +416,8 @@
       "commit_start": "091a22b",
       "summary": "Agenda Overview: per-topic collapse chevron, Collapse all / Expand all in Contents, window-local state.",
       "folder": "dev/sessions/v0_4_15_Andrew_TOPIC_COLLAPSE/",
-      "status": "in progress"
+      "status": "complete",
+      "date_closed": "2026-10-01"
     }
   ]
 }

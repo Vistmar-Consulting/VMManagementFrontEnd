@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import { buildTocEntries } from "../lib/agendaToc.js";
@@ -8,7 +9,9 @@ import { t } from "../theme/tokens.js";
 // collaborator) all reflect automatically via Firestore onSnapshot. Hidden when
 // there are no topics. Clicking an entry smooth-scrolls to its anchor, which
 // carries scroll-margin-top to clear the sticky toolbar. Jumping to a topic
-// first expands it (onExpandTopic) in case this viewer had collapsed it.
+// first expands it (onExpandTopic) in case this viewer had collapsed it. The
+// expand is flushed before scrolling: after Collapse all the page is too short
+// to reach a late topic until its body is back in the layout.
 export default function AgendaTOC({
   topics,
   isMaster = false,
@@ -21,7 +24,7 @@ export default function AgendaTOC({
   if (entries.length === 0) return null;
 
   const goTo = (anchorId, topicId) => {
-    if (topicId != null) onExpandTopic?.(topicId);
+    if (topicId != null && onExpandTopic) flushSync(() => onExpandTopic(topicId));
     document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 

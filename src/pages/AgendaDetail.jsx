@@ -14,7 +14,7 @@
 // the ActionBar Meeting-Prep email). All writes go straight to
 // Firestore — no API/Graph mutation in this slice.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Link as RouterLink } from "react-router-dom";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import {
@@ -82,7 +82,7 @@ import { agendaRoomId } from "../lib/agendaRoom.js";
 import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
 
-import { EditorFocusProvider } from "../components/editor/editorFocus.jsx";
+import { EditorFocusProvider, useEditorFocus } from "../components/editor/editorFocus.jsx";
 import { LiveblocksRoot, RoomProvider } from "../lib/liveblocks.js";
 import { CollabFlushRegistryProvider, useCollabFlushRegistry } from "../components/editor/CollabFlushRegistry.jsx";
 import CollabBodyEditor from "../components/editor/CollabBodyEditor.jsx";
@@ -415,9 +415,21 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
 
 // ─── Overview topic ────────────────────────────────────────────────────
 
-function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onToggleCollapsed }) {
+export function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onToggleCollapsed }) {
   const { user } = useAuth();
+  const focus = useEditorFocus();
+  const bodyRef = useRef(null);
   const [name, setName] = useState(topic.name || "");
+
+  // A collapsed body is out of sight, so the shared toolbar must stop
+  // targeting it — otherwise a toolbar click edits text nobody can see.
+  useEffect(() => {
+    if (!collapsed) return;
+    const active = focus?.activeEditor;
+    if (active && !active.isDestroyed && bodyRef.current?.contains(active.view.dom)) {
+      focus.setActiveEditor(null);
+    }
+  }, [collapsed, focus]);
 
   useEffect(() => setName(topic.name || ""), [topic.name]);
 
@@ -442,6 +454,8 @@ function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onToggleCo
         position: "relative",
         mb: 2.5,
         "&:hover .topic-del, &:hover .topic-collapse": { opacity: 0.55 },
+        // Declared after the row-hover rule at equal specificity so it wins.
+        "& .topic-del:hover, & .topic-collapse:hover, & .topic-collapse:focus-visible": { opacity: 1 },
       }}
     >
       {/* Delete — right gutter, revealed on row hover (mirrors the drag grip). */}
@@ -458,7 +472,6 @@ function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onToggleCo
           opacity: 0,
           transition: "opacity 0.12s",
           cursor: "pointer",
-          "&:hover": { opacity: 1 },
         }}
         aria-label="Delete topic"
         title="Delete topic"
@@ -509,7 +522,8 @@ function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onToggleCo
           className="topic-collapse"
           onClick={onToggleCollapsed}
           aria-expanded={!collapsed}
-          aria-label={collapsed ? "Expand topic" : "Collapse topic"}
+          aria-controls={`topic-body-${topic.id}`}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${topic.name || "Untitled"}`}
           title={collapsed ? "Expand topic" : "Collapse topic"}
           sx={{
             display: "flex",
@@ -523,7 +537,6 @@ function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onToggleCo
             cursor: "pointer",
             opacity: collapsed ? 0.55 : 0,
             transition: "opacity 0.12s",
-            "&:hover, &:focus-visible": { opacity: 1 },
           }}
         >
           <ChevronDown
@@ -534,7 +547,7 @@ function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onToggleCo
       </Box>
       {/* Hidden, not unmounted: remounting a collab editor re-runs the seed
           election and Liveblocks room join. */}
-      <Box sx={{ display: collapsed ? "none" : "block" }}>
+      <Box id={`topic-body-${topic.id}`} ref={bodyRef} sx={{ display: collapsed ? "none" : "block" }}>
         <CollabBodyEditor
           mode="shared"
           valueHtml={topic.bodyHtml || ""}
@@ -1632,6 +1645,13 @@ export default function AgendaDetail() {
   // Overview topics this viewer has collapsed. Window-local by design: never
   // persisted, never shared, so everything opens expanded on load.
   const [collapsedTopicIds, setCollapsedTopicIds] = useState(() => new Set());
+  // The route keeps this page mounted across agenda-to-agenda navigation;
+  // start each agenda fully expanded.
+  const [collapsedForAgendaId, setCollapsedForAgendaId] = useState(agendaId);
+  if (collapsedForAgendaId !== agendaId) {
+    setCollapsedForAgendaId(agendaId);
+    setCollapsedTopicIds(new Set());
+  }
 
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
     agendaId ? `agendas/${agendaId}` : null
