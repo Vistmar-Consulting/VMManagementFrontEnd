@@ -9,7 +9,7 @@ const STATUS_COLORS = {
   "Assigned":    { bg: "#f5f5f5", text: "#616161" },
   "In Progress": { bg: "#e3f2fd", text: "#1565c0" },
   "Review":      { bg: "#f3e5f5", text: "#7b1fa2" },
-  "On Hold":     { bg: "#fce4ec", text: "#c62828" },
+  "Blocked":     { bg: "#fff3e0", text: "#e65100" },
   "Done":        { bg: "#e8f5e9", text: "#2e7d32" },
 };
 

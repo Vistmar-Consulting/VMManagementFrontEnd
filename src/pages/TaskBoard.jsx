@@ -31,6 +31,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   IconButton,
   Paper,
   Stack,
@@ -74,21 +75,29 @@ import { tsToDate } from "../utils/firestoreTime.js";
 const DONE = 5;
 const ARCHIVE = 7;
 
+// One status card per dropdown status, in dropdown order. Archive has no card:
+// archived items are excluded from the counts.
 const SCORECARDS = [
-  { key: "aiGen",      label: "AI Gen",       color: "#00bcd4", match: (i) => i.statusId === 8 },
-  { key: "assigned",   label: "Assigned",     color: "#7b61ff", match: (i) => i.statusId === 1 },
-  { key: "inProgress", label: "In Progress",  color: "#2196f3", match: (i) => i.statusId === 2 },
-  { key: "blocked",    label: "Blocked",      color: "#e65100", match: (i) => i.statusId === 9 },
-  { key: "review",     label: "Review",       color: "#9c6ade", match: (i) => i.statusId === 4 },
-  { key: "done",       label: "Done",         color: "#4caf50", match: (i) => i.statusId === DONE },
-  { key: "overdue",    label: "Overdue",      color: "#d32f2f", match: (i) => i.dueDate && tsToDate(i.dueDate) < new Date() && i.statusId !== DONE && i.statusId !== ARCHIVE },
-  { key: "dueThisWk",  label: "Due This Wk",  color: "#ef6c00", match: (i) => i.dueDate && isDueThisWeek(tsToDate(i.dueDate)) && i.statusId !== DONE && i.statusId !== ARCHIVE },
+  ...STATUS_OPTIONS.filter((s) => s.id !== ARCHIVE).map((s) => ({
+    key: `status-${s.id}`,
+    label: s.name,
+    color: s.color,
+    match: (i) => i.statusId === s.id,
+  })),
+  // Date cards — a separate group (divider before it) that overlaps the status
+  // cards by design. They don't overlap each other: overdue items are only in
+  // Overdue.
+  { key: "overdue",    label: "Overdue",      color: "#d32f2f", dateCard: true, match: (i) => hasOpenDueDate(i) && tsToDate(i.dueDate) < new Date() },
+  { key: "dueThisWk",  label: "Due This Wk",  color: "#ef6c00", dateCard: true, match: (i) => hasOpenDueDate(i) && tsToDate(i.dueDate) >= new Date() && isDueThisWeek(tsToDate(i.dueDate)) },
 ];
+
+function hasOpenDueDate(i) {
+  return Boolean(i.dueDate) && i.statusId !== DONE && i.statusId !== ARCHIVE;
+}
 
 // "Due This Wk" = dueDate falls within the CURRENT business week,
 // Monday 00:00 → Friday 23:59:59 (local time). Weekend due dates and
-// next-week dates are excluded. An item due Monday that's now past is
-// still considered "this week" (it will also appear in "Overdue").
+// next-week dates are excluded.
 function isDueThisWeek(date) {
   if (!date) return false;
   const now = new Date();
@@ -816,9 +825,13 @@ export default function TaskBoard() {
 
       {/* Scorecards */}
       <Stack direction="row" spacing={2} sx={{ flexWrap: "wrap", gap: 1 }} useFlexGap>
-        {SCORECARDS.map((card) => {
+        {SCORECARDS.map((card, idx) => {
           const selected = scorecardFilter === card.key;
-          return (
+          const startsDateGroup = card.dateCard && !SCORECARDS[idx - 1]?.dateCard;
+          return [
+            startsDateGroup && (
+              <Divider key="date-divider" orientation="vertical" flexItem sx={{ mx: 1 }} />
+            ),
             <Box
               key={card.key}
               onClick={() => setScorecardFilter(selected ? null : card.key)}
@@ -841,8 +854,8 @@ export default function TaskBoard() {
               <Typography variant="h5" sx={{ fontWeight: 700, color: selected ? "#fff" : card.color }}>
                 {scorecardCounts[card.key]}
               </Typography>
-            </Box>
-          );
+            </Box>,
+          ];
         })}
       </Stack>
 

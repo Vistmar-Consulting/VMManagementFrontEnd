@@ -418,6 +418,15 @@
       "folder": "dev/sessions/v0_4_15_Andrew_TOPIC_COLLAPSE/",
       "status": "complete",
       "date_closed": "2026-10-01"
+    },
+    {
+      "session_id": "SES-20261001-Andrew-v0.4.15-scorecard-cleanup",
+      "developer": "Andrew",
+      "date": "2026-10-01",
+      "commit_start": "7ed2b79",
+      "summary": "Task Board status scorecards derived from STATUS_OPTIONS; Overdue/Due This Wk grouped behind a divider and no longer overlap each other; meeting prep email colour key On Hold -> Blocked.",
+      "folder": "dev/sessions/v0_4_15_Andrew_SCORECARD_CLEANUP/",
+      "status": "in progress"
     }
   ]
 }
