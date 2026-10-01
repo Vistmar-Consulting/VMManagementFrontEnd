@@ -86,13 +86,20 @@ const SCORECARDS = [
   })),
   // Date cards — a separate group (divider before it) that overlaps the status
   // cards by design. They don't overlap each other: overdue items are only in
-  // Overdue.
-  { key: "overdue",    label: "Overdue",      color: "#d32f2f", dateCard: true, match: (i) => hasOpenDueDate(i) && tsToDate(i.dueDate) < new Date() },
-  { key: "dueThisWk",  label: "Due This Wk",  color: "#ef6c00", dateCard: true, match: (i) => hasOpenDueDate(i) && tsToDate(i.dueDate) >= new Date() && isDueThisWeek(tsToDate(i.dueDate)) },
+  // Overdue. Both compare against the start of today, because due dates are
+  // stored at midnight — an item due today is not yet overdue.
+  { key: "overdue",    label: "Overdue",      color: "#d32f2f", dateCard: true, match: (i) => hasOpenDueDate(i) && tsToDate(i.dueDate) < startOfToday() },
+  { key: "dueThisWk",  label: "Due This Wk",  color: "#ef6c00", dateCard: true, match: (i) => hasOpenDueDate(i) && tsToDate(i.dueDate) >= startOfToday() && isDueThisWeek(tsToDate(i.dueDate)) },
 ];
 
 function hasOpenDueDate(i) {
   return Boolean(i.dueDate) && i.statusId !== DONE && i.statusId !== ARCHIVE;
+}
+
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 // "Due This Wk" = dueDate falls within the CURRENT business week,

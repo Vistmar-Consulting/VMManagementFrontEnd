@@ -14,12 +14,13 @@ Picks up the three items deferred by v0.4.14 (Retire On Hold + Pending).
 
 | File | Change |
 |---|---|
-| `src/pages/TaskBoard.jsx` | Status scorecards are derived from `STATUS_OPTIONS` (dropdown order, Archive excluded), keys `status-{id}`. Date cards flagged `dateCard`; a vertical divider renders before the first one. `hasOpenDueDate()` shared; Due This Wk requires `dueDate >= now`. |
+| `src/pages/TaskBoard.jsx` | Status scorecards are derived from `STATUS_OPTIONS` (dropdown order, Archive excluded), keys `status-{id}`. Date cards flagged `dateCard`; a vertical divider renders before the first one. `hasOpenDueDate()` shared. Both date cards compare against `startOfToday()`: Overdue = due before today; Due This Wk = due today or later this business week. Due dates are stored at local midnight (row DatePicker), so the old `< new Date()` made an item due today Overdue from 00:00 — found in pre-push review. |
 | `api/meetings/_lib/agenda-email.js` | `STATUS_COLORS`: "On Hold" → "Blocked" (`#fff3e0` / `#e65100`). The tasks section only renders when `tasks` is non-empty; `AgendaDetail.jsx` currently always sends `tasks: []`. |
 
 ## Verification
 
-- Page tests (`src/pages/__tests__`): the expand-all test timed out under heavy machine load (load average 25 during a Teams call); one run with only the derived-cards change passed 3/4, the 4th a 20s timeout. Not yet re-run cleanly.
+- `vite build` passes (13 min under load).
+- `TaskBoard.expandAll.test.jsx` with `--testTimeout=60000`: this branch 4/4 pass. Baseline (`main`'s `TaskBoard.jsx`, same load) 3/4 — the scorecard test times out. Earlier failures on this branch were the same load timeouts (load average 17–25 during a Teams call).
 
 ## Deferred
 
