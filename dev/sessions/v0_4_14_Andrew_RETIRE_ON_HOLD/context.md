@@ -49,5 +49,5 @@ Seed files (`src/seed/`) left untouched — one-shot, not run by the app.
 AI Gen (statusId 8) added as the first Task Board scorecard, colour `#00bcd4` matching `STATUS_OPTIONS`. Page tests: the expand-all test timed out in the batch run and passes alone (4/4). Build passes.
 
 ## Deferred
-- Scorecards: AI Gen (8) has no card; cards are hardcoded instead of derived from `STATUS_OPTIONS`; Overdue / Due This Wk overlap the status cards.
+- Scorecards: cards are hardcoded instead of derived from `STATUS_OPTIONS`; Overdue / Due This Wk overlap the status cards.
 - `api/meetings/_lib/agenda-email.js` `STATUS_COLORS` still has an "On Hold" key, keyed on Hugo-era `Status_Name`; likely dead.
