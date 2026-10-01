@@ -42,7 +42,7 @@ Seed files (`src/seed/`) left untouched — one-shot, not run by the app.
 
 - Pending → Blocked: 24 items (id-care 11, golden-vision 6, bryn-mawr 5, vistamar 2) PATCHed `statusId: 9` + `updatedAt` via Firestore REST (gcloud token). Re-query: 0 items left on statusId 6.
 
-- On Hold → Blocked (Andy, 2026-10-01: "On-Hold is dead"): 14 items carry `onHold: true` (13 vistamar, 1 id-care; 11 Assigned, 1 In Progress, 2 Archive). Plan: non-archived → `statusId: 9`; the `onHold` field deleted from every item. Archived ones keep Archive (moving them would put them back on the board). Blocked on an expired gcloud login.
+- On Hold → Blocked (Andy, 2026-10-01: "On-Hold is dead"): 14 items carry `onHold: true` (13 vistamar, 1 id-care; 11 Assigned, 1 In Progress, 2 Archive). Done 2026-10-01 via Firestore REST: 12 non-archived → `statusId: 9`; the 2 archived keep Archive (moving them would put them back on the board); the `onHold` field deleted from all 382 items. Re-query: 0 items carry `onHold`, 36 Blocked (24 ex-Pending + 12 ex-On Hold).
 
 ## AI Gen scorecard (2026-10-01)
 
