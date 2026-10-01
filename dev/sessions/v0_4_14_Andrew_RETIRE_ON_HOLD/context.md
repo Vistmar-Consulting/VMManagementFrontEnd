@@ -1,6 +1,6 @@
 # Session v0.4.14 — Retire On Hold + Pending; Blocked is the single "stuck" status
 
-**Date:** 2026-09-30 · **Developer:** Andrew · **Status:** in progress
+**Date:** 2026-09-30 → 2026-10-01 · **Developer:** Andrew · **Status:** complete
 **Branch:** worktree `.claude/worktrees/scorecards-statuses` on `feat/scorecards-statuses`, cut from local `main` at `d27292c`
 
 ## Decision (Andy, 2026-09-30)
@@ -48,6 +48,11 @@ Seed files (`src/seed/`) left untouched — one-shot, not run by the app.
 
 AI Gen (statusId 8) added as the first Task Board scorecard, colour `#00bcd4` matching `STATUS_OPTIONS`. Page tests: the expand-all test timed out in the batch run and passes alone (4/4). Build passes.
 
+## Close summary (2026-10-01)
+
+Blocked (9) is the only "stuck" status. On Hold flag and Pending (6) retired in code and data; Sync Meeting proposes Blocked; AI Gen is the first Task Board scorecard. Shipped `31ae49f`, `4dcd61f`, `eb4baf0`, `a025c5c`, `091a22b` to `origin/dev` (Production deploys succeeded); local `main` fast-forwarded. Andy clicks through on the live site. Worktree `scorecards-statuses` removed at close.
+
 ## Deferred
+
 - Scorecards: cards are hardcoded instead of derived from `STATUS_OPTIONS`; Overdue / Due This Wk overlap the status cards.
 - `api/meetings/_lib/agenda-email.js` `STATUS_COLORS` still has an "On Hold" key, keyed on Hugo-era `Status_Name`; likely dead.
