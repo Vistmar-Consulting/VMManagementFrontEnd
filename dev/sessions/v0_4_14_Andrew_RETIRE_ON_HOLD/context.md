@@ -33,10 +33,21 @@ Seed files (`src/seed/`) left untouched — one-shot, not run by the app.
 
 - `vite build` passes.
 - Full `vitest run`: 180/184; the 4 failures were 5s/20s timeouts under machine load. Re-run alone, those 3 files pass 22/22.
+- Pre-push review: ready to merge, no Critical/Important; stale On Hold text fixed in `AgendaDetail.jsx` comment + `docs/AGENDA_DETAIL_PAGE_REFERENCE.md`.
+- Shipped `31ae49f` + docs fix as `4dcd61f` to `origin/dev`; Vercel Production deployment 6771036266 = success.
+- Local `main` not yet fast-forwarded (blocked from the worktree session; Andy to run `git merge --ff-only feat/scorecards-statuses` in the main checkout).
 - Browser click-through: Andy, after deploy (Claude asked not to drive the browser).
 
-## Deferred
+## Data migration (2026-09-30)
 
-- **Data migration:** live items with `statusId: 6` (render a blank pill now) and `onHold: true` → Blocked. Counts not yet taken.
+- Pending → Blocked: 24 items (id-care 11, golden-vision 6, bryn-mawr 5, vistamar 2) PATCHed `statusId: 9` + `updatedAt` via Firestore REST (gcloud token). Re-query: 0 items left on statusId 6.
+
+- On Hold → Blocked (Andy, 2026-10-01: "On-Hold is dead"): 14 items carry `onHold: true` (13 vistamar, 1 id-care; 11 Assigned, 1 In Progress, 2 Archive). Plan: non-archived → `statusId: 9`; the `onHold` field deleted from every item. Archived ones keep Archive (moving them would put them back on the board). Blocked on an expired gcloud login.
+
+## AI Gen scorecard (2026-10-01)
+
+AI Gen (statusId 8) added as the first Task Board scorecard, colour `#00bcd4` matching `STATUS_OPTIONS`. Page tests: the expand-all test timed out in the batch run and passes alone (4/4). Build passes.
+
+## Deferred
 - Scorecards: AI Gen (8) has no card; cards are hardcoded instead of derived from `STATUS_OPTIONS`; Overdue / Due This Wk overlap the status cards.
 - `api/meetings/_lib/agenda-email.js` `STATUS_COLORS` still has an "On Hold" key, keyed on Hugo-era `Status_Name`; likely dead.

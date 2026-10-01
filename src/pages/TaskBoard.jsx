@@ -75,6 +75,7 @@ const DONE = 5;
 const ARCHIVE = 7;
 
 const SCORECARDS = [
+  { key: "aiGen",      label: "AI Gen",       color: "#00bcd4", match: (i) => i.statusId === 8 },
   { key: "assigned",   label: "Assigned",     color: "#7b61ff", match: (i) => i.statusId === 1 },
   { key: "inProgress", label: "In Progress",  color: "#2196f3", match: (i) => i.statusId === 2 },
   { key: "blocked",    label: "Blocked",      color: "#e65100", match: (i) => i.statusId === 9 },
