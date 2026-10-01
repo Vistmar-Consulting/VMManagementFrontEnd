@@ -408,6 +408,15 @@
       "folder": "dev/sessions/v0_4_14_Andrew_RETIRE_ON_HOLD/",
       "status": "complete",
       "date_closed": "2026-10-01"
+    },
+    {
+      "session_id": "SES-20261001-Andrew-v0.4.15-topic-collapse",
+      "developer": "Andrew",
+      "date": "2026-10-01",
+      "commit_start": "091a22b",
+      "summary": "Agenda Overview: per-topic collapse chevron, Collapse all / Expand all in Contents, window-local state.",
+      "folder": "dev/sessions/v0_4_15_Andrew_TOPIC_COLLAPSE/",
+      "status": "in progress"
     }
   ]
 }

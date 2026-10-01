@@ -14,8 +14,8 @@ describe("buildTocEntries", () => {
     ];
     const out = buildTocEntries(topics, { hasOpenFloor: true });
     expect(out).toEqual([
-      { type: "topic", label: "Blog", anchorId: "topic-a", number: 1 },
-      { type: "topic", label: "Reporting", anchorId: "topic-b", number: 2 },
+      { type: "topic", label: "Blog", anchorId: "topic-a", topicId: "a", number: 1 },
+      { type: "topic", label: "Reporting", anchorId: "topic-b", topicId: "b", number: 2 },
       { type: "openfloor", label: "Open Floor", anchorId: "open-floor" },
     ]);
   });
@@ -41,10 +41,10 @@ describe("buildTocEntries", () => {
     const out = buildTocEntries(topics, { isMaster: true, orgById, hasOpenFloor: true });
     expect(out).toEqual([
       { type: "org", label: "Unio", anchorId: "org-o1", accentColor: "#111" },
-      { type: "topic", label: "A", anchorId: "topic-a", number: 1 },
-      { type: "topic", label: "B", anchorId: "topic-b", number: 2 },
+      { type: "topic", label: "A", anchorId: "topic-a", topicId: "a", number: 1 },
+      { type: "topic", label: "B", anchorId: "topic-b", topicId: "b", number: 2 },
       { type: "org", label: "BMD", anchorId: "org-o2", accentColor: "#222" },
-      { type: "topic", label: "C", anchorId: "topic-c", number: 3 },
+      { type: "topic", label: "C", anchorId: "topic-c", topicId: "c", number: 3 },
       { type: "openfloor", label: "Open Floor", anchorId: "open-floor" },
     ]);
   });
@@ -70,10 +70,10 @@ describe("buildTocEntries", () => {
     const out = buildTocEntries(topics, { isMaster: true, orgById, hasOpenFloor: false });
     expect(out).toEqual([
       { type: "org", label: "Unio", anchorId: "org-o1", accentColor: "#111" },
-      { type: "topic", label: "A", anchorId: "topic-a", number: 1 },
+      { type: "topic", label: "A", anchorId: "topic-a", topicId: "a", number: 1 },
       { type: "org", label: "Unassigned", anchorId: "org-unassigned", accentColor: undefined },
-      { type: "topic", label: "B", anchorId: "topic-b", number: 2 },
-      { type: "topic", label: "C", anchorId: "topic-c", number: 3 },
+      { type: "topic", label: "B", anchorId: "topic-b", topicId: "b", number: 2 },
+      { type: "topic", label: "C", anchorId: "topic-c", topicId: "c", number: 3 },
     ]);
   });
 });

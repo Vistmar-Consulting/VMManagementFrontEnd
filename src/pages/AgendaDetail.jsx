@@ -92,7 +92,7 @@ import { presentationModeSx, presentationClassName } from "../components/editor/
 import SharedEditorToolbar from "../components/editor/SharedEditorToolbar.jsx";
 import AgendaTOC from "../components/AgendaTOC.jsx";
 import { htmlToLines } from "../lib/agendaHtml.js";
-import { GripVertical, Trash2 } from "lucide-react";
+import { ChevronDown, GripVertical, Trash2 } from "lucide-react";
 import { t } from "../theme/tokens.js";
 
 const inputBase = {
@@ -415,7 +415,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
 
 // ─── Overview topic ────────────────────────────────────────────────────
 
-function OverviewTopic({ topic, agendaId, dragHandleProps }) {
+function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onToggleCollapsed }) {
   const { user } = useAuth();
   const [name, setName] = useState(topic.name || "");
 
@@ -437,7 +437,13 @@ function OverviewTopic({ topic, agendaId, dragHandleProps }) {
   };
 
   return (
-    <Box sx={{ position: "relative", mb: 2.5, "&:hover .topic-del": { opacity: 0.55 } }}>
+    <Box
+      sx={{
+        position: "relative",
+        mb: 2.5,
+        "&:hover .topic-del, &:hover .topic-collapse": { opacity: 0.55 },
+      }}
+    >
       {/* Delete — right gutter, revealed on row hover (mirrors the drag grip). */}
       <Box
         className="topic-del"
@@ -480,33 +486,69 @@ function OverviewTopic({ topic, agendaId, dragHandleProps }) {
       >
         <GripVertical size={16} />
       </Box>
-      <Box
-        component="input"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={persistName}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            e.currentTarget.blur();
+      <Box sx={{ display: "flex", alignItems: "center", ...sectionTitleSx }}>
+        <Box
+          component="input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={persistName}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
+          placeholder="New Topic"
+          sx={{ ...inputBase, ...sectionTitleSx, borderBottom: "none", py: 0, mb: 0, flex: 1 }}
+        />
+        {/* Collapse — this viewer's window only. Hover-revealed while expanded;
+            always shown while collapsed so the folded state stays visible. */}
+        <Box
+          component="button"
+          type="button"
+          className="topic-collapse"
+          onClick={onToggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand topic" : "Collapse topic"}
+          title={collapsed ? "Expand topic" : "Collapse topic"}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+            border: "none",
+            background: "none",
+            p: 0,
+            ml: 1,
+            color: t.ink3,
+            cursor: "pointer",
+            opacity: collapsed ? 0.55 : 0,
+            transition: "opacity 0.12s",
+            "&:hover, &:focus-visible": { opacity: 1 },
+          }}
+        >
+          <ChevronDown
+            size={16}
+            style={{ transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 0.12s" }}
+          />
+        </Box>
+      </Box>
+      {/* Hidden, not unmounted: remounting a collab editor re-runs the seed
+          election and Liveblocks room join. */}
+      <Box sx={{ display: collapsed ? "none" : "block" }}>
+        <CollabBodyEditor
+          mode="shared"
+          valueHtml={topic.bodyHtml || ""}
+          fragmentKey={topic.id}
+          placeholder="Add talking points…"
+          onChangeHtml={(html) =>
+            updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
+              bodyHtml: html,
+              updatedAt: serverTimestamp(),
+              updatedByUid: user?.uid || null,
+            })
           }
-        }}
-        placeholder="New Topic"
-        sx={{ ...inputBase, ...sectionTitleSx }}
-      />
-      <CollabBodyEditor
-        mode="shared"
-        valueHtml={topic.bodyHtml || ""}
-        fragmentKey={topic.id}
-        placeholder="Add talking points…"
-        onChangeHtml={(html) =>
-          updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
-            bodyHtml: html,
-            updatedAt: serverTimestamp(),
-            updatedByUid: user?.uid || null,
-          })
-        }
-      />
+        />
+      </Box>
     </Box>
   );
 }
@@ -1587,6 +1629,9 @@ export default function AgendaDetail() {
   const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [syncMeetingOpen, setSyncMeetingOpen] = useState(false);
+  // Overview topics this viewer has collapsed. Window-local by design: never
+  // persisted, never shared, so everything opens expanded on load.
+  const [collapsedTopicIds, setCollapsedTopicIds] = useState(() => new Set());
 
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
     agendaId ? `agendas/${agendaId}` : null
@@ -1733,6 +1778,24 @@ export default function AgendaDetail() {
 
   const lastTopicSort = topics?.length ? topics[topics.length - 1].sortOrder ?? 0 : 0;
 
+  const allTopicsCollapsed = !!topics?.length && topics.every((tp) => collapsedTopicIds.has(tp.id));
+  const toggleAllTopics = () =>
+    setCollapsedTopicIds(allTopicsCollapsed ? new Set() : new Set((topics || []).map((tp) => tp.id)));
+  const toggleTopicCollapsed = (topicId) =>
+    setCollapsedTopicIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(topicId)) next.delete(topicId);
+      else next.add(topicId);
+      return next;
+    });
+  const expandTopic = (topicId) =>
+    setCollapsedTopicIds((prev) => {
+      if (!prev.has(topicId)) return prev;
+      const next = new Set(prev);
+      next.delete(topicId);
+      return next;
+    });
+
   // Drag-reorder topics. Uses simple numeric midpoint sort orders to match
   // the existing Enter-insert +0.5 pattern from V2.2.1. The Firestore
   // subscription re-orders the list after the write lands.
@@ -1831,7 +1894,14 @@ export default function AgendaDetail() {
             >
               <SharedEditorToolbar />
               <Box sx={{ px: 4, pt: 2, pb: 3 }}>
-                <AgendaTOC topics={topics} isMaster={isMaster} orgById={orgById} />
+                <AgendaTOC
+                  topics={topics}
+                  isMaster={isMaster}
+                  orgById={orgById}
+                  allCollapsed={allTopicsCollapsed}
+                  onToggleAll={toggleAllTopics}
+                  onExpandTopic={expandTopic}
+                />
                 <DragDropContext onDragEnd={handleTopicDragEnd}>
                   <Droppable droppableId="overview-topics">
                     {(droppableProvided) => (
@@ -1857,6 +1927,8 @@ export default function AgendaDetail() {
                                   topic={topic}
                                   agendaId={agendaId}
                                   dragHandleProps={dragProvided.dragHandleProps}
+                                  collapsed={collapsedTopicIds.has(topic.id)}
+                                  onToggleCollapsed={() => toggleTopicCollapsed(topic.id)}
                                 />
                                 {isMaster && topic.organizationId !== (topics[idx + 1]?.organizationId) && (
                                   <AddOrgTopicButton

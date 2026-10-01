@@ -7,12 +7,21 @@ import { t } from "../theme/tokens.js";
 // the reactive `topics` array — create/delete/reorder/rename (local or remote
 // collaborator) all reflect automatically via Firestore onSnapshot. Hidden when
 // there are no topics. Clicking an entry smooth-scrolls to its anchor, which
-// carries scroll-margin-top to clear the sticky toolbar.
-export default function AgendaTOC({ topics, isMaster = false, orgById = {} }) {
+// carries scroll-margin-top to clear the sticky toolbar. Jumping to a topic
+// first expands it (onExpandTopic) in case this viewer had collapsed it.
+export default function AgendaTOC({
+  topics,
+  isMaster = false,
+  orgById = {},
+  allCollapsed = false,
+  onToggleAll,
+  onExpandTopic,
+}) {
   const entries = buildTocEntries(topics, { isMaster, orgById, hasOpenFloor: true });
   if (entries.length === 0) return null;
 
-  const goTo = (anchorId) => {
+  const goTo = (anchorId, topicId) => {
+    if (topicId != null) onExpandTopic?.(topicId);
     document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -28,7 +37,29 @@ export default function AgendaTOC({ topics, isMaster = false, orgById = {} }) {
         background: t.cream,
       }}
     >
-      <Typography sx={sectionTitleSx}>Contents</Typography>
+      <Box sx={{ ...sectionTitleSx, display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <Typography component="span" sx={{ font: "inherit", color: "inherit" }}>Contents</Typography>
+        {onToggleAll && (
+          <Box
+            component="button"
+            type="button"
+            onClick={onToggleAll}
+            sx={{
+              border: "none",
+              background: "none",
+              p: 0,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 12,
+              fontWeight: 600,
+              color: t.ink3,
+              "&:hover": { color: t.copper, textDecoration: "underline" },
+            }}
+          >
+            {allCollapsed ? "Expand all" : "Collapse all"}
+          </Box>
+        )}
+      </Box>
       <Box component="ul" sx={{ listStyle: "none", m: 0, p: 0 }}>
         {entries.map((e) => {
           if (e.type === "org") {
@@ -66,11 +97,11 @@ export default function AgendaTOC({ topics, isMaster = false, orgById = {} }) {
             <Box
               component="li"
               key={e.anchorId}
-              onClick={() => goTo(e.anchorId)}
+              onClick={() => goTo(e.anchorId, e.topicId)}
               onKeyDown={(ev) => {
                 if (ev.key === "Enter" || ev.key === " ") {
                   ev.preventDefault();
-                  goTo(e.anchorId);
+                  goTo(e.anchorId, e.topicId);
                 }
               }}
               role="link"

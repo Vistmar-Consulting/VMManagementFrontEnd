@@ -25,6 +25,7 @@ export function buildTocEntries(topics, { isMaster = false, orgById = {}, hasOpe
       type: "topic",
       label: (typeof topic.name === "string" && topic.name.trim()) || "Untitled",
       anchorId: topic.id != null ? `topic-${topic.id}` : `topic-${n}`,
+      topicId: topic.id,
       number: n,
     });
   }
