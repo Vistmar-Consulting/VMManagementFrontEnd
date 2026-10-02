@@ -1313,17 +1313,18 @@ function AgendaTopicCard({
     return subs.length ? [...matchedItems, ...subs] : matchedItems;
   }, [matchedItems, items, organizationId]);
 
+  // Uid of the sidebar-selected attendee; also filters the Mini Project Board.
+  const attendeeUid = useMemo(() => {
+    if (!attendeeFilter || !userByEmail) return null;
+    return userByEmail[attendeeFilter.toLowerCase?.() || ""]?.id || null;
+  }, [attendeeFilter, userByEmail]);
+
   // V2.2.2e.2 filter coupling. Decide whether this card has any items that
   // match the active page-level filter (Meeting Focus from sidebar or
   // Attendees from sidebar). Used to auto-expand/collapse on filter change.
   const hasMatchingForFilter = useMemo(() => {
     if (!focusFilter && !attendeeFilter) return null;
     const now = new Date();
-    let attendeeUid = null;
-    if (attendeeFilter && userByEmail) {
-      const u = userByEmail[attendeeFilter.toLowerCase?.() || ""];
-      if (u) attendeeUid = u.id;
-    }
     for (const it of filterScopeItems) {
       // attendeeFilter requires the item's assigneeIds to include the filter's uid.
       if (attendeeFilter && attendeeUid && !(Array.isArray(it.assigneeIds) && it.assigneeIds.includes(attendeeUid))) {
@@ -1341,7 +1342,7 @@ function AgendaTopicCard({
       }
     }
     return false;
-  }, [filterScopeItems, focusFilter, attendeeFilter, userByEmail]);
+  }, [filterScopeItems, focusFilter, attendeeFilter, attendeeUid]);
 
   useEffect(() => {
     if (focusFilter || attendeeFilter) {
@@ -1519,6 +1520,7 @@ function AgendaTopicCard({
             onOpenFiles={onOpenFiles}
             getCommentCount={getCommentCount}
             getFileCount={getFileCount}
+            assigneeFilterId={attendeeUid}
           />
         </Box>
       )}

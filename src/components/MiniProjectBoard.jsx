@@ -33,6 +33,7 @@ import { generateKeyBetween } from "fractional-indexing";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import TaskBoardRow from "./TaskBoardRow.jsx";
+import { filterByAssignee } from "../lib/assigneeFilter.js";
 
 const ACTIVE_STATUSES = new Set([1, 2, 4, 6, 8]);
 const COMPLETED_STATUS = 5;
@@ -99,6 +100,8 @@ export default function MiniProjectBoard({
   onOpenFiles,
   getCommentCount,
   getFileCount,
+  // Uid of the attendee selected in the sidebar, or null.
+  assigneeFilterId = null,
 }) {
   const { user } = useAuth();
   const topicCatIds = topic?.categoryIds || [];
@@ -142,20 +145,35 @@ export default function MiniProjectBoard({
     return map;
   }, [items, organizationId]);
 
+  const filtered = useMemo(
+    () => filterByAssignee(matchedItems, subitemsByParent, assigneeFilterId),
+    [matchedItems, subitemsByParent, assigneeFilterId],
+  );
+
+  // Explicit per-row open/closed choices. Rows with a matching subitem open
+  // by default while the attendee filter is on; an explicit collapse wins
+  // until the filter changes (same rule as the Task Board).
   const [expandedSubitems, setExpandedSubitems] = useState({});
+  const [expansionFilterId, setExpansionFilterId] = useState(assigneeFilterId);
+  if (expansionFilterId !== assigneeFilterId) {
+    setExpansionFilterId(assigneeFilterId);
+    setExpandedSubitems((s) => Object.fromEntries(Object.entries(s).filter(([, v]) => v)));
+  }
   const setItemExpanded = (itemId, value) =>
     setExpandedSubitems((s) => ({ ...s, [itemId]: value }));
+  const isItemExpanded = (itemId) =>
+    expandedSubitems[itemId] ?? filtered.forceExpandedIds.has(itemId);
 
   const grouped = useMemo(() => {
     const out = { active: [], completed: [], archive: [] };
-    for (const it of matchedItems) {
+    for (const it of filtered.parents) {
       out[classify(it)].push(it);
     }
     for (const key of Object.keys(out)) {
       out[key].sort((a, b) => (a.order || "").localeCompare(b.order || ""));
     }
     return out;
-  }, [matchedItems]);
+  }, [filtered]);
 
   const [expanded, setExpanded] = useState({
     active: true,
@@ -322,13 +340,14 @@ export default function MiniProjectBoard({
                   </Typography>
                 )}
                 {items.map((item) => {
-                  const subs = subitemsByParent[item.id] || [];
+                  const subs = filtered.subitemsByParent[item.id] || [];
                   return (
                     <TaskBoardRow
                       key={item.id}
                       item={item}
                       subitems={subs}
-                      expanded={!!expandedSubitems[item.id]}
+                      dimmed={filtered.dimmedIds.has(item.id)}
+                      expanded={isItemExpanded(item.id)}
                       onSetExpanded={(v) => setItemExpanded(item.id, v)}
                       users={users || []}
                       categories={categories || []}
