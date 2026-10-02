@@ -3,14 +3,12 @@ import { buildItemMatcher } from "./boardFilters.js";
 // Mini Project Board attendee filter — the Task Board's Assigned column
 // behavior for one person. A parent stays when it or any subitem is assigned
 // to them; its subitems narrow to theirs; a parent kept only for a subitem is
-// dimmed; every parent with a matching subitem opens. `keepId` (a just-created
-// item, still unassigned) always passes so its row can open for editing.
-export function filterByAssignee(parents, subitemsByParent, assigneeId, keepId = null) {
+// dimmed; every parent with a matching subitem opens.
+export function filterByAssignee(parents, subitemsByParent, assigneeId) {
   if (!assigneeId) {
     return { parents, subitemsByParent, dimmedIds: new Set(), forceExpandedIds: new Set() };
   }
-  const isAssigned = buildItemMatcher({ columnFilters: { assigneeIds: [assigneeId] } });
-  const matches = (item) => item.id === keepId || isAssigned(item);
+  const matches = buildItemMatcher({ columnFilters: { assigneeIds: [assigneeId] } });
   const visibleSubs = {};
   const dimmedIds = new Set();
   const forceExpandedIds = new Set();

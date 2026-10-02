@@ -146,12 +146,11 @@ export default function MiniProjectBoard({
   }, [items, organizationId]);
 
   // The item the user just created, so only its row opens into title edit.
-  // Kept visible under the attendee filter until its first edit settles.
   const [newItemId, setNewItemId] = useState(null);
 
   const filtered = useMemo(
-    () => filterByAssignee(matchedItems, subitemsByParent, assigneeFilterId, newItemId),
-    [matchedItems, subitemsByParent, assigneeFilterId, newItemId],
+    () => filterByAssignee(matchedItems, subitemsByParent, assigneeFilterId),
+    [matchedItems, subitemsByParent, assigneeFilterId],
   );
 
   // Explicit per-row open/closed choices. Rows with a matching subitem open
@@ -236,7 +235,8 @@ export default function MiniProjectBoard({
           tagIds: [],
           dueDate: null,
           completedAt: null,
-          assigneeIds: [],
+          // Created under the attendee filter → assigned to that attendee.
+          assigneeIds: assigneeFilterId ? [assigneeFilterId] : [],
           itemNumber: next,
           createdBy: user?.uid || null,
           createdAt: serverTimestamp(),
@@ -290,7 +290,7 @@ export default function MiniProjectBoard({
         tagIds: topicTagIds,
         dueDate: null,
         completedAt: null,
-        assigneeIds: [],
+        assigneeIds: assigneeFilterId ? [assigneeFilterId] : [],
         itemNumber: next,
         createdBy: user?.uid || null,
         createdAt: serverTimestamp(),

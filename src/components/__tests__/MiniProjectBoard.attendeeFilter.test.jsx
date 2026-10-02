@@ -1,11 +1,23 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 
 vi.mock("../../firebase.js", () => ({ db: {} }));
 vi.mock("../../contexts/AuthContext.jsx", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
+
+const created = [];
+vi.mock("firebase/firestore", () => ({
+  collection: () => ({}),
+  deleteDoc: vi.fn(),
+  doc: () => ({ id: "new-id" }),
+  runTransaction: async (_db, fn) =>
+    fn({ get: async () => ({ data: () => ({}) }), set: (_ref, data) => created.push(data), update: vi.fn() }),
+  serverTimestamp: () => null,
+  updateDoc: vi.fn(),
+  writeBatch: () => ({ delete: vi.fn(), commit: vi.fn() }),
+}));
 
 const { default: MiniProjectBoard } = await import("../MiniProjectBoard.jsx");
 
@@ -65,5 +77,14 @@ describe("MiniProjectBoard attendee filter", () => {
     setFilter("scot");
     expect(screen.queryByText("Sub Scot")).toBeTruthy();
     expect(screen.queryByText("Parent Two")).toBeNull();
+  }, 60000);
+
+  it("assigns items created under the filter to the selected attendee", async () => {
+    created.length = 0;
+    renderBoard("andy");
+    fireEvent.click(screen.getByText("+ New Item"));
+    fireEvent.click(screen.getAllByText(/Add subtask/i)[0]);
+    await waitFor(() => expect(created).toHaveLength(2));
+    expect(created.map((d) => d.assigneeIds)).toEqual([["andy"], ["andy"]]);
   }, 60000);
 });

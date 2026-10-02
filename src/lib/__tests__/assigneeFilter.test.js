@@ -41,10 +41,4 @@ describe("filterByAssignee", () => {
     const out = filterByAssignee(parents, subs, "u2");
     expect([...out.forceExpandedIds].sort()).toEqual(["p1", "p3"]);
   });
-
-  it("keeps a just-created unassigned item visible", () => {
-    const out = filterByAssignee(parents, { ...subs, p2: [{ id: "new", assigneeIds: [] }] }, "u2", "new");
-    expect(out.parents.map((p) => p.id)).toEqual(["p1", "p2", "p3"]);
-    expect(out.subitemsByParent.p2.map((s) => s.id)).toEqual(["new"]);
-  });
 });
