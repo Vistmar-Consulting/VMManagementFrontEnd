@@ -426,7 +426,8 @@
       "commit_start": "7ed2b79",
       "summary": "Task Board status scorecards derived from STATUS_OPTIONS; Overdue/Due This Wk grouped behind a divider and no longer overlap each other; meeting prep email colour key On Hold -> Blocked.",
       "folder": "dev/sessions/v0_4_15_Andrew_SCORECARD_CLEANUP/",
-      "status": "in progress"
+      "status": "complete",
+      "date_closed": "2026-10-02"
     }
   ]
 }

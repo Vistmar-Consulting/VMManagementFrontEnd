@@ -1,6 +1,6 @@
 # Session v0.4.15 — Scorecard cleanup (derived status cards, date-card overlap, email Blocked colour)
 
-**Date:** 2026-10-01 · **Developer:** Andrew · **Status:** in progress
+**Date:** 2026-10-01 → 2026-10-02 · **Developer:** Andrew · **Status:** complete
 **Branch:** worktree `.claude/worktrees/scorecard-cleanup` on `feat/scorecard-cleanup`, cut from local `main` at `7ed2b79`
 
 Picks up the three items deferred by v0.4.14 (Retire On Hold + Pending).
@@ -21,6 +21,10 @@ Picks up the three items deferred by v0.4.14 (Retire On Hold + Pending).
 
 - `vite build` passes (13 min under load).
 - `TaskBoard.expandAll.test.jsx` with `--testTimeout=60000`: this branch 4/4 pass. Baseline (`main`'s `TaskBoard.jsx`, same load) 3/4 — the scorecard test times out. Earlier failures on this branch were the same load timeouts (load average 17–25 during a Teams call).
+
+## Close summary (2026-10-02)
+
+Shipped `fd25117` + `835b28a` to `origin/dev`; Vercel Production deployment 6796316568 = success; local `main` fast-forwarded. Rebase onto `dev` conflicted in `SESSION_INDEX.json` with the parallel topic-collapse session (also numbered v0.4.15); both entries kept. Worktree `scorecard-cleanup` removed at close.
 
 ## Deferred
 
