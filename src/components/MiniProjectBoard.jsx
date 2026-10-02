@@ -145,9 +145,13 @@ export default function MiniProjectBoard({
     return map;
   }, [items, organizationId]);
 
+  // The item the user just created, so only its row opens into title edit.
+  // Kept visible under the attendee filter until its first edit settles.
+  const [newItemId, setNewItemId] = useState(null);
+
   const filtered = useMemo(
-    () => filterByAssignee(matchedItems, subitemsByParent, assigneeFilterId),
-    [matchedItems, subitemsByParent, assigneeFilterId],
+    () => filterByAssignee(matchedItems, subitemsByParent, assigneeFilterId, newItemId),
+    [matchedItems, subitemsByParent, assigneeFilterId, newItemId],
   );
 
   // Explicit per-row open/closed choices. Rows with a matching subitem open
@@ -194,9 +198,6 @@ export default function MiniProjectBoard({
     batch.delete(doc(db, "items", item.id));
     await batch.commit();
   };
-
-  // The item the user just created, so only its row opens into title edit.
-  const [newItemId, setNewItemId] = useState(null);
 
   const handleNewSettled = () => setNewItemId(null);
 
@@ -268,8 +269,11 @@ export default function MiniProjectBoard({
     const orgRef = doc(db, "organizations", organizationId);
     const newItemRef = doc(collection(db, "items"));
     setNewItemId(newItemRef.id);
-    const lastActive = grouped.active[grouped.active.length - 1];
-    const order = generateKeyBetween(lastActive?.order || null, null);
+    // From the unfiltered items: the attendee filter may hide the true last one.
+    const lastOrder = matchedItems
+      .filter((it) => classify(it) === "active")
+      .reduce((max, it) => ((it.order || "") > max ? it.order : max), "");
+    const order = generateKeyBetween(lastOrder || null, null);
     await runTransaction(db, async (tx) => {
       const orgSnap = await tx.get(orgRef);
       const next = orgSnap.data()?.nextItemNumber ?? 1;
