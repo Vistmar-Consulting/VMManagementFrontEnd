@@ -428,6 +428,16 @@
       "folder": "dev/sessions/v0_4_15_Andrew_SCORECARD_CLEANUP/",
       "status": "complete",
       "date_closed": "2026-10-02"
+    },
+    {
+      "session_id": "SES-20261001-Andrew-v0.4.16-attendee-filter",
+      "developer": "Andrew",
+      "date": "2026-10-01",
+      "commit_start": "f7ae6ef",
+      "summary": "Agenda Working view: selecting an attendee filters each topic's Mini Project Board like the Task Board Assigned filter (dim parents kept for a subitem, narrow subitems, auto-expand); items created under the filter are assigned to the attendee. Shipped through 77c08f2; prod deploy succeeded.",
+      "folder": "dev/sessions/v0_4_16_Andrew_ATTENDEE_FILTER/",
+      "status": "complete",
+      "date_closed": "2026-10-02"
     }
   ]
 }
