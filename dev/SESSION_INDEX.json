@@ -444,9 +444,10 @@
       "developer": "Andrew",
       "date": "2026-10-02",
       "commit_start": "41d4371",
-      "summary": "Agenda Working view Meeting Focus shows all Task Board scorecards; counts follow the attendee filter; selecting one filters/expands the Mini Project Boards.",
+      "summary": "Agenda Working view Meeting Focus shows all 8 Task Board scorecards; counts follow the attendee filter; selecting one expands matching topics and filters the Mini Project Boards. Account-less attendees match nothing. Items edited under a filter stay in view. Shipped f274523 + c15acc6 to origin/dev.",
       "folder": "dev/sessions/v0_4_17_Andrew_FOCUS_SCORECARDS/",
-      "status": "active"
+      "status": "complete",
+      "date_closed": "2026-10-04"
     }
   ]
 }

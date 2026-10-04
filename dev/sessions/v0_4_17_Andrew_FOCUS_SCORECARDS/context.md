@@ -1,6 +1,6 @@
 # Session v0.4.17 — Meeting Focus scorecards (agenda Working view)
 
-**Date:** 2026-10-02 · **Developer:** Andrew · **Status:** in progress
+**Date:** 2026-10-02 · **Developer:** Andrew · **Status:** complete
 **Branch:** worktree `.claude/worktrees/focus-scorecards` on `feat/focus-scorecards`, cut from `origin/dev` at `77c08f2`, then fast-forwarded to local `main` at `41d4371` once attendee-filter merged
 
 ## Ask
@@ -41,6 +41,16 @@ Not fixed (Task Board parity, or narrow):
 - Picking an attendee before users load resets kept rows / group choices once (`[]` → `[uid]`).
 - Date-based counts (Overdue, Due This Wk) don't recompute past midnight until data changes; Due This Wk is always 0 on weekends (Mon–Fri window, same as the Task Board).
 
+## Gotchas
+
+- agent-browser saved session `vmmanagement-dev` lost its Google login by 2026-10-04; Andy re-entered the password once in the headed window. Use `--session <name> --session-name vmmanagement-dev --headed` on port 5173.
+- Under load the full vitest suite times out in parallel workers; `--no-file-parallelism --testTimeout=60000` ran 28/28 files clean (2026-10-04).
+
+## Close summary (2026-10-04)
+
+Shipped `f274523` (Meeting Focus scorecards) and `c15acc6` (review fix: edited items stay in view, topic card doesn't collapse, Active group stays open) to `origin/dev`. Pre-push code review: 0 Critical, 1 Important + 1 Minor fixed, rest recorded above. Closes v0.4.16's deferred items "Meeting Focus doesn't filter Mini Project Board rows" and "external attendees make the attendee filter a no-op". VERCEL_STATUS
+
 ## Deferred
 
 - Per-topic KPI strip (`TopicKpiStrip` in `AgendaDetail.jsx`) still uses its own 7-day "Due This Wk" window, and its selection is not wired to the Mini Project Board. Not touched. It also ignores the attendee filter (2026-10-04: PPC + Content strip showed 1 Assigned / 3 Done while an account-less attendee was selected).
+- Task Board: items created while the Assigned filter is on vanish immediately (carried from v0.4.16; the Mini Project Board now keeps created and edited items, the Task Board does not).
