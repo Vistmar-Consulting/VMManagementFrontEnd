@@ -28,6 +28,19 @@ Put all Task Board status scorecards in the Working view's Meeting Focus card, t
 - An attendee with no Management account matches no items: the Mini Project Board and topic auto-expand now agree with the zero Meeting Focus counts (previously the board ignored the attendee filter for them). `filterMiniBoard` takes `assigneeIds` (null = no filter, [] = no account); `MiniProjectBoard` prop renamed `assigneeFilterIds`.
   - Verified 2026-10-04 (headed agent-browser, localhost:5173, Unio Weekly Marketing, Working view): selecting `david.embleton@uniohp.com` (no account) shows — on all 8 cards and expands no topics; adding it on top of Done collapses all topics (Done alone had expanded most); manually opening PPC + Content shows Active (0) / Completed (0); the zero-count Done card stays selectable. Related tests re-run serially: 3 files, 15/15 pass.
 
+## Code review (2026-10-04)
+
+No Critical findings. Fixed:
+- Important: an item edited out of the selected filter vanished, and its topic card collapsed around it. `MiniProjectBoard` now keeps items edited under a filter in view (`keptIds`, was `createdIds`) until the filter changes; `AgendaTopicCard` opens/closes only on a filter change, and under the same filter data changes can only open it. Tests: `MiniProjectBoard.attendeeFilter.test.jsx` (edited row stays), `AgendaDetail.topicFilterExpand.test.jsx` (new; confirmed failing without the fix).
+- Minor: under a Meeting Focus filter the Active group (which holds + New Item) collapsed when empty; it now always opens.
+- Full suite run serially: 28 files, 209/209 pass. `vite build` passes. Not browser-verified: exercising an edit would write to production Firestore.
+
+Not fixed (Task Board parity, or narrow):
+- Archived parents are excluded from counts but still matched by the board filter and topic auto-expand.
+- A parent whose subitems carry the work matches the filter itself but isn't counted.
+- Picking an attendee before users load resets kept rows / group choices once (`[]` → `[uid]`).
+- Date-based counts (Overdue, Due This Wk) don't recompute past midnight until data changes; Due This Wk is always 0 on weekends (Mon–Fri window, same as the Task Board).
+
 ## Deferred
 
 - Per-topic KPI strip (`TopicKpiStrip` in `AgendaDetail.jsx`) still uses its own 7-day "Due This Wk" window, and its selection is not wired to the Mini Project Board. Not touched. It also ignores the attendee filter (2026-10-04: PPC + Content strip showed 1 Assigned / 3 Done while an account-less attendee was selected).

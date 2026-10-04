@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -86,5 +86,41 @@ describe("MiniProjectBoard attendee filter", () => {
     fireEvent.click(screen.getAllByText(/Add subtask/i)[0]);
     await waitFor(() => expect(created).toHaveLength(2));
     expect(created.map((d) => d.assigneeIds)).toEqual([["andy"], ["andy"]]);
+  }, 60000);
+});
+
+function renderFocus(scorecardKey, items = ITEMS) {
+  const ui = (list) => (
+    <ThemeProvider theme={createTheme()}>
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <MiniProjectBoard
+          topic={{ id: "t1", categoryIds: ["c1"], tagIds: [] }}
+          agendaId="a1"
+          organizationId={ORG}
+          items={list}
+          users={[]}
+          categories={[]}
+          tags={[]}
+          scorecardKey={scorecardKey}
+        />
+      </LocalizationProvider>
+    </ThemeProvider>
+  );
+  const result = render(ui(items));
+  return { ...result, setItems: (list) => result.rerender(ui(list)) };
+}
+
+describe("MiniProjectBoard Meeting Focus filter", () => {
+  it("keeps a row edited out of the selected status in view", () => {
+    const { setItems } = renderFocus("status-2");
+    fireEvent.click(within(rowOf("Parent Two")).getByText("In Progress"));
+    fireEvent.click(screen.getAllByText("Done").at(-1));
+    setItems(ITEMS.map((it) => (it.id === "p2" ? { ...it, statusId: 5 } : it)));
+    expect(screen.queryByText("Parent Two")).toBeTruthy();
+  }, 60000);
+
+  it("offers + New Item when no row matches the selected status", () => {
+    renderFocus("status-5");
+    expect(screen.queryByText("+ New Item")).toBeTruthy();
   }, 60000);
 });

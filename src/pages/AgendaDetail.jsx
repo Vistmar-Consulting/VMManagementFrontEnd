@@ -1252,7 +1252,7 @@ function MiniProjectBoardPlaceholder() {
 
 // ─── AgendaTopicCard (§4.3) ────────────────────────────────────────────
 
-function AgendaTopicCard({
+export function AgendaTopicCard({
   topic,
   agendaId,
   organizationId,
@@ -1342,11 +1342,22 @@ function AgendaTopicCard({
     return false;
   }, [filterScopeItems, focusFilter, attendeeFilter, attendeeUid]);
 
+  // A filter change opens or closes the card. Under the same filter, data
+  // changes only open it: an item edited out of the filter stays in view on the
+  // Mini Project Board, so its card must not collapse around it.
+  const appliedFilterKeyRef = useRef(null);
   useEffect(() => {
-    if (focusFilter || attendeeFilter) {
-      setFilterOverride(hasMatchingForFilter);
-    } else {
+    if (!focusFilter && !attendeeFilter) {
+      appliedFilterKeyRef.current = null;
       setFilterOverride(null);
+      return;
+    }
+    const filterKey = `${focusFilter || ""}|${attendeeFilter || ""}`;
+    if (appliedFilterKeyRef.current !== filterKey) {
+      appliedFilterKeyRef.current = filterKey;
+      setFilterOverride(hasMatchingForFilter);
+    } else if (hasMatchingForFilter) {
+      setFilterOverride(true);
     }
   }, [focusFilter, attendeeFilter, hasMatchingForFilter]);
 
