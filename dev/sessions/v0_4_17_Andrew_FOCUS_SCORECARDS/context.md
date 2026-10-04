@@ -48,7 +48,7 @@ Not fixed (Task Board parity, or narrow):
 
 ## Close summary (2026-10-04)
 
-Shipped `f274523` (Meeting Focus scorecards) and `c15acc6` (review fix: edited items stay in view, topic card doesn't collapse, Active group stays open) to `origin/dev`. Pre-push code review: 0 Critical, 1 Important + 1 Minor fixed, rest recorded above. Closes v0.4.16's deferred items "Meeting Focus doesn't filter Mini Project Board rows" and "external attendees make the attendee filter a no-op". VERCEL_STATUS
+Shipped `f274523` (Meeting Focus scorecards) and `c15acc6` (review fix: edited items stay in view, topic card doesn't collapse, Active group stays open) to `origin/dev`. Pre-push code review: 0 Critical, 1 Important + 1 Minor fixed, rest recorded above. Closes v0.4.16's deferred items "Meeting Focus doesn't filter Mini Project Board rows" and "external attendees make the attendee filter a no-op". Vercel Production deployments for `c15acc6` and the close-out commit = success (2026-10-04).
 
 ## Deferred
 
