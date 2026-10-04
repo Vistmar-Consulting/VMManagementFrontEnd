@@ -42,7 +42,7 @@ function renderBoard(assigneeFilterId) {
           users={[]}
           categories={[]}
           tags={[]}
-          assigneeFilterId={id}
+          assigneeFilterIds={id ? [id] : null}
         />
       </LocalizationProvider>
     </ThemeProvider>

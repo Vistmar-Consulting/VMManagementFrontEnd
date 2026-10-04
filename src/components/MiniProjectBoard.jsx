@@ -33,7 +33,7 @@ import { generateKeyBetween } from "fractional-indexing";
 import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import TaskBoardRow from "./TaskBoardRow.jsx";
-import { filterByAssignee } from "../lib/assigneeFilter.js";
+import { filterMiniBoard } from "../lib/miniBoardFilter.js";
 
 const ACTIVE_STATUSES = new Set([1, 2, 4, 6, 8]);
 const COMPLETED_STATUS = 5;
@@ -100,8 +100,11 @@ export default function MiniProjectBoard({
   onOpenFiles,
   getCommentCount,
   getFileCount,
-  // Uid of the attendee selected in the sidebar, or null.
-  assigneeFilterId = null,
+  // Uids of the attendee selected in the sidebar ([] when they have no
+  // account), or null when no attendee is selected.
+  assigneeFilterIds = null,
+  // Key of the Meeting Focus scorecard selected in the sidebar, or null.
+  scorecardKey = null,
 }) {
   const { user } = useAuth();
   const topicCatIds = topic?.categoryIds || [];
@@ -148,19 +151,33 @@ export default function MiniProjectBoard({
   // The item the user just created, so only its row opens into title edit.
   const [newItemId, setNewItemId] = useState(null);
 
+  // Items created while the current filter is on. Kept in view even when
+  // they don't match (a new item starts Assigned), until the filter changes.
+  const [createdIds, setCreatedIds] = useState(() => new Set());
+  const rememberCreated = (id) => setCreatedIds((s) => new Set(s).add(id));
+
   const filtered = useMemo(
-    () => filterByAssignee(matchedItems, subitemsByParent, assigneeFilterId),
-    [matchedItems, subitemsByParent, assigneeFilterId],
+    () => filterMiniBoard(matchedItems, subitemsByParent, {
+      assigneeIds: assigneeFilterIds,
+      scorecardKey,
+      keepIds: createdIds,
+    }),
+    [matchedItems, subitemsByParent, assigneeFilterIds, scorecardKey, createdIds],
   );
 
   // Explicit per-row open/closed choices. Rows with a matching subitem open
-  // by default while the attendee filter is on; an explicit collapse wins
-  // until the filter changes (same rule as the Task Board).
+  // by default while a sidebar filter is on; an explicit collapse wins
+  // until the filter changes (same rule as the Task Board). Groups follow the
+  // same rule under a Meeting Focus filter: those with rows open.
   const [expandedSubitems, setExpandedSubitems] = useState({});
-  const [expansionFilterId, setExpansionFilterId] = useState(assigneeFilterId);
-  if (expansionFilterId !== assigneeFilterId) {
-    setExpansionFilterId(assigneeFilterId);
+  const [focusGroupChoice, setFocusGroupChoice] = useState({});
+  const filterKey = `${assigneeFilterIds?.join(",") ?? "-"}|${scorecardKey || ""}`;
+  const [expansionFilterKey, setExpansionFilterKey] = useState(filterKey);
+  if (expansionFilterKey !== filterKey) {
+    setExpansionFilterKey(filterKey);
     setExpandedSubitems((s) => Object.fromEntries(Object.entries(s).filter(([, v]) => v)));
+    setFocusGroupChoice({});
+    setCreatedIds(new Set());
   }
   const setItemExpanded = (itemId, value) =>
     setExpandedSubitems((s) => ({ ...s, [itemId]: value }));
@@ -218,6 +235,7 @@ export default function MiniProjectBoard({
     try {
       const newItemRef = doc(collection(db, "items"));
       setNewItemId(newItemRef.id);
+      rememberCreated(newItemRef.id);
       const parentRef = doc(db, "items", parentItem.id);
       await runTransaction(db, async (tx) => {
         const parentSnap = await tx.get(parentRef);
@@ -236,7 +254,7 @@ export default function MiniProjectBoard({
           dueDate: null,
           completedAt: null,
           // Created under the attendee filter → assigned to that attendee.
-          assigneeIds: assigneeFilterId ? [assigneeFilterId] : [],
+          assigneeIds: assigneeFilterIds ?? [],
           itemNumber: next,
           createdBy: user?.uid || null,
           createdAt: serverTimestamp(),
@@ -269,6 +287,7 @@ export default function MiniProjectBoard({
     const orgRef = doc(db, "organizations", organizationId);
     const newItemRef = doc(collection(db, "items"));
     setNewItemId(newItemRef.id);
+    rememberCreated(newItemRef.id);
     // From the unfiltered items: the attendee filter may hide the true last one.
     const lastOrder = matchedItems
       .filter((it) => classify(it) === "active")
@@ -290,7 +309,7 @@ export default function MiniProjectBoard({
         tagIds: topicTagIds,
         dueDate: null,
         completedAt: null,
-        assigneeIds: assigneeFilterId ? [assigneeFilterId] : [],
+        assigneeIds: assigneeFilterIds ?? [],
         itemNumber: next,
         createdBy: user?.uid || null,
         createdAt: serverTimestamp(),
@@ -326,7 +345,12 @@ export default function MiniProjectBoard({
         const items = grouped[key];
         // Archive group hidden entirely when empty (matches Console).
         if (key === "archive" && items.length === 0) return null;
-        const isExpanded = !!expanded[key];
+        const isExpanded = scorecardKey
+          ? focusGroupChoice[key] ?? items.length > 0
+          : !!expanded[key];
+        const toggleGroup = scorecardKey
+          ? () => setFocusGroupChoice((s) => ({ ...s, [key]: !isExpanded }))
+          : () => setExpanded((s) => ({ ...s, [key]: !s[key] }));
         return (
           <Box key={key} sx={{ mb: 1 }}>
             <GroupHeader
@@ -334,7 +358,7 @@ export default function MiniProjectBoard({
               label={label}
               count={items.length}
               expanded={isExpanded}
-              onToggle={() => setExpanded((s) => ({ ...s, [key]: !s[key] }))}
+              onToggle={toggleGroup}
             />
             <Collapse in={isExpanded} timeout="auto" unmountOnExit>
               <Box sx={{ pl: 0.5 }}>

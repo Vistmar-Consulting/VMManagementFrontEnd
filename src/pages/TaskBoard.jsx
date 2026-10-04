@@ -70,56 +70,7 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
-import { tsToDate } from "../utils/firestoreTime.js";
-
-const DONE = 5;
-const ARCHIVE = 7;
-
-// One status card per dropdown status, in dropdown order. Archive has no card:
-// archived items are excluded from the counts.
-const SCORECARDS = [
-  ...STATUS_OPTIONS.filter((s) => s.id !== ARCHIVE).map((s) => ({
-    key: `status-${s.id}`,
-    label: s.name,
-    color: s.color,
-    match: (i) => i.statusId === s.id,
-  })),
-  // Date cards — a separate group (divider before it) that overlaps the status
-  // cards by design. They don't overlap each other: overdue items are only in
-  // Overdue. Both compare against the start of today, because due dates are
-  // stored at midnight — an item due today is not yet overdue.
-  { key: "overdue",    label: "Overdue",      color: "#d32f2f", dateCard: true, match: (i) => hasOpenDueDate(i) && tsToDate(i.dueDate) < startOfToday() },
-  { key: "dueThisWk",  label: "Due This Wk",  color: "#ef6c00", dateCard: true, match: (i) => hasOpenDueDate(i) && tsToDate(i.dueDate) >= startOfToday() && isDueThisWeek(tsToDate(i.dueDate)) },
-];
-
-function hasOpenDueDate(i) {
-  return Boolean(i.dueDate) && i.statusId !== DONE && i.statusId !== ARCHIVE;
-}
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-// "Due This Wk" = dueDate falls within the CURRENT business week,
-// Monday 00:00 → Friday 23:59:59 (local time). Weekend due dates and
-// next-week dates are excluded.
-function isDueThisWeek(date) {
-  if (!date) return false;
-  const now = new Date();
-  const dow = now.getDay(); // 0=Sun, 1=Mon, …, 6=Sat
-  // Step back to Monday: Sunday → -6, Mon → 0, Tue → -1, …, Sat → -5.
-  const mondayOffset = dow === 0 ? -6 : 1 - dow;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + mondayOffset);
-  monday.setHours(0, 0, 0, 0);
-  const friday = new Date(monday);
-  friday.setDate(monday.getDate() + 4);
-  friday.setHours(23, 59, 59, 999);
-  const t = date.getTime();
-  return t >= monday.getTime() && t <= friday.getTime();
-}
+import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
 
 export default function TaskBoard() {
   const { user } = useAuth();
@@ -609,30 +560,14 @@ export default function TaskBoard() {
 
   // Categories + tags are global; pass the full list to every row.
 
-  // Scorecard counts are over tasks: a parent with subitems contributes its
-  // subitems, not itself. Archived items (and everything under an archived
-  // parent) are excluded. Narrowed by the org filter, title search and column
+  // Scorecard counts, narrowed by the org filter, title search and column
   // filters — but not by the selected scorecard itself.
-  const scorecardTasks = useMemo(() => {
-    const tasks = [];
-    for (const parent of allItems) {
-      if (parent.parentId != null || parent.statusId === ARCHIVE) continue;
-      if (orgFilter !== "all" && parent.organizationId !== orgFilter) continue;
-      const subs = subitemsByParent[parent.id];
-      for (const task of subs?.length ? subs : [parent]) {
-        if (task.statusId !== ARCHIVE && matchesSearchAndColumns(task)) tasks.push(task);
-      }
-    }
-    return tasks;
-  }, [allItems, orgFilter, subitemsByParent, matchesSearchAndColumns]);
-
   const scorecardCounts = useMemo(() => {
-    const counts = {};
-    SCORECARDS.forEach((s) => {
-      counts[s.key] = scorecardTasks.filter(s.match).length;
-    });
-    return counts;
-  }, [scorecardTasks]);
+    const parents = allItems.filter(
+      (item) => item.parentId == null && (orgFilter === "all" || item.organizationId === orgFilter),
+    );
+    return countScorecards(parents, subitemsByParent, matchesSearchAndColumns);
+  }, [allItems, orgFilter, subitemsByParent, matchesSearchAndColumns]);
 
   // Filter chip values for column popovers
   const priorityFilterValues = PRIORITY_LIST.map((p) => ({ value: p.id, label: p.label, color: p.color }));

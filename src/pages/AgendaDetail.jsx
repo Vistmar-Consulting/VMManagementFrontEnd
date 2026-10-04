@@ -78,6 +78,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { useCollection } from "../hooks/useCollection.js";
 import { useDoc } from "../hooks/useDoc.js";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
+import { SCORECARD_BY_KEY, countScorecards } from "../lib/scorecards.js";
 import { agendaRoomId } from "../lib/agendaRoom.js";
 import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
@@ -1009,12 +1010,10 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics }) {
 
 // ─── Working view — Sidebar (§4.7-4.9) ─────────────────────────────────
 
-const FOCUS_KEYS = [
-  { key: "done", label: "Done", color: "#2e7d32" },
-  { key: "review", label: "Review", color: "#9c6ade" },
-  { key: "blocked", label: "Blocked", color: "#e65100" },
-  { key: "overdue", label: "Overdue", color: "#c62828" },
-];
+// The Task Board's scorecards, two per row: AI Gen | Assigned, In Progress |
+// Blocked, Review | Done, Due This Wk | Overdue.
+const FOCUS_CARDS = ["status-8", "status-1", "status-2", "status-9", "status-4", "status-5", "dueThisWk", "overdue"]
+  .map((key) => SCORECARD_BY_KEY[key]);
 
 function MeetingFocusPanel({ counts, value, onChange }) {
   return (
@@ -1023,23 +1022,26 @@ function MeetingFocusPanel({ counts, value, onChange }) {
         Meeting Focus
       </Typography>
       <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
-        {FOCUS_KEYS.map(({ key, label, color }) => {
+        {FOCUS_CARDS.map(({ key, label, color }) => {
           const active = value === key;
           const count = counts?.[key] ?? 0;
           const isZero = count === 0;
+          // A selected card can drop to zero when the attendee changes; it
+          // stays clickable so it can be cleared.
+          const inert = isZero && !active;
           return (
             <Box
               key={key}
-              onClick={isZero ? undefined : () => onChange(active ? null : key)}
+              onClick={inert ? undefined : () => onChange(active ? null : key)}
               sx={{
                 p: 1,
                 borderRadius: 1,
                 background: "white",
                 border: active ? `2px solid ${color}` : "1px solid transparent",
-                cursor: isZero ? "default" : "pointer",
-                opacity: isZero ? 0.4 : active ? 1 : 0.85,
+                cursor: inert ? "default" : "pointer",
+                opacity: inert ? 0.4 : active ? 1 : 0.85,
                 transition: "border-color 0.15s, opacity 0.15s",
-                "&:hover": isZero ? {} : { opacity: 1 },
+                "&:hover": inert ? {} : { opacity: 1 },
               }}
             >
               <Typography sx={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1.1 }}>
@@ -1318,28 +1320,24 @@ function AgendaTopicCard({
     if (!attendeeFilter || !userByEmail) return null;
     return userByEmail[attendeeFilter.toLowerCase?.() || ""]?.id || null;
   }, [attendeeFilter, userByEmail]);
+  const assigneeFilterIds = useMemo(
+    () => (attendeeFilter ? (attendeeUid ? [attendeeUid] : []) : null),
+    [attendeeFilter, attendeeUid],
+  );
 
   // V2.2.2e.2 filter coupling. Decide whether this card has any items that
   // match the active page-level filter (Meeting Focus from sidebar or
   // Attendees from sidebar). Used to auto-expand/collapse on filter change.
   const hasMatchingForFilter = useMemo(() => {
     if (!focusFilter && !attendeeFilter) return null;
-    const now = new Date();
+    const focusCard = focusFilter ? SCORECARD_BY_KEY[focusFilter] : null;
     for (const it of filterScopeItems) {
       // attendeeFilter requires the item's assigneeIds to include the filter's uid.
-      if (attendeeFilter && attendeeUid && !(Array.isArray(it.assigneeIds) && it.assigneeIds.includes(attendeeUid))) {
+      // An attendee with no account (no uid) has no items.
+      if (attendeeFilter && !(attendeeUid && Array.isArray(it.assigneeIds) && it.assigneeIds.includes(attendeeUid))) {
         continue;
       }
-      if (!focusFilter) return true;
-      if (focusFilter === "done" && it.statusId === 5) return true;
-      if (focusFilter === "review" && it.statusId === 4) return true;
-      if (focusFilter === "blocked" && it.statusId === 9) return true;
-      if (focusFilter === "overdue" || focusFilter === "dueThisWeek") {
-        if (!it.dueDate || it.statusId === 5 || it.statusId === 7) continue;
-        const dd = it.dueDate?.toDate ? it.dueDate.toDate() : new Date(it.dueDate);
-        if (focusFilter === "overdue" && dd && dd < now) return true;
-        if (focusFilter === "dueThisWeek" && dd && (dd - now) / 86400000 <= 7) return true;
-      }
+      if (!focusCard || focusCard.match(it)) return true;
     }
     return false;
   }, [filterScopeItems, focusFilter, attendeeFilter, attendeeUid]);
@@ -1520,7 +1518,8 @@ function AgendaTopicCard({
             onOpenFiles={onOpenFiles}
             getCommentCount={getCommentCount}
             getFileCount={getFileCount}
-            assigneeFilterId={attendeeUid}
+            assigneeFilterIds={assigneeFilterIds}
+            scorecardKey={focusFilter}
           />
         </Box>
       )}
@@ -1731,24 +1730,21 @@ export default function AgendaDetail() {
     return out;
   }, [allItems, organizationId, topics]);
 
-  // Meeting Focus sidebar counts. "Due This Wk" approximates with a
-  // 7-day-from-now window; full Mon-Fri parity ships when we centralize
-  // the helper.
+  // Meeting Focus sidebar counts — the Task Board's scorecard counts over this
+  // agenda's items, narrowed to the selected attendee.
   const meetingFocusCounts = useMemo(() => {
-    const now = new Date();
-    const counts = { done: 0, review: 0, blocked: 0, overdue: 0, dueThisWeek: 0 };
+    const parents = [];
+    const subitemsByParent = {};
     for (const it of allMatchedItems) {
-      if (it.statusId === 9) counts.blocked += 1;
-      if (it.statusId === 5) counts.done += 1;
-      if (it.statusId === 4) counts.review += 1;
-      if (it.dueDate && it.statusId !== 5 && it.statusId !== 7) {
-        const dd = it.dueDate?.toDate ? it.dueDate.toDate() : new Date(it.dueDate);
-        if (dd && dd < now) counts.overdue += 1;
-        else if (dd && (dd - now) / 86400000 <= 7) counts.dueThisWeek += 1;
-      }
+      if (!it.parentId) parents.push(it);
+      else (subitemsByParent[it.parentId] ||= []).push(it);
     }
-    return counts;
-  }, [allMatchedItems]);
+    const uid = attendeeFilter ? userByEmail[attendeeFilter.toLowerCase()]?.id : null;
+    const matches = attendeeFilter
+      ? (it) => Boolean(uid) && Array.isArray(it.assigneeIds) && it.assigneeIds.includes(uid)
+      : undefined;
+    return countScorecards(parents, subitemsByParent, matches);
+  }, [allMatchedItems, attendeeFilter, userByEmail]);
 
   // Per-attendee task counts. Resolves attendee.email → user.uid → matched
   // items where uid ∈ assigneeIds. Unresolved emails (external attendees not

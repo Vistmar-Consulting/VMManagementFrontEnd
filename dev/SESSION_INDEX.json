@@ -438,6 +438,15 @@
       "folder": "dev/sessions/v0_4_16_Andrew_ATTENDEE_FILTER/",
       "status": "complete",
       "date_closed": "2026-10-02"
+    },
+    {
+      "session_id": "SES-20261002-Andrew-v0.4.17-focus-scorecards",
+      "developer": "Andrew",
+      "date": "2026-10-02",
+      "commit_start": "41d4371",
+      "summary": "Agenda Working view Meeting Focus shows all Task Board scorecards; counts follow the attendee filter; selecting one filters/expands the Mini Project Boards.",
+      "folder": "dev/sessions/v0_4_17_Andrew_FOCUS_SCORECARDS/",
+      "status": "active"
     }
   ]
 }
