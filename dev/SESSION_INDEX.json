@@ -448,6 +448,15 @@
       "folder": "dev/sessions/v0_4_17_Andrew_FOCUS_SCORECARDS/",
       "status": "complete",
       "date_closed": "2026-10-04"
+    },
+    {
+      "session_id": "SES-20261007-Andrew-guest-access-design",
+      "developer": "Andrew",
+      "date": "2026-10-07",
+      "commit_start": "28f889f",
+      "summary": "Client guest access (David/Unio first): org-scoped view+edit of own org's Task Board and agendas. Requirements locked and current access mapped; paused before design pending grant-mechanism decision. No code.",
+      "folder": "dev/sessions/2026-10-07_Andrew_GUEST_ACCESS_DESIGN/",
+      "status": "paused"
     }
   ]
 }
