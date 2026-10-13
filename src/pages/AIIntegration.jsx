@@ -80,7 +80,7 @@ const HOW_IT_WORKS = [
       ["No invoicing topics", "Topics whose primary purpose is invoicing, billing, or payment status are never created or retained on a client agenda — that belongs on the private Project Board."],
       ["Topic titles are frozen", "Existing topic titles are never renamed. The AI may only set a title on a brand-new topic; continuing topics keep their current title exactly."],
       ["Concise output", "A short, tight agenda — never a multi-page document."],
-      ["Tables kept", "A table already in a topic body or Open Floor stays a table — the AI updates its cell text in place. It never creates a new table."],
+      ["Tables kept", "A table already in a topic body or Open Floor stays a table with the same columns — the AI updates cell text in place, adds a row only for a new item and removes one only for a dropped item. It never creates a new table."],
       ["Status moves", "Proposed moves on existing tasks only target Assigned, In Progress, Blocked, Review or Done. Work that is blocked or waiting on someone moves to Blocked."],
     ],
   },

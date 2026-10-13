@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
@@ -24,14 +24,25 @@ export default function TableMenu({ editor, sx }) {
   const [hover, setHover] = useState({ rows: 0, cols: 0 });
   // Decided at click time so the popup doesn't swap under the user mid-use.
   const [inTable, setInTable] = useState(false);
+  // The editor the popup was opened for. In shared-toolbar mode the focused
+  // body can change or be destroyed (e.g. a collaborator deletes the topic)
+  // while the popup is open; it then closes rather than act on another body.
+  const [target, setTarget] = useState(null);
+  const isOpen = Boolean(anchorEl) && !!editor && editor === target && !editor.isDestroyed;
 
   const close = () => {
     setAnchorEl(null);
+    setTarget(null);
     setHover({ rows: 0, cols: 0 });
   };
 
+  useEffect(() => {
+    if (anchorEl && !isOpen) close();
+  }, [anchorEl, isOpen]);
+
   const open = (e) => {
     setInTable(editor.isActive("table"));
+    setTarget(editor);
     setAnchorEl(e.currentTarget);
   };
 
@@ -68,7 +79,7 @@ export default function TableMenu({ editor, sx }) {
       </IconButton>
 
       <Popover
-        open={Boolean(anchorEl) && !inTable}
+        open={isOpen && !inTable}
         anchorEl={anchorEl}
         onClose={close}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
@@ -109,13 +120,13 @@ export default function TableMenu({ editor, sx }) {
       </Popover>
 
       <Menu
-        open={Boolean(anchorEl) && inTable}
+        open={isOpen && inTable}
         anchorEl={anchorEl}
         onClose={close}
         MenuListProps={{ dense: true }}
       >
         {/* Built only while open: editor may be null when the toolbar is idle. */}
-        {Boolean(anchorEl) && inTable && actions.map((a, i) =>
+        {isOpen && inTable && actions.map((a, i) =>
           a === null ? (
             <Divider key={i} />
           ) : (

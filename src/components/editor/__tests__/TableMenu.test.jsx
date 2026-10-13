@@ -61,4 +61,24 @@ describe("TableMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete table" }));
     expect(editor.getHTML()).not.toContain("<table");
   });
+
+  it("closes when the focused editor goes away or changes while open", () => {
+    makeEditor();
+    editor.chain().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run();
+    const first = editor;
+    const { rerender } = render(<EditorToolbar editor={first} onLink={() => {}} />);
+    fireEvent.click(screen.getByTitle("Table"));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    rerender(<EditorToolbar editor={null} onLink={() => {}} />);
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    rerender(<EditorToolbar editor={first} onLink={() => {}} />);
+    fireEvent.click(screen.getByTitle("Table"));
+    const second = new Editor({ extensions: [StarterKit, TableKit], content: "<p>y</p>" });
+    rerender(<EditorToolbar editor={second} onLink={() => {}} />);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryByRole("grid")).toBeNull();
+    second.destroy();
+  });
 });

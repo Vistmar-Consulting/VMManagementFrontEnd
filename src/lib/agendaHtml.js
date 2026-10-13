@@ -38,6 +38,8 @@ export function htmlToLines(html) {
   const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
   for (const el of doc.body.querySelectorAll("li, p, tr")) {
     if (el.tagName === "TR") {
+      // A nested table's rows are already in its outer row's cell text.
+      if (el.closest("table").parentElement?.closest("table")) continue;
       const text = clean([...el.children].map((cell) => clean(cell.textContent)).join(" | "));
       if (text.replace(/\|/g, "").trim()) lines.push(text);
       continue;

@@ -90,6 +90,11 @@ describe("htmlToLines", () => {
       "<tr><td><p>Logo</p></td><td><p></p></td></tr></tbody></table><ul><li>After</li></ul>";
     expect(htmlToLines(html)).toEqual(["Before", "Name | Due", "Logo |", "After"]);
   });
+  it("emits a nested table's text once, inside its outer row", () => {
+    const html =
+      "<table><tbody><tr><td><p>Outer</p></td><td><table><tbody><tr><td><p>Inner</p></td></tr></tbody></table></td></tr></tbody></table>";
+    expect(htmlToLines(html)).toEqual(["Outer | Inner"]);
+  });
   it("falls back to whole-body text when there are no block wrappers", () => {
     expect(htmlToLines("bare text")).toEqual(["bare text"]);
   });

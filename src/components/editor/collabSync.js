@@ -11,9 +11,11 @@ export function isLocalEditTransaction(transaction) {
 }
 
 // True when markup/text carries no real content: strip tags, <br>, &nbsp;, and
-// non-breaking spaces, then check for non-whitespace. Shared by the seed
-// decision and the Yjs-fragment content test so they agree on "blank".
+// non-breaking spaces, then check for non-whitespace. A table counts as
+// content even with empty cells. Shared by the seed decision and the
+// Yjs-fragment content test so they agree on "blank".
 export function isBlankContent(markupOrText) {
+  if (/<table[\s>]/i.test(String(markupOrText || ""))) return false;
   return String(markupOrText || "")
     .replace(/<br\s*\/?>/gi, "")
     .replace(/&nbsp;/gi, "")

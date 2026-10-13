@@ -58,6 +58,8 @@ describe("isBlankContent", () => {
   it("treats real text as non-blank", () => {
     expect(isBlankContent("<p>Real point</p>")).toBe(false);
     expect(isBlankContent("<ul><li>item</li></ul>")).toBe(false);
+    // An empty table is still structure the user inserted.
+    expect(isBlankContent("<table><tbody><tr><td><p></p></td></tr></tbody></table>")).toBe(false);
   });
 });
 

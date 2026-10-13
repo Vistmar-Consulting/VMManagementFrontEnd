@@ -13,8 +13,9 @@ import { sanitizeHtml } from "../../lib/agendaHtml.js";
 // True when HTML has no real text/content (empty editor: "", "<p></p>", <br>,
 // &nbsp;, whitespace-only). Used to NEVER mirror a blank body to Firestore —
 // the core data-loss guard: an empty editor (e.g. a not-yet-loaded fragment)
-// must never overwrite real content.
+// must never overwrite real content. A table counts as content even when empty.
 const isBlankHtml = (html) =>
+  !/<table[\s>]/i.test(String(html || "")) &&
   String(html || "")
     .replace(/<br\s*\/?>/gi, "")
     .replace(/&nbsp;/gi, "")
