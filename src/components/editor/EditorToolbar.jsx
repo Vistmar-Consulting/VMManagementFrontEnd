@@ -10,11 +10,12 @@ import FormatIndentIncrease from "@mui/icons-material/FormatIndentIncrease";
 import FormatIndentDecrease from "@mui/icons-material/FormatIndentDecrease";
 import LinkIcon from "@mui/icons-material/Link";
 import { t } from "../../theme/tokens.js";
+import TableMenu from "./TableMenu.jsx";
 
 /**
  * Compact MUI toolbar bound to a TipTap editor.
  * Exposes: bold, italic, underline, bullet list, numbered list,
- * indent (sink list item), outdent (lift list item), link (cmd+K).
+ * indent (sink list item), outdent (lift list item), link (cmd+K), table.
  *
  * Props:
  *   editor   — TipTap Editor instance, or null. In shared-toolbar mode this is
@@ -47,6 +48,14 @@ export default function EditorToolbar({ editor, onLink }) {
       ? { backgroundColor: t.copperFaint, color: t.copper }
       : { color: t.ink3 };
 
+  const btnSx = (isActiveName, isActiveAttrs) => ({
+    p: "4px",
+    borderRadius: "4px",
+    ...active(isActiveName, isActiveAttrs),
+    "&:hover": disabled ? {} : { backgroundColor: t.copperFaint, color: t.copper },
+    "&.Mui-disabled": { color: t.cream3 },
+  });
+
   const btn = (icon, title, onClickFn, isActiveName, isActiveAttrs) => (
     <IconButton
       size="small"
@@ -54,13 +63,7 @@ export default function EditorToolbar({ editor, onLink }) {
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClickFn}
-      sx={{
-        p: "4px",
-        borderRadius: "4px",
-        ...active(isActiveName, isActiveAttrs),
-        "&:hover": disabled ? {} : { backgroundColor: t.copperFaint, color: t.copper },
-        "&.Mui-disabled": { color: t.cream3 },
-      }}
+      sx={btnSx(isActiveName, isActiveAttrs)}
     >
       {icon}
     </IconButton>
@@ -127,6 +130,7 @@ export default function EditorToolbar({ editor, onLink }) {
         onLink,
         "link",
       )}
+      <TableMenu editor={editor} sx={btnSx("table")} />
     </Toolbar>
   );
 }

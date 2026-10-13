@@ -4,8 +4,12 @@
 // email, and (future) AI input.
 import DOMPurify from "dompurify";
 
-const ALLOWED_TAGS = ["p", "br", "ul", "ol", "li", "strong", "em", "u", "a", "span"];
-const ALLOWED_ATTR = ["href", "target", "rel", "style"];
+const ALLOWED_TAGS = [
+  "p", "br", "ul", "ol", "li", "strong", "em", "u", "a", "span",
+  // Tables, in the shape TipTap's Table extension emits.
+  "table", "colgroup", "col", "tbody", "tr", "th", "td",
+];
+const ALLOWED_ATTR = ["href", "target", "rel", "style", "colspan", "rowspan", "colwidth"];
 
 function escapeText(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -22,7 +26,8 @@ export function sanitizeHtml(html) {
 }
 
 // Flatten an agenda rich-body HTML string (e.g. openFloorHtml) into an ordered
-// list of plain-text lines — one per block element (list item or paragraph).
+// list of plain-text lines — one per block element (list item or paragraph),
+// and one per table row with its cells joined by " | ".
 // The structured meeting-prep email builder renders each line as its own
 // bullet, so this bridges the rich-text body back to that line-oriented shape.
 // Returns [] for empty/whitespace-only input.
@@ -30,8 +35,16 @@ export function htmlToLines(html) {
   if (!html) return [];
   const doc = new DOMParser().parseFromString(sanitizeHtml(html), "text/html");
   const lines = [];
-  for (const el of doc.body.querySelectorAll("li, p")) {
-    const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+  const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
+  for (const el of doc.body.querySelectorAll("li, p, tr")) {
+    if (el.tagName === "TR") {
+      const text = clean([...el.children].map((cell) => clean(cell.textContent)).join(" | "));
+      if (text.replace(/\|/g, "").trim()) lines.push(text);
+      continue;
+    }
+    // Cell paragraphs are already covered by their row.
+    if (el.closest("table")) continue;
+    const text = clean(el.textContent);
     if (text) lines.push(text);
   }
   // No block wrappers (e.g. a bare text node) — fall back to the whole body text.

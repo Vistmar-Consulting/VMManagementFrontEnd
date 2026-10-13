@@ -17,6 +17,10 @@ export default function RichBodyView({ html, sx }) {
         "& li p": { m: 0 },
         "& a": { color: t.copper },
         "& u": { textDecoration: "underline" },
+        "& table": { borderCollapse: "collapse", tableLayout: "fixed", width: "100%", my: 0.75 },
+        "& th, & td": { border: `1px solid ${t.cream3}`, p: "4px 6px", verticalAlign: "top" },
+        "& th": { backgroundColor: t.cream2, fontWeight: 600, textAlign: "left" },
+        "& th p, & td p": { m: 0 },
         ...sx,
       }}
       dangerouslySetInnerHTML={{ __html: clean }}

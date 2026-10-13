@@ -21,6 +21,17 @@ describe("sanitizeHtml", () => {
     expect(out).toContain("<u>y</u>");
     expect(out).toContain("href=\"https://a.com\"");
   });
+  it("keeps tables as the editor emits them", () => {
+    const table =
+      '<table style="min-width: 50px"><colgroup><col style="min-width: 25px"><col style="min-width: 25px"></colgroup>' +
+      '<tbody><tr><th colspan="1" rowspan="1"><p>Head</p></th><th colspan="2" rowspan="1" colwidth="120"><p>Wide</p></th></tr>' +
+      '<tr><td colspan="1" rowspan="1"><p>a</p></td><td colspan="1" rowspan="1"><p>b</p></td></tr></tbody></table>';
+    const out = sanitizeHtml(table);
+    expect(out).toContain("<table");
+    expect(out).toContain("<colgroup><col");
+    expect(out).toContain('<th colspan="2" rowspan="1" colwidth="120"><p>Wide</p></th>');
+    expect(out).toContain('<td colspan="1" rowspan="1"><p>a</p></td>');
+  });
   it("strips scripts and event handlers", () => {
     const out = sanitizeHtml('<p onclick="evil()">hi</p><script>steal()</script>');
     expect(out).not.toContain("script");
@@ -72,6 +83,12 @@ describe("htmlToLines", () => {
     expect(htmlToLines("<ul><li><strong>bold</strong> and <em>italic</em></li></ul>")).toEqual([
       "bold and italic",
     ]);
+  });
+  it("returns one line per table row, cells joined with ' | '", () => {
+    const html =
+      "<p>Before</p><table><tbody><tr><th><p>Name</p></th><th><p>Due</p></th></tr>" +
+      "<tr><td><p>Logo</p></td><td><p></p></td></tr></tbody></table><ul><li>After</li></ul>";
+    expect(htmlToLines(html)).toEqual(["Before", "Name | Due", "Logo |", "After"]);
   });
   it("falls back to whole-body text when there are no block wrappers", () => {
     expect(htmlToLines("bare text")).toEqual(["bare text"]);

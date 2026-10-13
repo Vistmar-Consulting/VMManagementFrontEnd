@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { TableKit } from "@tiptap/extension-table";
 import { Placeholder } from "@tiptap/extensions";
 import { Collaboration } from "@tiptap/extension-collaboration";
 import { CollaborationCaret } from "@tiptap/extension-collaboration-caret";
@@ -41,6 +42,13 @@ const proseBase = {
   "& li p": { margin: 0 },
   "& a": { color: t.copper },
   "& u": { textDecoration: "underline" },
+  // Tables (TableKit). Cell <p>s carry default margins like list items do.
+  "& table": { borderCollapse: "collapse", tableLayout: "fixed", width: "100%", margin: "6px 0", overflow: "hidden" },
+  "& th, & td": { border: `1px solid ${t.cream3}`, padding: "4px 6px", verticalAlign: "top", boxSizing: "border-box", minWidth: "1em" },
+  "& th": { backgroundColor: t.cream2, fontWeight: 600, textAlign: "left" },
+  "& th p, & td p": { margin: 0 },
+  "& .tableWrapper": { overflowX: "auto" },
+  "& .selectedCell": { backgroundColor: t.copperFaint },
   // Placeholder — emitted by the Placeholder extension as a data-placeholder
   // attr + is-editor-empty class on the empty first paragraph.
   "& p.is-editor-empty:first-of-type::before": {
@@ -156,6 +164,9 @@ export default function CollabBodyEditor({
       // @tiptap/extensions. Emits data-placeholder attr + is-editor-empty class
       // on the empty first node, which the CSS rule above targets.
       Placeholder.configure({ placeholder }),
+
+      // Table, TableRow, TableHeader, TableCell. No column resizing.
+      TableKit.configure({ table: { resizable: false } }),
 
       // Collaboration takes over history and binds to the Yjs doc fragment.
       // NO `content` prop on useEditor — Yjs is the source.
