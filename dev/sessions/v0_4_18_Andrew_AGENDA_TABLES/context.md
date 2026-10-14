@@ -1,6 +1,6 @@
 # Session v0.4.18 — Agenda tables
 
-**Date:** 2026-10-13 · **Developer:** Andrew · **Status:** in progress
+**Date:** 2026-10-13 · **Developer:** Andrew · **Status:** complete
 **Branch:** worktree `.claude/worktrees/agenda-tables` on `agenda-tables`, cut from `main` at `28f889f`, fast-forwarded to `origin/dev` at `92ca9c2`
 
 ## Ask
@@ -39,7 +39,14 @@ Limits: an already-open websocket isn't re-authed until its token expires (≈1 
 - 2026-10-13: `npm run dev` renders a blank page (`createTheme_default is not a function` from a pre-bundled `@mui/material/Box` chunk). Reproduced in the main checkout with its existing Oct 5 Vite cache, so it is not caused by this branch; `--force` did not fix it. Root cause not found. `vite build` + `vite preview` works and was used for verification.
 - Worktree `node_modules` is a real install (`npm ci`), not a symlink, so adding a dependency doesn't touch the main checkout's tree.
 
+## Close summary (2026-10-13)
+
+Shipped to `origin/dev`: `3cdd4dc` (tables), `47e8c17` (review fixes), `ac6ea1e` + `fd45669` (stale-bundle gate). Andy confirmed tables work on Biweekly Marketing Updates after the gate deployed. Pre-push reviews: tables — 1 Critical (stale bundles delete tables; fixed by the gate), Important + Minor fixed; gate — 0 Critical, both Important addressed (dev builds refused; open sockets live until token expiry, accepted). Full suite serially 221/221 at `ac6ea1e`. Worktree removed at close.
+
 ## Deferred
 
 - Dev-server blank page (above) — needs root-causing.
 - Column resizing is off (`resizable: false`).
+- AI Sync Meeting keeping a table: prompt rule shipped, not exercised (needs a paid AI run).
+- Two-person simultaneous table editing not tested with isolated profiles.
+- Stale-bundle gate keys on `VERCEL_GIT_COMMIT_SHA`; a CLI `vercel deploy --prod` from a dirty tree reuses HEAD's SHA, and Vercel Skew Protection (unverified whether on) would pin old tabs to old functions that accept them.

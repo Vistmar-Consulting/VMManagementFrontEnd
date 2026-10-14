@@ -463,9 +463,10 @@
       "developer": "Andrew",
       "date": "2026-10-13",
       "commit_start": "92ca9c2",
-      "summary": "Word-style tables in agenda bodies: toolbar Table button (size grid / row-column menu), TableKit in both editors, sanitizer + AI prompts keep tables.",
+      "summary": "Word-style tables in agenda bodies (toolbar Table button: size grid / row-column menu; TableKit; sanitizer + AI prompts keep tables) plus a stale-bundle gate at Liveblocks auth (old and local builds refused) after an old tab was found deleting tables. Shipped 3cdd4dc, 47e8c17, ac6ea1e, fd45669 to origin/dev.",
       "folder": "dev/sessions/v0_4_18_Andrew_AGENDA_TABLES/",
-      "status": "active"
+      "status": "complete",
+      "date_closed": "2026-10-13"
     }
   ]
 }
