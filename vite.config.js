@@ -29,6 +29,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    // Build ID sent to /api/liveblocks-auth so the server can turn away tabs
+    // running an older bundle (their editor schema may delete newer content).
+    define: {
+      __BUILD_ID__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA || "dev"),
+    },
     // Yjs MUST be a single runtime instance. With multiple packages importing it
     // (@liveblocks/yjs, @tiptap/extension-collaboration, y-prosemirror, our own
     // import), Vite can otherwise bundle two copies — y-prosemirror's ops then run
