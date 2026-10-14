@@ -14,8 +14,8 @@ describe("isStaleBuild", () => {
   it("refuses bundles from before the check (no build ID)", () => {
     expect(isStaleBuild(undefined, "abc123")).toBe(true);
   });
-  it("lets local dev builds through", () => {
-    expect(isStaleBuild("dev", "abc123")).toBe(false);
+  it("refuses local builds against a deployed API (any branch, no table schema guarantee)", () => {
+    expect(isStaleBuild("dev", "abc123")).toBe(true);
   });
   it("enforces nothing when the server has no build ID (local API)", () => {
     expect(isStaleBuild(undefined, undefined)).toBe(false);

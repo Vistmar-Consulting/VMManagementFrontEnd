@@ -46,7 +46,8 @@ const authEndpoint = async (room) => {
   });
   // 426: a newer version is deployed. Reload onto it rather than edit with an
   // older editor schema. At most once a minute, so a lagging CDN can't loop.
-  if (res.status === 426) reloadForNewVersion();
+  // A local build is refused for good — reloading wouldn't change that.
+  if (res.status === 426 && __BUILD_ID__ !== "dev") reloadForNewVersion();
   if (!res.ok) throw new Error(`Liveblocks auth failed: ${res.status}`);
   return await res.json();
 };

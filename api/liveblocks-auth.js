@@ -6,11 +6,10 @@ const liveblocks = new Liveblocks({ secret: process.env.LIVEBLOCKS_SECRET_KEY })
 
 // A tab running an older bundle can silently delete content its editor schema
 // doesn't know (e.g. tables) from the shared room. Only the deployed build may
-// join. "dev" is a local Vite build pointed at a deployed API. Bundles from
-// before this check send no build ID and are refused too.
+// join — local builds ("dev", which may come from any branch) and bundles from
+// before this check (no build ID) are refused.
 export function isStaleBuild(clientBuild, serverBuild) {
   if (!serverBuild) return false;
-  if (clientBuild === "dev") return false;
   return clientBuild !== serverBuild;
 }
 
