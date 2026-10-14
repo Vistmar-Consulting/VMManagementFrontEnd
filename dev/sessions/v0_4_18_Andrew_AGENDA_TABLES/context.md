@@ -26,6 +26,14 @@ Insert Word-style tables into meeting agendas: a Table icon in the editor toolba
 - Browser (headed agent-browser, `vite preview` on localhost:5173, Vistamar Platform Development updates agenda, Overview): grid highlights 4 × 3 on hover; click inserts a 3-row table with header row; Tab moves between cells; menu shows all 8 actions; Insert row below → 4 rows; table survives a page reload; Delete table restores the body to its original content. Working view toolbar shows the Table button. Test table was removed from the production agenda.
 - Not verified: AI Sync Meeting preserving a table (would need an AI run, which costs money); two-browser collaborative table editing.
 
+## Stale-bundle gate (2026-10-13)
+
+After deploy, tables vanished 1–5 s after insert on Biweekly Marketing Updates. Root cause: another client in the room (signed in as Andy, still connected after Andy closed his browsers) ran a bundle without TableKit; y-tiptap deletes Y elements its schema can't build (`y-tiptap.js` ~856–864), and the delete syncs to everyone. Reproduced: with only that client present the table vanished in < 6 s; two new-bundle tabs kept it.
+
+Fix (`ac6ea1e`, `fd45669`): Vite bakes `__BUILD_ID__` (`VERCEL_GIT_COMMIT_SHA`, else "dev"); `liveblocks.js` sends `X-Build-Id`; `api/liveblocks-auth.js` returns 426 unless it equals the server's SHA (no header and "dev" refused). Deployed tabs reload on 426 (max once a minute); local builds don't. Verified on prod: no header → 426, "dev" → 426, current SHA → passes the gate (401 without login).
+
+Limits: an already-open websocket isn't re-authed until its token expires (≈1 h, unverified), so a stale tab open across a deploy can still edit until then. Local dev/preview can no longer join live agenda rooms; editing is tested on the deployed site.
+
 ## Gotchas
 
 - 2026-10-13: `npm run dev` renders a blank page (`createTheme_default is not a function` from a pre-bundled `@mui/material/Box` chunk). Reproduced in the main checkout with its existing Oct 5 Vite cache, so it is not caused by this branch; `--force` did not fix it. Root cause not found. `vite build` + `vite preview` works and was used for verification.
