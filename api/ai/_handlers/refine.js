@@ -8,8 +8,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { applyCors } from "../../meetings/_lib/cors.js";
 import { requireAuth } from "../../meetings/_lib/auth.js";
+import { streamMessage } from "./claude.js";
 
-const MODEL = "claude-sonnet-4-6";
 export const config = { maxDuration: 300 };
 
 // Same proposal schema as generate.js (master adds per-topic organizationId).
@@ -134,14 +134,12 @@ export default async function handler(req, res) {
 
   try {
     const client = new Anthropic({ apiKey });
-    const message = await client.messages.stream({
-      model: MODEL,
+    const message = await streamMessage(client, {
       max_tokens: master ? 24000 : 16000,
-      thinking: { type: "adaptive" },
       system: buildSystem(categories, tagVocab, !!master, orgMeta || []),
       output_config: { effort: "medium", format: { type: "json_schema", schema: buildSchema(!!master) } },
       messages: [{ role: "user", content: buildUserMessage(proposal, instruction, !!master, prevTopics) }],
-    }).finalMessage();
+    });
 
     if (message.stop_reason === "max_tokens") return res.status(502).json({ error: "Refine was cut off (token limit). Try again." });
     if (message.stop_reason === "refusal") return res.status(502).json({ error: "The model declined this refinement." });

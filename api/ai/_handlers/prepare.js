@@ -15,10 +15,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { applyCors } from "../../meetings/_lib/cors.js";
 import { requireAuth } from "../../meetings/_lib/auth.js";
-
-// Sonnet 4.6 — same model as generate.js (fast + cheap, strong quality;
-// admin-triggered low volume). Bump to Opus per-org later if needed.
-const MODEL = "claude-sonnet-4-6";
+import { streamMessage } from "./claude.js";
 
 // Sync Meeting reconciles a lot of input (transcripts + project board + other
 // agendas + categorization) and does MORE than either source (agenda + board
@@ -388,28 +385,17 @@ export default async function handler(req, res) {
 
   try {
     const client = new Anthropic({ apiKey });
-    // Stream + finalMessage(): the unified Sync Meeting call uses a high
-    // max_tokens that crosses the SDK's non-streaming 10-minute guard, which
-    // throws on messages.create(). Streaming lifts that guard. Same params,
-    // same structured output.
-    const message = await client.messages.stream({
-      model: MODEL,
-      // PROPOSED higher ceiling — unified does more (agenda + board changes)
-      // than either source; controller will latency-test these values.
+    // Streamed (high max_tokens crosses the SDK's non-streaming guard); model,
+    // fast mode and the 429 fallback live in ./claude.js.
+    const message = await streamMessage(client, {
       max_tokens: master ? 32000 : 24000,
-      // Master disables thinking: the large cross-org input (120 board items,
-      // 25 transcripts, 25 agendas) causes adaptive thinking to generate enough
-      // tokens to exceed Vercel's maxDuration. The task is data organization +
-      // formatting — the detailed prompt + JSON schema fully guide the output
-      // without reasoning overhead.
-      thinking: master ? { type: "disabled" } : { type: "adaptive" },
-      // medium effort — reconciliation + formatting, not hard reasoning;
-      // medium roughly halves thinking time vs the default high, keeping the
-      // call well under timeout without a quality hit.
+      // medium effort — reconciliation + formatting, not hard reasoning.
+      // Master's large cross-org input relies on fast mode for headroom; it
+      // previously disabled thinking, which Opus 5.5 does not allow.
       output_config: { effort: "medium", format: { type: "json_schema", schema: buildSchema(!!master) } },
       messages: [{ role: "user", content: buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, existingTasks, extraContext, !!master, orgMeta || []) }],
       system: buildSystem(prompt, style, categories, tagVocab, !!internal, !!master, orgMeta || []),
-    }).finalMessage();
+    });
 
     if (message.stop_reason === "max_tokens") {
       return res.status(502).json({ error: "Generation was cut off (hit token limit). Try again." });

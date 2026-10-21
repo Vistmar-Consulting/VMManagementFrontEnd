@@ -467,6 +467,15 @@
       "folder": "dev/sessions/v0_4_18_Andrew_AGENDA_TABLES/",
       "status": "complete",
       "date_closed": "2026-10-13"
+    },
+    {
+      "session_id": "SES-20261021-Andrew-v0.4.19-meeting-sync",
+      "developer": "Andrew",
+      "date": "2026-10-21",
+      "commit_start": "c923daf",
+      "summary": "Sync Meeting timeout (Sonnet 4.6 measured 270.6s vs Vercel's 300s cap on Unio Biweekly) fixed by moving prepare/refine to Opus 5.5 fast mode (35.6s). Topic-deletion root cause found in applyUnified (delete-all + recreate).",
+      "folder": "dev/sessions/v0_4_19_Andrew_MEETING_SYNC/",
+      "status": "active"
     }
   ]
 }

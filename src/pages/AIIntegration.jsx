@@ -55,7 +55,7 @@ const HOW_IT_WORKS = [
       ["Other client agendas", "The current content of the client's other meeting agendas, whatever stage they're in. What's planned across the org."],
       ["Project Board", "The client's tasks created or updated in the window — with status and brand-new flags. Task state."],
       ["Your note", "The optional “Additional context” you type when you click Generate (e.g. “these two articles are published”)."],
-      ["Client SOPs", "Category descriptions guide topic categorization (fast, ~1 min). For deeper who-to-contact context in the agenda draft, tick “Include full Client SOPs” in the AI Gen modal (slower, ~2 min). AI-suggested tasks always use the full SOPs."],
+      ["Client SOPs", "Category descriptions guide topic categorization. For deeper who-to-contact context in the agenda draft, tick “Include full Client SOPs” in the AI Gen modal (larger input, somewhat slower). AI-suggested tasks always use the full SOPs."],
     ],
   },
   {
@@ -69,6 +69,7 @@ const HOW_IT_WORKS = [
     group: "How it scopes & frames",
     items: [
       ["The window", "“Since this meeting last occurred” — anchored to the meeting's most recent past occurrence. Falls back to the last ~21 days if the meeting isn't mapped to Fireflies yet."],
+      ["Model", "Claude Opus 5.5 in fast mode (falls back to standard speed if fast mode is rate-limited). A client meeting sync measured ~36s (Unio Biweekly, Oct 2026)."],
       ["Meeting style", "Working vs Executive, set per meeting and remembered. Working = granular deliverables + next steps; Executive = higher-level initiatives, decisions, progress. Fills {{meetingStyle}} in the prompt."],
     ],
   },

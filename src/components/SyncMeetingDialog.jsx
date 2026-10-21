@@ -772,7 +772,7 @@ export default function SyncMeetingDialog({
               control={<Checkbox size="small" checked={includeSops} onChange={(e) => setIncludeSops(e.target.checked)} disabled={busy} />}
               label={
                 <Typography variant="caption" color="text.secondary">
-                  Include full Client SOPs (deeper who-to-contact context — slower, ~2 min vs ~1)
+                  Include full Client SOPs (deeper who-to-contact context — larger input, somewhat slower)
                 </Typography>
               }
             />
