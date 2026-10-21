@@ -69,7 +69,7 @@ const HOW_IT_WORKS = [
     group: "How it scopes & frames",
     items: [
       ["The window", "“Since this meeting last occurred” — anchored to the meeting's most recent past occurrence. Falls back to the last ~21 days if the meeting isn't mapped to Fireflies yet."],
-      ["Model", "Claude Opus 5.5 in fast mode (falls back to standard speed if fast mode is rate-limited). A client meeting sync measured ~36s (Unio Biweekly, Oct 2026)."],
+      ["Model", "Claude Opus 5.5 in fast mode. If it is rate-limited, overloaded or unreachable, the sync retries automatically on standard-speed Opus 5.5, then Sonnet 5.5. A client meeting sync measured ~36s (Unio Biweekly, Oct 2026)."],
       ["Meeting style", "Working vs Executive, set per meeting and remembered. Working = granular deliverables + next steps; Executive = higher-level initiatives, decisions, progress. Fills {{meetingStyle}} in the prompt."],
     ],
   },

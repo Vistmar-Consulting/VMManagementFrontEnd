@@ -21,6 +21,8 @@
 | `api/ai/_handlers/refine.js` | Same (refine also rewrites the whole agenda). |
 | `src/pages/AIIntegration.jsx` | HOW_IT_WORKS "Model" row; SOPs row timing text no longer quotes Sonnet-era minutes. |
 
+**Fallback chain (follow-up commit):** `streamMessage` tries Opus 5.5 fast → Opus 5.5 standard → Sonnet 5.5 on pre-output failures (429, 5xx/529, connection errors), `maxRetries: 0` per attempt, later attempts skipped once too late to finish inside 300s. 4xx errors do not fall back. `api/__tests__/claudeFallback.test.js` 5/5; a live 1-cent call confirmed Sonnet 5.5 accepts the request shape.
+
 **Not verified:** master (Touch Base) sync on Opus 5.5 — no paid run made; the deployed sync end to end.
 
 ## 2. Topic deletion — finding
