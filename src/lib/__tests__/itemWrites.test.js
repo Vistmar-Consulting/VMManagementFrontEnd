@@ -170,4 +170,60 @@ describe("applyChangeSet", () => {
     ], { uid: "u1", allItems })).rejects.toThrow("Unsupported field itemNumber on create t1");
     expect(writes).toEqual([]);
   });
+
+  it("rejects updating an item that the same set deletes", async () => {
+    await expect(W.applyChangeSet([
+      { kind: "update", itemId: "s1", patch: { title: "x" } },
+      { kind: "delete", itemId: "p1", cascadeIds: ["s1"] },
+    ], { uid: "u1", allItems })).rejects.toThrow("Item s1 is updated and deleted in the same change set");
+    expect(writes).toEqual([]);
+  });
+
+  it("rejects adding a subtask under an item the same set deletes", async () => {
+    await expect(W.applyChangeSet([
+      { kind: "create", tempId: "t1", orgId: "unio", parentId: "p1", parentTempId: null, fields: { title: "x" } },
+      { kind: "delete", itemId: "p1", cascadeIds: ["s1"] },
+    ], { uid: "u1", allItems })).rejects.toThrow("Cannot add a subtask under p1; it is being deleted");
+    expect(writes).toEqual([]);
+  });
+
+  it("rejects a parentTempId with no matching create", async () => {
+    await expect(W.applyChangeSet([
+      { kind: "create", tempId: "t2", orgId: "unio", parentId: null, parentTempId: "nope", fields: { title: "x" } },
+    ], { uid: "u1", allItems })).rejects.toThrow("Unknown parent nope for t2");
+    expect(writes).toEqual([]);
+  });
+
+  it("numbers two top-level creates in sequence with one org counter update", async () => {
+    docsById["organizations/unio"] = { nextItemNumber: 3 };
+    const results = await W.applyChangeSet([
+      { kind: "create", tempId: "t1", orgId: "unio", parentId: null, parentTempId: null, fields: { title: "A" } },
+      { kind: "create", tempId: "t2", orgId: "unio", parentId: null, parentTempId: null, fields: { title: "B" } },
+    ], { uid: "u1", allItems });
+    expect(results.map((r) => r.ref)).toEqual(["I-3", "I-4"]);
+    const sets = writes.filter((w) => w[0] === "tx:set");
+    expect(sets[0][2].order < sets[1][2].order).toBe(true);
+    expect(writes.filter((w) => w[1] === "organizations/unio")).toEqual([
+      ["tx:update", "organizations/unio", { nextItemNumber: 5 }],
+    ]);
+  });
+
+  it("keeps separate counters and order chains for existing and temp parents", async () => {
+    docsById["organizations/unio"] = { nextItemNumber: 5 };
+    docsById["items/p1"] = { nextSubitemNumber: 2 };
+    const results = await W.applyChangeSet([
+      { kind: "create", tempId: "t1", orgId: "unio", parentId: null, parentTempId: null, fields: { title: "New project" } },
+      { kind: "create", tempId: "t2", orgId: "unio", parentId: null, parentTempId: "t1", fields: { title: "A" } },
+      { kind: "create", tempId: "t3", orgId: "unio", parentId: "p1", parentTempId: null, fields: { title: "B" } },
+      { kind: "create", tempId: "t4", orgId: "unio", parentId: null, parentTempId: "t1", fields: { title: "C" } },
+    ], { uid: "u1", allItems });
+    expect(results.map((r) => r.ref)).toEqual(["I-5", "SI-1", "SI-2", "SI-2"]);
+    const byTitle = Object.fromEntries(writes.filter((w) => w[0] === "tx:set").map((w) => [w[2].title, w[2]]));
+    expect(byTitle.A.parentId).toBe("new1");
+    expect(byTitle.C.parentId).toBe("new1");
+    expect(byTitle.B.parentId).toBe("p1");
+    expect(byTitle.A.order < byTitle.C.order).toBe(true);
+    expect(byTitle.B.order > "a0").toBe(true);
+    expect(writes).toContainEqual(["tx:update", "items/p1", { nextSubitemNumber: 3, hasChildren: true, updatedAt: "TS" }]);
+  });
 });

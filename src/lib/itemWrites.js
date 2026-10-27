@@ -105,11 +105,27 @@ function assertSupportedFields(ops) {
   }
 }
 
+function assertNoConflicts(ops) {
+  const creates = ops.filter((o) => o.kind === "create");
+  const tempIds = new Set(creates.map((c) => c.tempId));
+  const removed = new Set(ops.filter((o) => o.kind === "delete").flatMap((o) => [o.itemId, ...(o.cascadeIds || [])]));
+  for (const o of ops) {
+    if (o.kind === "update" && removed.has(o.itemId)) {
+      throw new Error(`Item ${o.itemId} is updated and deleted in the same change set`);
+    }
+    if (o.kind === "create") {
+      if (o.parentId && removed.has(o.parentId)) throw new Error(`Cannot add a subtask under ${o.parentId}; it is being deleted`);
+      if (o.parentTempId && !tempIds.has(o.parentTempId)) throw new Error(`Unknown parent ${o.parentTempId} for ${o.tempId}`);
+    }
+  }
+}
+
 // Board Chat Apply: every accepted op in ONE transaction — all reads first
 // (Firestore requires it), then all writes. A missing target aborts the set.
 // Returns [{ tempId, itemId, ref }] for the creates.
 export async function applyChangeSet(ops, { uid, allItems }) {
   assertSupportedFields(ops);
+  assertNoConflicts(ops);
   const creates = ops.filter((o) => o.kind === "create");
   const refs = new Map(creates.map((c) => [c.tempId, newItemRef()]));
   const childCountByTemp = new Map();
