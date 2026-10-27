@@ -64,12 +64,19 @@ const viewB = {
   id: "vb", label: "Parent two work",
   filters: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: { itemIds: ["p2"] } },
 };
-const seed = (store) => {
+const ACTIVE_KEY = "vm-board-chat-active";
+// The views list lives in localStorage, the active view per tab in sessionStorage.
+const seed = ({ views, activeId, before }) => {
   localStorage.clear();
-  localStorage.setItem(VIEWS_KEY, JSON.stringify(store));
+  sessionStorage.clear();
+  localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+  sessionStorage.setItem(ACTIVE_KEY, JSON.stringify({ activeId, before }));
 };
 const chip = (label) => screen.getByRole("button", { name: new RegExp(label) });
-const stored = () => JSON.parse(localStorage.getItem(VIEWS_KEY));
+const stored = () => ({
+  views: JSON.parse(localStorage.getItem(VIEWS_KEY)),
+  ...JSON.parse(sessionStorage.getItem(ACTIVE_KEY)),
+});
 
 describe("TaskBoard Board Chat views and Reset", () => {
   it("re-applies the active view on load and switches between views", () => {
@@ -100,6 +107,18 @@ describe("TaskBoard Board Chat views and Reset", () => {
     expect(screen.getByPlaceholderText("Search items and subtasks…").value).toBe("Three");
   }, 60000);
 
+  it("editing filters under a view marks it edited; a click puts the view back", () => {
+    seed({ views: [viewA], activeId: "va", before: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null } });
+    renderBoard();
+    fireEvent.change(screen.getByPlaceholderText("Search items and subtasks…"), { target: { value: "Three" } });
+    expect(chip("AI: Parent one work \\(1\\) · edited").getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(chip("AI: Parent one work"));
+    expect(screen.getByPlaceholderText("Search items and subtasks…").value).toBe("");
+    expect(screen.queryByText(/· edited/)).toBeNull();
+    expect(stored().activeId).toBe("va");
+  }, 60000);
+
   it("Reset turns views off and clears search without deleting views", () => {
     seed({ views: [viewA, viewB], activeId: "va", before: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null } });
     renderBoard();
@@ -112,8 +131,25 @@ describe("TaskBoard Board Chat views and Reset", () => {
     expect(screen.getByRole("button", { name: "Reset" }).disabled).toBe(true);
   }, 60000);
 
+  it("which view is on is kept per tab, apart from the shared views list", () => {
+    seed({ views: [viewA], activeId: null, before: null });
+    renderBoard();
+    fireEvent.click(chip("AI: Parent one work"));
+    expect(JSON.parse(localStorage.getItem(VIEWS_KEY))).toEqual([viewA]);
+    expect(JSON.parse(sessionStorage.getItem(ACTIVE_KEY)).activeId).toBe("va");
+  }, 60000);
+
+  it("ignores an active id whose view was deleted in another tab", () => {
+    seed({ views: [viewB], activeId: "va", before: { orgFilter: "all", titleSearch: "x", columnFilters: {}, scorecardFilter: null } });
+    renderBoard();
+    expect(screen.queryByText("Parent One")).toBeTruthy();
+    expect(chip("AI: Parent two work").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "Reset" }).disabled).toBe(true);
+  }, 60000);
+
   it("ignores a saved views entry with the wrong shape", () => {
     localStorage.clear();
+    sessionStorage.clear();
     localStorage.setItem(VIEWS_KEY, JSON.stringify({ junk: true }));
     renderBoard();
     expect(screen.queryByText("Parent One")).toBeTruthy();

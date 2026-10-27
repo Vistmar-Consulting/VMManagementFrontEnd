@@ -11,7 +11,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useLocalStorage } from "@uidotdev/usehooks";
+import { useLocalStorage, useSessionStorage } from "@uidotdev/usehooks";
 import {
   addDoc,
   collection,
@@ -84,7 +84,7 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
 import { planBoardFilter } from "../lib/boardChat/boardFilter.js";
-import { EMPTY_VIEWS, activeView, addView, aiFilterOfView, removeView, resetViews, toggleView } from "../lib/boardChat/boardViews.js";
+import { EMPTY_ACTIVE, activeView, addView, aiFilterOfView, isEdited, removeView, resetViews, toggleView } from "../lib/boardChat/boardViews.js";
 import { canBoardSync } from "../lib/boardSyncCore.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
@@ -138,9 +138,18 @@ export default function TaskBoard() {
   const [orgPickerCreating, setOrgPickerCreating] = useState(false);
 
   // Board Chat filter views (see lib/boardChat/boardViews.js). An active view
-  // re-applies its filters on load.
-  const [storedViews, setViewStore] = useLocalStorage("vm-board-chat-views", EMPTY_VIEWS);
-  const viewStore = Array.isArray(storedViews?.views) ? storedViews : EMPTY_VIEWS;
+  // re-applies its filters on load. The saved views are shared by every tab;
+  // which one is on (and the filters to restore) is per tab, since each tab
+  // keeps its own search and column filters.
+  const [storedViews, setStoredViews] = useLocalStorage("vm-board-chat-views", []);
+  const [storedActive, setStoredActive] = useSessionStorage("vm-board-chat-active", EMPTY_ACTIVE);
+  const views = Array.isArray(storedViews) ? storedViews : [];
+  const activeId = views.some((v) => v.id === storedActive?.activeId) ? storedActive.activeId : null;
+  const viewStore = { views, activeId, before: activeId ? storedActive.before : null };
+  const setViewStore = (store) => {
+    setStoredViews(store.views);
+    setStoredActive({ activeId: store.activeId, before: store.before });
+  };
   const [initialView] = useState(() => activeView(viewStore));
 
   // Column sort + filter state.
@@ -869,12 +878,13 @@ export default function TaskBoard() {
             const ids = view.filters.aiFilter && new Set(view.filters.aiFilter.itemIds);
             const count = ids ? ` (${allItems.filter((i) => ids.has(i.id)).length})` : "";
             const active = view.id === viewStore.activeId;
+            const edited = active && isEdited(view, ownFilters) ? " · edited" : "";
             return (
               <Chip
                 key={view.id}
                 color="secondary"
                 variant={active ? "filled" : "outlined"}
-                label={`AI: ${view.label}${count}`}
+                label={`AI: ${view.label}${count}${edited}`}
                 aria-pressed={active}
                 onClick={() => runViewChange(toggleView(viewStore, view.id, ownFilters))}
                 onDelete={() => runViewChange(removeView(viewStore, view.id))}

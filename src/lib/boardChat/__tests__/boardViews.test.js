@@ -1,6 +1,6 @@
 // src/lib/boardChat/__tests__/boardViews.test.js
 import { describe, it, expect } from "vitest";
-import { EMPTY_VIEWS, activeView, addView, aiFilterOfView, removeView, resetViews, toggleView } from "../boardViews.js";
+import { EMPTY_VIEWS, activeView, addView, aiFilterOfView, isEdited, removeView, resetViews, toggleView } from "../boardViews.js";
 
 const own = { orgFilter: "vistamar", titleSearch: "", columnFilters: {}, scorecardFilter: null };
 const fA = { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: { itemIds: ["a1", "a2"] } };
@@ -71,5 +71,26 @@ describe("boardViews", () => {
     expect(aiFilterOfView(activeView(resetViews(s)))).toBeNull();
     const sB = addView(EMPTY_VIEWS, { id: "v2", label: "B", filters: fB }, own).store;
     expect(aiFilterOfView(activeView(sB))).toBeNull();
+  });
+
+  it("isEdited is false while the board matches the view, ignoring key order and empty values", () => {
+    const view = { id: "v2", label: "B", filters: { ...fB, columnFilters: { statusId: [2], priorityId: [1] } } };
+    expect(isEdited(view, { orgFilter: "unio", titleSearch: "", columnFilters: { priorityId: [1], statusId: [2], tagIds: [] }, scorecardFilter: null })).toBe(false);
+    expect(isEdited(view, { orgFilter: "unio", titleSearch: undefined, columnFilters: { priorityId: [1], statusId: [2] }, scorecardFilter: undefined })).toBe(false);
+  });
+
+  it("isEdited is true once the user changes any of the view's filters", () => {
+    const view = { id: "v2", label: "B", filters: fB };
+    expect(isEdited(view, { ...fB, titleSearch: "seo" })).toBe(true);
+    expect(isEdited(view, { ...fB, columnFilters: { statusId: [2, 3] } })).toBe(true);
+    expect(isEdited(view, { ...fB, orgFilter: "all" })).toBe(true);
+    expect(isEdited(view, { ...fB, scorecardFilter: "blocked" })).toBe(true);
+  });
+
+  it("clicking an edited active view puts its saved filters back and keeps it on", () => {
+    const s = addView(EMPTY_VIEWS, { id: "v1", label: "A", filters: fA }, own).store;
+    const r = toggleView(s, "v1", { ...fA, titleSearch: "seo" });
+    expect(r.store).toEqual(s);
+    expect(r.apply).toEqual(fA);
   });
 });
