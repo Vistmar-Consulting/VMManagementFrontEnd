@@ -108,7 +108,7 @@ const HOW_IT_WORKS = [
     items: [
       ["What it does", "One run proposes new tasks, status moves and notes for every org's board from the same sources as Sync Meeting. It never touches an agenda."],
       ["What counts as new", "Fireflies meetings from the last 30 days not yet used for that org, tracked by a shared per-org ledger. Only meetings from before the ledger started are backfilled, and only if they predate that org's last Sync Meeting."],
-      ["Which org a meeting belongs to", "A title mapped to an agenda wins over who attended; otherwise attendees decide. Meetings that can't be matched are listed as unclassified, and ambiguous titles are reported rather than guessed."],
+      ["Which org a meeting belongs to", "A title mapped to an agenda wins over who attended; otherwise attendees decide. Meetings that can't be matched are counted as unclassified, and ambiguous titles are reported rather than guessed."],
       ["Touch Base", "Meetings mapped to the master (Touch Base) agenda feed every org's run; each org takes only its own parts. These are backfilled only by the Touch Base agenda's last sync."],
       ["Context only", "Internal Vistamar meetings (for client boards) and already-used meetings are read for moves, notes and duplicate checks, but never create tasks."],
       ["One call per org", "Orgs run in parallel; orgs with nothing new are skipped unless ticked. Review is grouped by org, and orgs that have finished can be applied while others are still running."],

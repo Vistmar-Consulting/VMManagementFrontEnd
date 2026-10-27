@@ -2413,9 +2413,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 11: Shared-state steps — each needs Andy's explicit yes
 
-- [ ] **Step 0: Set `LEDGER_EPOCH_MS`** in `src/lib/boardSyncCore.js` to the actual time the rules + Sync Meeting stamping go live; commit.
-- [ ] **Step 1: Deploy rules** (ask first): `firebase deploy --only firestore:rules --project management-db9eb`. Must happen **before** pushing Task 6 to `origin/dev` (see Task 5 note).
-- [ ] **Step 2: Re-run Task 10 Step 4** pre-flight in the browser.
-- [ ] **Step 3: Priced live run** (ask first, with this estimate — unmeasured): one Sonnet 4.6 call per ticked org, roughly $0.15–0.30 each → about $1–3 for all orgs. Run → review → apply on a real sync; then check: items created, `syncedTranscripts` stamps for applied orgs only, `boardSyncLog` doc with real `usage` token counts. Report the measured cost.
-- [ ] **Step 4: Ledger round-trip** — immediately open Sync Board again: the orgs just applied should show 0 new (their transcripts now context). Confirms no double creation.
-- [ ] **Step 5: Push** (ask first): `git pull --rebase origin dev && git push origin HEAD:dev`.
+- [ ] **Step 1: Deploy rules** (ask first): `firebase deploy --only firestore:rules --project management-db9eb`. Must happen **before** the push — Task 6 makes every Sync Meeting apply write `syncedTranscripts`; without the rule, Sync Meeting apply fails for everyone. Additive only (two new collections), so safe ahead of the FE.
+- [ ] **Step 2: Pre-flight in the browser** (local dev server, Andy signed in). Works before the push: gather reads Firestore + Fireflies directly. Stop at pre-flight; don't click Run.
+- [ ] **Step 3: Set `LEDGER_EPOCH_MS`** in `src/lib/boardSyncCore.js` to the planned deploy time **or slightly after — never before** (Sync Meeting only stamps once the new FE is live; an early epoch leaves a window where Sync Meeting runs on old code go unstamped and un-backfilled → Board Sync re-creates their tasks). Commit.
+- [ ] **Step 4: Push** (ask first): `git pull --rebase origin dev && git push origin HEAD:dev`. Required before the live run: the dev server proxies `/api/*` to the deployed backend, which has no `sync-board` route until this branch is deployed (a live run before the push returns 404 `Unknown AI route: sync-board`).
+- [ ] **Step 5: Priced live run** (ask first, with this estimate — unmeasured): one Sonnet 4.6 call per ticked org, roughly $0.15–0.30 each → about $1–3 for all orgs. Run → review → apply on a real sync; then check: items created, `syncedTranscripts` stamps for applied orgs only, `boardSyncLog` doc with real `usage` token counts. Report the measured cost.
+- [ ] **Step 6: Ledger round-trip** — immediately open Sync Board again: the orgs just applied should show 0 new (their transcripts now context). Confirms no double creation.
+
+> Order changed 2026-10-27 (overnight run): the live run needs the `sync-board` route deployed, so push precedes it; the epoch is set at deploy time, not before.
