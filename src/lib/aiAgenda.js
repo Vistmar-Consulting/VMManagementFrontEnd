@@ -29,7 +29,7 @@ import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
 import { validateProposal, inheritKeysForCreate, planTopicWrites } from "./syncMeeting.js";
-import { tagSlug } from "./boardSyncCore.js";
+import { tagSlug, syncMeetingStamps, groupStamps } from "./boardSyncCore.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_WINDOW_MS = 21 * DAY_MS; // used only when this agenda has no mapped past meeting yet
@@ -171,7 +171,7 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
     const cls = resolveOrgFromAttendees(t.meeting_attendees) || (isVistamarTitle ? "vistamar" : null);
     if (master) {
       if (!cls) continue;
-      included.push({ ...t, _ms: d, org: cls, scope: cls === "vistamar" ? "vistamar-internal" : "this-org" });
+      included.push({ ...t, _ms: d, org: cls, mapped, scope: cls === "vistamar" ? "vistamar-internal" : "this-org" });
     } else if (mapped) {
       included.push({ ...t, _ms: d, org: targetOrg, scope: "this-org" });
     } else if (cls === targetOrg) {
@@ -194,6 +194,8 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
     if (r.status !== "fulfilled") { failedCount += 1; return; }
     const s = r.value?.transcript?.summary || {};
     transcripts.push({
+      id: capped[i].id,
+      mapped: !!capped[i].mapped,
       title: capped[i].title || "",
       date: isoDate(capped[i].date),
       scope: capped[i].scope,
@@ -409,7 +411,10 @@ export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts
 // `accepted` = the dialog's review selections, indexes into
 // proposal.boardChanges.{creates,moves,notes}:
 //   { createIdxs:number[], moveIdxs:number[], noteIdxs:number[],
-//     promotions:{ [createIdx]: { statusId, assigneeIds?, categoryId, tagIds } } }
+//     promotions:{ [createIdx]: { statusId, assigneeIds?, categoryId, tagIds } },
+//     existingTasks?, transcripts?:[{ id, mapped, scope, org }], orgSlugs?:string[] }
+// transcripts/orgSlugs drive the syncedTranscripts ledger stamps (Board Sync
+// spec 3.3); orgSlugs is only consulted in master mode.
 //
 // Firestore requires ALL reads before ANY write within a transaction, so the
 // body is split into a reads phase (org counters + note target items) and a
@@ -547,6 +552,15 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       }
     }
   }
+
+  // Ledger (Board Sync spec 3.3): record which transcripts this sync used, per
+  // org, so Board Sync never re-creates tasks from them. Written in the same
+  // atomic commit as the changes they produced.
+  const ledgerStamps = groupStamps(syncMeetingStamps(sel.transcripts, {
+    targetOrg: orgSlug,
+    master,
+    orgSlugs: sel.orgSlugs || [],
+  }));
 
   await runTransaction(db, async (tx) => {
     // ---- READS PHASE (all tx.get before any write) ----
@@ -725,6 +739,14 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
         createdByUid: uid,
       });
     });
+
+    // Transcript ledger stamps — set+merge deep-merges the nested orgs map, so
+    // another org's existing stamp on the same transcript is kept.
+    for (const [tid, orgs] of Object.entries(ledgerStamps)) {
+      tx.set(doc(db, "syncedTranscripts", tid), {
+        orgs: Object.fromEntries(orgs.map((o) => [o, { at: serverTimestamp(), by: "agenda", byUid: uid }])),
+      }, { merge: true });
+    }
 
     // Write each org's final counter back.
     for (const [o, num] of orgNum) {

@@ -104,6 +104,7 @@ export default function SyncMeetingDialog({
   const [summary, setSummary] = useState(null);
   const [existingTags, setExistingTags] = useState(() => new Set());
   const [existingTasks, setExistingTasks] = useState([]);
+  const [genTranscripts, setGenTranscripts] = useState([]);
   // Validation result recomputed on receipt + after each refine.
   const [validation, setValidation] = useState(null);
   // Refine loop (review step).
@@ -213,6 +214,7 @@ export default function SyncMeetingDialog({
       } = inputs;
       setSummary(sum);
       setExistingTasks(tasks || []);
+      setGenTranscripts(transcripts || []);
       setExistingTags(new Set((tagVocab || []).map((t) => (t.name || "").toLowerCase())));
       setCatCtx({
         categories: (categories || []).map((c) => ({ slug: c.slug, name: c.name })),
@@ -345,6 +347,8 @@ export default function SyncMeetingDialog({
         promotions: promo,
         existingTasks, // threaded through for applyUnified's at-apply re-validation
         deleteTopicIds,
+        transcripts: genTranscripts, // ledger stamps (Board Sync spec 3.3)
+        orgSlugs: (catCtx.orgMeta || []).map((o) => o.slug),
       };
       const { updatedBodies } = await applyUnified(agendaId, orgSlug, proposal, accepted, user?.uid || null, { master });
       // Committed from here on — a second Apply would duplicate new topics and
