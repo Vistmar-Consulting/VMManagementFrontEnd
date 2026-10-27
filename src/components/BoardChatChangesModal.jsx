@@ -33,6 +33,13 @@ function formatValue(field, value, L) {
   return String(value);
 }
 
+// A create's org and every field it sets, so nothing is applied unseen.
+const CREATE_FIELDS = ["statusId", "priorityId", "assigneeIds", "categoryId", "tagIds", "dueDate"];
+function createSummary(r, L) {
+  const set = CREATE_FIELDS.filter((f) => formatValue(f, r.fields[f], L) !== "—");
+  return [L.orgName(r.orgId), ...set.map((f) => `${FIELD_LABEL[f]} ${formatValue(f, r.fields[f], L)}`)].join(" · ");
+}
+
 const GROUPS = [
   { op: "create", label: "Create" },
   { op: "update", label: "Update" },
@@ -90,9 +97,7 @@ export default function BoardChatChangesModal({ open, summary, rows, lookups: L,
                       ))}
                       {r.ok && r.op === "create" && (
                         <Typography variant="caption" component="div" color="text.secondary">
-                          {L.orgName(r.orgId)}
-                          {r.fields.assigneeIds?.length ? ` · ${formatValue("assigneeIds", r.fields.assigneeIds, L)}` : ""}
-                          {r.fields.dueDate ? ` · due ${ymd(r.fields.dueDate)}` : ""}
+                          {createSummary(r, L)}
                         </Typography>
                       )}
                       {r.ok && r.op === "delete" && r.cascadeIds.length > 0 && (

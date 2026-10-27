@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 import BoardChatChangesModal from "../BoardChatChangesModal.jsx";
+import { priorityName } from "../../lib/boardChat/snapshot.js";
 
 const L = { userName: (id) => id, orgName: (id) => id, categoryName: (id) => id, tagName: (id) => id };
 const itemLabel = (id) => ({ p1: "I-4 Appt data", s2: "SI-2 Schema", p9: "I-9 Old" }[id] || id);
@@ -72,6 +73,17 @@ describe("BoardChatChangesModal", () => {
     expect(screen.getByRole("checkbox", { name: "Op 3" }).disabled).toBe(true);
     expect(screen.getByText("Also deletes 2 subtasks")).toBeTruthy();
     expect(screen.getByText("A new item needs a title")).toBeTruthy();
+  });
+
+  it("shows every field a create sets, by name", () => {
+    const create = [
+      { index: 0, op: "create", ok: true, stale: false, tempId: "t1", orgId: "unio", parentId: null, parentTempId: null, reason: "new",
+        fields: { title: "New thing", statusId: 5, priorityId: 1, assigneeIds: ["u1"], categoryId: "seo", tagIds: ["urgent", "web"] } },
+    ];
+    renderModal({ rows: create });
+    expect(screen.getByText(
+      `unio · Status Done · Priority ${priorityName(1)} · Assigned u1 · Category seo · Tags urgent, web`,
+    )).toBeTruthy();
   });
 
   it("shows an apply error", () => {
