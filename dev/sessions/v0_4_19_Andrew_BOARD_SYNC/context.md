@@ -22,7 +22,9 @@ A Sync feature on the Task Board that updates every client's and Vistamar's task
 
 ## State
 
-- Spec written, reviewed, committed. Plan written; plan review pending.
+- Spec written, reviewed, committed. Plan written and reviewed (fixes: backfill bounded by `LEDGER_EPOCH_MS`; cross-org backfill uses the master agenda's sync only; no ESLint steps — repo has no config; handler 403 test; coined tags removable in review).
+- Andy approved: Vistamar-internal meetings are context only for clients; Board Sync has its own apply function.
+- Execution: subagent-driven, overnight, unattended, Tasks 1–10 only. No rules deploy, paid AI call, or push until Andy reviews in the morning (Task 11).
 
 ## Deferred
 

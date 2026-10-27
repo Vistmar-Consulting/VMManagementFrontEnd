@@ -237,7 +237,8 @@ describe("bucketTranscripts — spec table 3.2 scopes", () => {
 });
 
 describe("splitBucket — ledger + backfill", () => {
-  const ctxBase = { ledger: new Map(), thresholds: {}, masterThreshold: 0 };
+  // Epoch after NOW so backfill applies to these fixtures unless a test overrides it.
+  const ctxBase = { ledger: new Map(), thresholds: {}, masterThreshold: 0, epochMs: NOW + DAY };
   const bucketOf = (list, org) => bucketTranscripts(list, opts()).buckets[org];
 
   it("unstamped this-org is new", () => {
@@ -266,11 +267,23 @@ describe("splitBucket — ledger + backfill", () => {
     });
     expect(s.fresh).toEqual([]);
   });
-  it("backfill: cross-org uses the master agenda's last sync too", () => {
+  it("backfill: cross-org uses the master agenda's last sync", () => {
     const s = splitBucket(bucketOf([tr("m", "VM Weekly Touch Base", "vistamar", 5)], "unio"), "unio", {
       ...ctxBase, masterThreshold: NOW - 2 * DAY,
     });
     expect(s.fresh).toEqual([]);
+  });
+  it("backfill: a client's own later Sync Meeting does NOT hide a cross-org transcript", () => {
+    const s = splitBucket(bucketOf([tr("m", "VM Weekly Touch Base", "vistamar", 5)], "unio"), "unio", {
+      ...ctxBase, thresholds: { unio: NOW - DAY },
+    });
+    expect(s.fresh.map((t) => t.id)).toEqual(["m"]);
+  });
+  it("after the ledger epoch, only the ledger counts (no backfill)", () => {
+    const s = splitBucket(bucketOf([tr("a", "Unio weekly", "unio", 2)], "unio"), "unio", {
+      ...ctxBase, thresholds: { unio: NOW - DAY }, epochMs: NOW - 3 * DAY,
+    });
+    expect(s.fresh.map((t) => t.id)).toEqual(["a"]);
   });
   it("caps new at maxNew and reports the overflow", () => {
     const list = Array.from({ length: 4 }, (_, i) => tr(`t${i}`, "Unio weekly", "unio", i + 1));
@@ -431,13 +444,19 @@ export function bucketTranscripts(list, { orgSlugs, masterTitles, vistamarTitles
   return { buckets, unclassified };
 }
 
-// Ledger stamp, or backfill: before the ledger existed, a transcript counts as
-// synced for org X if it predates X's latest Sync Meeting (cross-org: or the
-// master agenda's). Known approximation — see spec 3.4.
-function isSyncedFor(t, org, { ledger, thresholds, masterThreshold }) {
+// The moment Sync Meeting started stamping the ledger (rules + FE deploy). Set
+// to the real deploy time at ship (morning checklist). Transcripts after it are
+// judged by the ledger alone; backfill only covers history before it.
+export const LEDGER_EPOCH_MS = Date.parse("2026-10-27T12:00:00Z");
+
+// Ledger stamp, or — for pre-ledger transcripts only — backfill: it counts as
+// synced for org X if it predates X's latest Sync Meeting. A cross-org meeting
+// was only ever a SOURCE for the master agenda's sync (a client's Sync Meeting
+// saw it as context), so it uses the master threshold alone. Spec 3.4.
+function isSyncedFor(t, org, { ledger, thresholds, masterThreshold, epochMs = LEDGER_EPOCH_MS }) {
   if (ledger.get(t.id)?.orgs?.[org]) return true;
-  const own = thresholds[org] || 0;
-  const th = t.scope === "cross-org" ? Math.max(own, masterThreshold || 0) : own;
+  if (t._ms >= epochMs) return false;
+  const th = t.scope === "cross-org" ? masterThreshold || 0 : thresholds[org] || 0;
   return t._ms <= th;
 }
 
@@ -653,7 +672,7 @@ export const NOTES_RULES = `### boardChanges.notes — context on EXISTING tasks
     : "";
 ```
 
-and replace the section from `${boardScope}### boardChanges.creates — NEW tasks` through the notes bullet with:
+and replace the section from `${boardScope}### boardChanges.creates — NEW tasks` through the end of the return template literal (including the `Be precise…` line and the `${buildCategorization(…)}` tail) with:
 
 ```js
 ${boardScope}### boardChanges.creates — NEW tasks
@@ -706,6 +725,20 @@ describe("access gate", () => {
     expect(isBoardSyncAllowed("adeemer@vistamarconsulting.com")).toBe(true);
     expect(isBoardSyncAllowed("scot@vistamarconsulting.com")).toBe(false);
     expect(isBoardSyncAllowed(undefined)).toBe(false);
+  });
+});
+
+describe("handler", () => {
+  it("returns 403 for a signed-in non-Andy account before any model call", async () => {
+    vi.resetModules();
+    vi.doMock("../../../meetings/_lib/auth.js", () => ({
+      requireAuth: async (req) => { req.authUser = { email: "hugo@vistamarconsulting.com" }; return true; },
+    }));
+    vi.doMock("../../../meetings/_lib/cors.js", () => ({ applyCors: () => false }));
+    const { default: handler } = await import("../syncBoard.js");
+    const res = { statusCode: 0, body: null, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
+    await handler({ method: "POST", headers: {}, body: { org: { slug: "unio" } } }, res);
+    expect(res.statusCode).toBe(403);
   });
 });
 
@@ -1513,7 +1546,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
 }
 ```
 
-- [ ] **Step 2: Lint** — `npx eslint src/lib/boardSync.js` → no errors.
+- [ ] **Step 2: Compile check** — the repo has no ESLint config, so don't lint. Run `npx vite build` once to confirm the module graph compiles (not in parallel with tests).
 
 - [ ] **Step 3: Commit**
 
@@ -1546,6 +1579,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -1639,6 +1673,13 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
     return { ...prev, [slug]: { ...r, promotions: { ...r.promotions, [idx]: { ...(r.promotions[idx] || {}), ...patch } } } };
   });
 
+  // Drop a coined tag from every create in this org (it won't be added).
+  const removeNewTag = (slug, name) => setRuns((prev) => {
+    const r = prev[slug];
+    const promotions = Object.fromEntries(Object.entries(r.promotions).map(([i, p]) => [i, { ...p, newTags: (p.newTags || []).filter((t) => t !== name) }]));
+    return { ...prev, [slug]: { ...r, promotions } };
+  });
+
   const runEntries = Object.entries(runs);
   const anyRunning = runEntries.some(([, r]) => r.status === "running");
   const doneSlugs = runEntries.filter(([, r]) => r.status === "done").map(([s]) => s);
@@ -1714,11 +1755,18 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
                 tags={tags || []}
               />
             ) : null))}
-            {bc.creates.some((c, i) => r.valid.creates.has(i) && r.promotions[i]?.newTags?.length) && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                New tags to add: {[...new Set(bc.creates.flatMap((c, i) => (r.sel.creates.has(i) ? r.promotions[i]?.newTags || [] : [])))].join(", ")}
-              </Typography>
-            )}
+            {(() => {
+              const coined = [...new Set(bc.creates.flatMap((c, i) => (r.sel.creates.has(i) ? r.promotions[i]?.newTags || [] : [])))];
+              if (!coined.length) return null;
+              return (
+                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.5, mt: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary">New tags to add:</Typography>
+                  {coined.map((name) => (
+                    <Chip key={name} label={name} size="small" variant="outlined" onDelete={() => removeNewTag(slug, name)} />
+                  ))}
+                </Box>
+              );
+            })()}
             {bc.moves.map((m, i) => (r.valid.moves.has(i) ? (
               <Box key={`m${i}`} sx={{ display: "flex", alignItems: "center", gap: 0.75, py: 0.5, opacity: r.sel.moves.has(i) ? 1 : 0.5 }}>
                 <Checkbox size="small" checked={r.sel.moves.has(i)} onChange={() => toggleSel(slug, "moves", i)} sx={{ p: 0.25 }} />
@@ -1851,7 +1899,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
 
 Note on "applies done orgs, ignores failed ones": a failed org's transcripts are never stamped, because `applyBoardSync` only receives done runs.
 
-- [ ] **Step 2: Lint** — `npx eslint src/components/SyncBoardDialog.jsx` → no errors.
+- [ ] **Step 2: Compile check** — no ESLint config in this repo; the dialog compiles as part of Task 9's page test and Task 10's build.
 
 - [ ] **Step 3: Commit**
 
@@ -1938,7 +1986,7 @@ and append a new group at the end of `HOW_IT_WORKS`:
   },
 ```
 
-- [ ] **Step 3: Run existing page test** — `npx vitest run src/pages/__tests__/TaskBoard.expandAll.test.jsx` → PASS. (If it fails because `useAuth` mock lacks `user.email`, `canBoardSync(undefined)` returns false — should be fine; investigate any failure with superpowers:systematic-debugging, don't patch the test blindly.)
+- [ ] **Step 3: Run existing page test** — `npx vitest run src/pages/__tests__/TaskBoard.expandAll.test.jsx` → PASS. (That test mocks `firebase.js` as `{ db: {} }`; the new import chain reaches `auth` only lazily, so it should still pass. `canBoardSync(undefined)` is false. Investigate any failure with superpowers:systematic-debugging; don't patch the test blindly.)
 
 - [ ] **Step 4: Commit**
 
@@ -1967,6 +2015,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 11: Shared-state steps — each needs Andy's explicit yes
 
+- [ ] **Step 0: Set `LEDGER_EPOCH_MS`** in `src/lib/boardSyncCore.js` to the actual time the rules + Sync Meeting stamping go live; commit.
 - [ ] **Step 1: Deploy rules** (ask first): `firebase deploy --only firestore:rules --project management-db9eb`. Must happen **before** pushing Task 6 to `origin/dev` (see Task 5 note).
 - [ ] **Step 2: Re-run Task 10 Step 4** pre-flight in the browser.
 - [ ] **Step 3: Priced live run** (ask first, with this estimate — unmeasured): one Sonnet 4.6 call per ticked org, roughly $0.15–0.30 each → about $1–3 for all orgs. Run → review → apply on a real sync; then check: items created, `syncedTranscripts` stamps for applied orgs only, `boardSyncLog` doc with real `usage` token counts. Report the measured cost.
