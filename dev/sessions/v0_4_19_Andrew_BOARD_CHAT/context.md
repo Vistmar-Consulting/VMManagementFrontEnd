@@ -22,4 +22,5 @@ A chat panel on the Task Board where the user talks to Claude (Anthropic API) ab
 
 - **Sync Task Board** — Fireflies → board changes from the Task Board (today only Sync Meeting does this). Own session; reuse Board Chat's `itemWrites.js` write layer.
 - Carried from v0.4.18: dev-server blank page (`createTheme_default is not a function`) needs root-causing; table column resizing off; AI Sync Meeting table preservation not exercised; two-person table editing untested; stale-bundle gate SHA / Skew Protection caveat.
+- Noticed 2026-10-26, not fixed: `src/pages/__tests__/TaskBoard.expandAll.test.jsx` "collapses and re-expands everything while a scorecard is selected" times out at its 20s limit under machine load (1 of 4 serial runs; passing runs take 9–14s). Predates this branch.
 - Noticed 2026-10-21, not fixed: manual status changes on the board (`TaskBoard.jsx` `handleUpdate`) don't set `completedAt` on Done; only Sync Meeting does.

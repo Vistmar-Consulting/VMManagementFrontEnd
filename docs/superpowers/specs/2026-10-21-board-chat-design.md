@@ -63,7 +63,7 @@ The server is **stateless and runs one model call per request**. The browser own
 - **No refusal fallback in V1.** The installed `@anthropic-ai/sdk` 0.100.1 has no `fallbacks` support (checked 2026-10-21). Adding it means upgrading the SDK, which `prepare.js` also depends on and which another session is changing. A refusal is shown to the user as an error.
 - **Response:** `{ content, stopReason, model, usage, costUsd }`. The browser appends `content` exactly as returned, thinking blocks included. History is append-only, which is required for preserved thinking on current models.
 - **Cost** (`api/ai/_handlers/chatPricing.js`): price table keyed by model id (input, output, cache write, cache read per MTok). `costUsd` is computed from `usage`. If the resolved model isn't in the table, `costUsd` is `null` and the UI shows **"unpriced"**. It never guesses. A new Sonnet therefore shows "unpriced" until someone adds its row.
-- **Errors:** typed SDK errors are mapped to status codes (429 → 429 with retry hint, 4xx → 400, 5xx/connection → 502). `refusal` → 502 with `stop_details.category`.
+- **Errors:** typed SDK errors are mapped to status codes (429 → 429 with retry hint, 400 → 400 with the API message verbatim, every other API or connection error → 502 with the message). `refusal` → 502 with `stop_details.category`.
 
 ### Known risk — auto-upgrading model
 
