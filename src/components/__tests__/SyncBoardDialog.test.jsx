@@ -29,7 +29,11 @@ function wrap(ui) {
   return render(<ThemeProvider theme={createTheme()}>{ui}</ThemeProvider>);
 }
 
-describe("SyncBoardDialog pre-flight", () => {
+// Full-dialog renders (MUI + ProposedBoardRow) take 1-4s each in jsdom; the
+// 5s default flakes under full-suite load. Same budget as TaskBoard.expandAll.
+const UI_TIMEOUT = { timeout: 20000 };
+
+describe("SyncBoardDialog pre-flight", UI_TIMEOUT, () => {
   beforeEach(() => {
     gatherBoardSyncInputs.mockReset().mockResolvedValue(GATHERED);
     runOrgSync.mockReset().mockReturnValue(new Promise(() => {}));
@@ -79,7 +83,7 @@ const ACME_RESULT = {
   failedTranscripts: [],
 };
 
-describe("SyncBoardDialog review + apply", () => {
+describe("SyncBoardDialog review + apply", UI_TIMEOUT, () => {
   let onClose;
   beforeEach(() => {
     onClose = vi.fn();
