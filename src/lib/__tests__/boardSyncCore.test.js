@@ -7,6 +7,7 @@ import {
   splitBucket,
   syncMeetingStamps,
   groupStamps,
+  isLedgerId,
   fetchTranscriptsSince,
   boardContextForOrg,
   initPromotion,
@@ -174,6 +175,13 @@ describe("syncMeetingStamps — Sync Meeting writer rule", () => {
   });
   it("skips transcripts without an id", () => {
     expect(syncMeetingStamps([{ scope: "this-org" }], { targetOrg: "unio", master: false, orgSlugs: [] })).toEqual([]);
+  });
+  it("isLedgerId rejects ids Firestore can't use as a doc id", () => {
+    expect(isLedgerId("01JABCDEF123")).toBe(true);
+    for (const bad of ["", "a/b", ".", "..", "__x__", null, 42]) expect(isLedgerId(bad)).toBe(false);
+  });
+  it("groupStamps drops ids Firestore would reject, so one bad id can't abort an apply", () => {
+    expect(groupStamps([{ id: "a/b", org: "unio" }, { id: "ok", org: "unio" }])).toEqual({ ok: ["unio"] });
   });
   it("groupStamps merges orgs per transcript id", () => {
     expect(groupStamps([{ id: "m", org: "unio" }, { id: "m", org: "vistamar" }, { id: "m", org: "unio" }]))
