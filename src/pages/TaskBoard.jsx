@@ -4,7 +4,8 @@
 // scorecards row, organization filter chip group.
 //
 // Differences from archive: Firestore data layer (useCollection +
-// onSnapshot, direct writes via updateDoc/deleteDoc), camelCase fields,
+// onSnapshot, item writes via src/lib/itemWrites.js except discarding a blank
+// new item and the category/tag clean-up), camelCase fields,
 // per-org categories/tags scoped via subcollections. DnD reorder + comments
 // modal are follow-up slices.
 
@@ -801,7 +802,7 @@ export default function TaskBoard() {
         <Box>
           <Chip
             color="secondary"
-            label={`AI: ${aiFilter.label} (${aiFilter.ids.size})`}
+            label={`AI: ${aiFilter.label} (${allItems.filter((i) => aiFilter.ids.has(i.id)).length})`}
             onDelete={() => setAiFilter(null)}
           />
         </Box>

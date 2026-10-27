@@ -176,6 +176,29 @@ describe("POST /api/ai/chat", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("400s on a system-role message without calling the SDK", async () => {
+    const res = fakeRes();
+    await chat(req({ messages: [{ role: "system", content: "x" }] }), res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/role/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("400s when an entry's content is neither a string nor an array", async () => {
+    const res = fakeRes();
+    await chat(req({ messages: [{ role: "user", content: 42 }] }), res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/content/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("413s when messages exceed the size cap without calling the SDK", async () => {
+    const res = fakeRes();
+    await chat(req({ messages: [{ role: "user", content: "x".repeat(2_000_001) }] }), res);
+    expect(res.statusCode).toBe(413);
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("405s on GET", async () => {
     const res = fakeRes();
     await chat({ method: "GET", headers: {}, body: {} }, res);

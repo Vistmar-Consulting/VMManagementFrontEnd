@@ -11,6 +11,8 @@ import { resolveLatestSonnet } from "./chatModels.js";
 import { costUsd } from "./chatPricing.js";
 import { SYSTEM_PROMPT, TOOLS } from "./chatTools.js";
 
+const MAX_MESSAGES_CHARS = 2_000_000;
+
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -22,6 +24,17 @@ export default async function handler(req, res) {
   const { messages } = req.body || {};
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "Missing required field: messages" });
+  }
+  for (const m of messages) {
+    if (!m || (m.role !== "user" && m.role !== "assistant")) {
+      return res.status(400).json({ error: 'Each message role must be "user" or "assistant"' });
+    }
+    if (typeof m.content !== "string" && !Array.isArray(m.content)) {
+      return res.status(400).json({ error: "Each message content must be a string or an array" });
+    }
+  }
+  if (JSON.stringify(messages).length > MAX_MESSAGES_CHARS) {
+    return res.status(413).json({ error: "Conversation is too large; start a new chat" });
   }
 
   const client = new Anthropic({ apiKey });
