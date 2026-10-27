@@ -15,12 +15,19 @@ import {
   collection,
   deleteDoc,
   doc,
-  runTransaction,
   serverTimestamp,
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
-import { generateKeyBetween } from "fractional-indexing";
+import {
+  createSubitem,
+  createTopLevelItem,
+  deleteItemCascade,
+  newItemRef,
+  nextSubitemOrder,
+  nextTopLevelOrder,
+  updateItem,
+} from "../lib/itemWrites.js";
 import {
   Alert,
   Box,
@@ -302,9 +309,7 @@ export default function TaskBoard() {
   };
 
   // Firestore writes
-  const handleUpdate = async (itemId, patch) => {
-    await updateDoc(doc(db, "items", itemId), { ...patch, updatedAt: serverTimestamp() });
-  };
+  const handleUpdate = (itemId, patch) => updateItem(itemId, patch);
 
   // Delete confirmation dialog state. Set via handleRequestDelete from the
   // row's action menu; cleared on Cancel or after Confirm completes.
@@ -318,15 +323,8 @@ export default function TaskBoard() {
   const handleConfirmDelete = async () => {
     if (!deleteConfirm) return;
     const { item, isSubitem } = deleteConfirm;
-    // Atomic cascade: parent + all children commit together so a
-    // Firestore hiccup can't leave subitems orphaned with no parent.
-    const batch = writeBatch(db);
-    if (!isSubitem) {
-      const subs = subitemsByParent[item.id] || [];
-      subs.forEach((s) => batch.delete(doc(db, "items", s.id)));
-    }
-    batch.delete(doc(db, "items", item.id));
-    await batch.commit();
+    const subIds = isSubitem ? [] : (subitemsByParent[item.id] || []).map((s) => s.id);
+    await deleteItemCascade(item.id, subIds);
     setDeleteConfirm(null);
   };
 
@@ -434,19 +432,6 @@ export default function TaskBoard() {
   const categoryUsageCount = (catId) => allItems.filter((i) => i.categoryId === catId).length;
   const tagUsageCount = (tagId) => allItems.filter((i) => (i.tagIds || []).includes(tagId)).length;
 
-  // Compute rank for new items: place at end of current top-level list.
-  const nextTopLevelOrder = () => {
-    const tops = allItems.filter((i) => i.parentId == null);
-    const last = tops.map((i) => i.order).filter(Boolean).sort().pop() || null;
-    return generateKeyBetween(last, null);
-  };
-
-  const nextSubitemOrder = (parentId) => {
-    const subs = allItems.filter((i) => i.parentId === parentId);
-    const last = subs.map((i) => i.order).filter(Boolean).sort().pop() || null;
-    return generateKeyBetween(last, null);
-  };
-
   // The item the user just created, so only its row opens into title edit.
   const [newItemId, setNewItemId] = useState(null);
 
@@ -462,37 +447,9 @@ export default function TaskBoard() {
   };
 
   const handleAddItem = async (orgId) => {
-    const orgRef = doc(db, "organizations", orgId);
-    const newItemRef = doc(collection(db, "items"));
-    setNewItemId(newItemRef.id);
-    const order = nextTopLevelOrder();
-    // Transaction atomically pulls the next item number from the org doc and
-    // bumps it — prevents race when two admins add at the same time.
-    await runTransaction(db, async (tx) => {
-      const orgSnap = await tx.get(orgRef);
-      const next = orgSnap.data()?.nextItemNumber ?? 1;
-      tx.set(newItemRef, {
-        organizationId: orgId,
-        parentId: null,
-        hasChildren: false,
-        type: "task",
-        title: "",
-        description: "",
-        statusId: 1,
-        priorityId: null,
-        categoryId: null,
-        tagIds: [],
-        dueDate: null,
-        completedAt: null,
-        assigneeIds: [],
-        itemNumber: next,
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        order,
-      });
-      tx.update(orgRef, { nextItemNumber: next + 1 });
-    });
+    const ref = newItemRef();
+    setNewItemId(ref.id);
+    await createTopLevelItem({ ref, orgId, uid: user.uid, order: nextTopLevelOrder(allItems) });
   };
 
   const handleOrgPickerSelect = async (orgId) => {
@@ -516,43 +473,9 @@ export default function TaskBoard() {
       // New subitems start Active, so open the parent's row in the Active group
       // (its ghost copy there when the parent itself is Done / Archived).
       setRowsExpanded([rowKey("active", parentItem.id, groupKeyOf(parentItem.statusId) !== "active")], true);
-      const newItemRef = doc(collection(db, "items"));
-      setNewItemId(newItemRef.id);
-      const parentRef = doc(db, "items", parentItem.id);
-      const order = nextSubitemOrder(parentItem.id);
-      // Subitem counter is per-parent — SI-N is unique within a single
-      // parent, not across an org. Reading + bumping the counter inside
-      // the transaction also makes the `hasChildren` update race-safe
-      // (we read the parent in-tx, so concurrent writers serialize).
-      await runTransaction(db, async (tx) => {
-        const parentSnap = await tx.get(parentRef);
-        const next = parentSnap.data()?.nextSubitemNumber ?? 1;
-        tx.set(newItemRef, {
-          organizationId: parentItem.organizationId,
-          parentId: parentItem.id,
-          hasChildren: false,
-          type: "task",
-          title: "",
-          description: "",
-          statusId: 1,
-          priorityId: null,
-          categoryId: null,
-          tagIds: [],
-          dueDate: null,
-          completedAt: null,
-          assigneeIds: [],
-          itemNumber: next,
-          createdBy: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          order,
-        });
-        tx.update(parentRef, {
-          nextSubitemNumber: next + 1,
-          hasChildren: true,
-          updatedAt: serverTimestamp(),
-        });
-      });
+      const ref = newItemRef();
+      setNewItemId(ref.id);
+      await createSubitem({ ref, parent: parentItem, uid: user.uid, order: nextSubitemOrder(allItems, parentItem.id) });
     } finally {
       addingSubitemRef.current = false;
     }
