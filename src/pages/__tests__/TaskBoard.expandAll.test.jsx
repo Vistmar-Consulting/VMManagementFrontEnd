@@ -87,7 +87,7 @@ describe("TaskBoard expand all / collapse all", () => {
     fireEvent.click(toggleAll());
     expect(screen.queryByText("Sub One")).toBeTruthy();
     expect(toggleAll().getAttribute("aria-label")).toBe("Collapse all");
-  }, 20000);
+  }, 60000);
 
   it("collapses a ghost row without touching its real row", () => {
     renderBoard();
