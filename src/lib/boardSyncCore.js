@@ -82,7 +82,7 @@ export function bucketTranscripts(list, { orgSlugs, masterTitles, titleOrgs, res
 // The moment Sync Meeting started stamping the ledger (rules + FE deploy). Set
 // to the real deploy time at ship (morning checklist). Transcripts after it are
 // judged by the ledger alone; backfill only covers history before it.
-export const LEDGER_EPOCH_MS = Date.parse("2026-10-27T12:00:00Z");
+export const LEDGER_EPOCH_MS = Date.parse("2026-10-27T17:05:00Z");
 
 // Ledger stamp, or — for pre-ledger transcripts only — backfill: it counts as
 // synced for org X if it predates X's latest Sync Meeting. A cross-org meeting
