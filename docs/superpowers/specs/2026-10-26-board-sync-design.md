@@ -46,21 +46,23 @@ Every transcript in an org's input has one scope. Scope decides whether it count
 |---|---|---|---|
 | `this-org` | attendee-classified to X, or title mapped to an X agenda | yes, if unstamped for X | yes |
 | `cross-org` | title mapped to a master agenda (`masterAgenda == true`) | yes, if unstamped for X | yes |
-| `vistamar-internal` | non-master Vistamar meeting, in a **client** org's input | **no** (context only) | **no** |
+| `vistamar-internal` | non-master Vistamar meeting, in a **client** org's input | yes, if unstamped for X; X takes only the work assigned to it | yes |
 | `already-synced` | in-window, already stamped/backfilled for X | no (context only) | no (already) |
 
 For org `vistamar` itself, Vistamar meetings are `this-org`.
 
+**Amended 2026-10-27 (Andy):** internal Vistamar meetings (Platform Dev, Business Dev) were originally context-only for clients. They are where the team decides what to do, so they now create client tasks like the Touch Base does: each client takes only the work assigned to it, and the model checks existing tasks before every create.
+
 ### 3.3 Writers
 
-- **Board Sync apply** — for each applied org X, stamps `orgs[X]` on every `this-org` and `cross-org` transcript in X's input. Inside the apply transaction (`set` merge on `orgs.{X}`).
-- **Sync Meeting apply** (`applyUnified`), per-org — stamps `orgs[targetOrg]` on its `this-org` transcripts only. Never stamps `vistamar-internal`.
+- **Board Sync apply** — for each applied org X, stamps `orgs[X]` on every new transcript in X's input (`this-org`, `cross-org`, `vistamar-internal`). Inside the apply transaction (`set` merge on `orgs.{X}`).
+- **Sync Meeting apply** (`applyUnified`), per-org — stamps `orgs[targetOrg]` on its `this-org` transcripts only. Never stamps `vistamar-internal` (a client's Sync Meeting reads internal meetings as context only, so Board Sync still treats them as new for that client).
 - **Sync Meeting apply**, master — stamps transcripts mapped to the master agenda for **every** org in `orgMeta` (it produces cross-org board changes); other classified transcripts stamped for `t.org`.
 - Requires transcript ids + scope threaded from `assembleGenInputs` (today transcripts do not carry `id`) through the proposal into `applyUnified`. This threading + stamping is the only change to Sync Meeting.
 
 ### 3.4 Backfill (no migration)
 
-Transcripts that predate the ledger are evaluated at read time: a transcript is treated as stamped for org X if its date is **≤ the latest `lastUnifiedGenAt` across X's agendas** (agendas resolved via `calendar_series.organizationId`). Backfill applies only to transcripts dated before `LEDGER_EPOCH_MS` (the moment Sync Meeting stamping goes live); after it, the ledger alone decides. For `cross-org` transcripts the threshold is the master agenda's `lastUnifiedGenAt` only — a client's own Sync Meeting saw the Touch Base as context, not a source. No backfill writes. Computed once per run.
+Transcripts that predate the ledger are evaluated at read time: a transcript is treated as stamped for org X if its date is **≤ the latest `lastUnifiedGenAt` across X's agendas** (agendas resolved via `calendar_series.organizationId`). Backfill applies only to transcripts dated before `LEDGER_EPOCH_MS` (the moment Sync Meeting stamping goes live); after it, the ledger alone decides. For `cross-org` transcripts the threshold is the master agenda's `lastUnifiedGenAt` only — a client's own Sync Meeting saw the Touch Base as context, not a source. `vistamar-internal` transcripts are never backfilled for a client: no client sync ever used them as a source. No backfill writes. Computed once per run.
 
 **Known approximation:** Sync Meeting only looks back one meeting cycle, so backfill can mark a transcript synced that no Sync Meeting actually read. Accepted: such transcripts still reach the model as `already-synced` context.
 
@@ -72,8 +74,8 @@ Lives in a new `src/lib/boardSync.js`, reusing helpers from `src/lib/aiAgenda.js
 2. **Classify** each transcript:
    - **Cross-org** if its title matches a `firefliesTitles` entry of any agenda whose series/agenda has `masterAgenda == true`. Fans into **every** org bucket.
    - Otherwise org via the title: a title mapped to any non-master agenda's `firefliesTitles` classifies to that agenda's org (explicit mapping wins, matching Sync Meeting's per-org rule); else via `resolveOrgFromAttendees`; else unclassified (dropped; listed in pre-flight as "unclassified: N", which also counts undated transcripts).
-   - Vistamar-internal transcripts also go to each client's bucket as `vistamar-internal` context, matching Sync Meeting's per-org behavior.
-3. **Filter** each bucket by the scope rule (3.2) + ledger + backfill → `newTranscripts[org]` (only `this-org` / `cross-org` unstamped). D5's include default keys off this count. Already-stamped in-window transcripts are passed as `already-synced` context, capped, so the model can mark work done without re-creating tasks.
+   - Vistamar-internal transcripts also go to each client's bucket as `vistamar-internal`, a new source from which the client takes only its own parts.
+3. **Filter** each bucket by the scope rule (3.2) + ledger + backfill → `newTranscripts[org]` (any scope, unstamped). D5's include default keys off this count. Already-stamped in-window transcripts are passed as `already-synced` context, capped, so the model can mark work done without re-creating tasks.
 4. **Per-org payload** — new + context transcripts (detail-fetched in parallel, `allSettled`; a failed detail fetch drops that transcript and is reported), that org's board items + `existingTasks`, that org's agendas' current topic content (read-only), org meta, categories + tag vocab, org-type-aware prompt (`resolvePrompt(org)`), shared extra context.
 5. Per-org transcript cap reuses `MAX_TRANSCRIPTS` (25); overflow reported in pre-flight.
 
@@ -123,7 +125,7 @@ Add Board Sync rows to `HOW_IT_WORKS` in `src/pages/AIIntegration.jsx`: sources,
 
 ## 11. Testing
 
-- Unit (`src/lib/__tests__/`): ledger filter + backfill; classification incl. cross-org fan-in and vistamar-internal context; Fireflies pagination stop condition; schema/validator for creates with own categories/tags; email gate (FE helper + handler 403).
+- Unit (`src/lib/__tests__/`): ledger filter + backfill; classification incl. cross-org fan-in and vistamar-internal as a new source for clients; Fireflies pagination stop condition; schema/validator for creates with own categories/tags; email gate (FE helper + handler 403).
 - Rules: **untested** — the repo has no rules emulator harness. Verified manually in the browser (non-Andy write to `boardSyncLog` denied) only if a second account is available; otherwise reported as unverified.
 - Scope rule: unit test each row of the 3.2 table for both writers.
 - UI: drive dev server via agent-browser on Andy's login through pre-flight → review → apply.

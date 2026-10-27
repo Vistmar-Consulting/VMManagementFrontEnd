@@ -53,7 +53,7 @@ describe("bucketTranscripts — spec table 3.2 scopes", () => {
     const { buckets } = bucketTranscripts([tr("m", "VM Weekly Touch Base", "vistamar", 1)], opts());
     for (const o of ["unio", "id-care", "vistamar"]) expect(buckets[o][0].scope).toBe("cross-org");
   });
-  it("vistamar-internal: Vistamar meeting is this-org for vistamar, context for clients", () => {
+  it("vistamar-internal: Vistamar meeting is this-org for vistamar, vistamar-internal for clients", () => {
     const { buckets } = bucketTranscripts([tr("v", "Platform dev", null, 3)], opts());
     expect(buckets.vistamar[0].scope).toBe("this-org");
     expect(buckets.unio[0].scope).toBe("vistamar-internal");
@@ -113,10 +113,21 @@ describe("splitBucket — ledger + backfill", () => {
     const s = splitBucket(bucketOf([tr("m", "VM Weekly Touch Base", "vistamar", 1)], "unio"), "unio", { ...ctxBase, ledger });
     expect(s.fresh.map((t) => t.id)).toEqual(["m"]);
   });
-  it("vistamar-internal never counts as new for a client", () => {
+  it("vistamar-internal is new for a client until stamped for that client", () => {
     const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 3)], "unio"), "unio", ctxBase);
+    expect(s.fresh.map((t) => [t.id, t.scope])).toEqual([["v", "vistamar-internal"]]);
+  });
+  it("backfill never hides vistamar-internal: no Sync Meeting ever used it for a client", () => {
+    const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 5)], "unio"), "unio", {
+      ...ctxBase, thresholds: { unio: NOW - DAY }, masterThreshold: NOW - DAY,
+    });
+    expect(s.fresh.map((t) => t.id)).toEqual(["v"]);
+  });
+  it("vistamar-internal stamped for the client → already-synced, flagged crossOrg", () => {
+    const ledger = new Map([["v", { orgs: { unio: { by: "board" } } }]]);
+    const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 3)], "unio"), "unio", { ...ctxBase, ledger });
     expect(s.fresh).toEqual([]);
-    expect(s.context[0].scope).toBe("vistamar-internal");
+    expect(s.context[0]).toMatchObject({ scope: "already-synced", crossOrg: true });
   });
   it("backfill: transcript before the org's last Sync Meeting counts as synced", () => {
     const s = splitBucket(bucketOf([tr("a", "Unio weekly", "unio", 5)], "unio"), "unio", {
@@ -142,13 +153,11 @@ describe("splitBucket — ledger + backfill", () => {
     });
     expect(s.fresh.map((t) => t.id)).toEqual(["a"]);
   });
-  it("context cap keeps already-synced rows ahead of newer vistamar-internal rows", () => {
-    const vi = Array.from({ length: 12 }, (_, i) => tr(`v${i}`, "Platform dev", null, i + 1));
-    const old = Array.from({ length: 3 }, (_, i) => tr(`s${i}`, "Unio weekly", "unio", 20 + i));
+  it("caps context at maxContext, newest first", () => {
+    const old = Array.from({ length: 12 }, (_, i) => tr(`s${i}`, "Unio weekly", "unio", i + 1));
     const ledger = new Map(old.map((t) => [t.id, { orgs: { unio: { by: "agenda" } } }]));
-    const s = splitBucket(bucketOf([...vi, ...old], "unio"), "unio", { ...ctxBase, ledger }, { maxContext: 10 });
-    expect(s.context).toHaveLength(10);
-    expect(s.context.filter((t) => t.scope === "already-synced")).toHaveLength(3);
+    const s = splitBucket(bucketOf(old, "unio"), "unio", { ...ctxBase, ledger }, { maxContext: 10 });
+    expect(s.context.map((t) => t.id)).toEqual(old.slice(0, 10).map((t) => t.id));
   });
   it("caps new at maxNew and reports the overflow", () => {
     const list = Array.from({ length: 4 }, (_, i) => tr(`t${i}`, "Unio weekly", "unio", i + 1));

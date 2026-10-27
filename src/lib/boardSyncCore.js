@@ -16,10 +16,6 @@ export const MAX_NEW_TRANSCRIPTS = 25;
 export const MAX_CONTEXT_TRANSCRIPTS = 10;
 const MAX_BOARD_ITEMS = 40;
 
-// Scopes that can create tasks for an org (spec 3.2). vistamar-internal and
-// already-synced are context only.
-const NEW_SCOPES = new Set(["this-org", "cross-org"]);
-
 const norm = (s) => String(s || "").toLowerCase().trim();
 
 export function toMs(v) {
@@ -43,6 +39,7 @@ export function tagSlug(name) {
 // with its scope for that org (spec table 3.2):
 //   master-mapped title      → cross-org in EVERY bucket
 //   Vistamar meeting         → this-org for vistamar, vistamar-internal for clients
+//                              (each client takes only its own parts)
 //   client meeting           → this-org for that client only
 // Org resolution order: master title, then titleOrgs (explicit title→org agenda
 // mapping, any non-master agenda), then attendee classification. Keys of
@@ -87,29 +84,31 @@ export const LEDGER_EPOCH_MS = Date.parse("2026-10-27T17:05:00Z");
 // Ledger stamp, or — for pre-ledger transcripts only — backfill: it counts as
 // synced for org X if it predates X's latest Sync Meeting. A cross-org meeting
 // was only ever a SOURCE for the master agenda's sync (a client's Sync Meeting
-// saw it as context), so it uses the master threshold alone. Spec 3.4.
+// saw it as context), so it uses the master threshold alone. A vistamar-internal
+// meeting was never a source for a client's tasks, so it has no backfill.
+// Spec 3.4.
 function isSyncedFor(t, org, { ledger, thresholds, masterThreshold, epochMs = LEDGER_EPOCH_MS }) {
   if (ledger.get(t.id)?.orgs?.[org]) return true;
-  if (t._ms >= epochMs) return false;
+  if (t._ms >= epochMs || t.scope === "vistamar-internal") return false;
   const th = t.scope === "cross-org" ? masterThreshold || 0 : thresholds[org] || 0;
   return t._ms <= th;
 }
 
 // Split one org's bucket into new sources (may create tasks) and context.
+// Every bucket scope can create tasks (spec 3.2); a stamped transcript becomes
+// already-synced context.
 export function splitBucket(bucket, org, ctx, { maxNew = MAX_NEW_TRANSCRIPTS, maxContext = MAX_CONTEXT_TRANSCRIPTS } = {}) {
   const sorted = [...(bucket || [])].sort((a, b) => b._ms - a._ms);
   const fresh = [];
   const synced = [];
-  const internal = [];
   for (const t of sorted) {
-    if (!NEW_SCOPES.has(t.scope)) internal.push(t);
-    else if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced", crossOrg: t.scope === "cross-org" });
+    // crossOrg keeps "take only this org's parts" on a synced shared meeting.
+    if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced", crossOrg: t.scope !== "this-org" });
     else fresh.push(t);
   }
-  // already-synced is the do-not-duplicate signal, so it survives the cap first.
   return {
     fresh: fresh.slice(0, maxNew),
-    context: [...synced, ...internal].slice(0, maxContext),
+    context: synced.slice(0, maxContext),
     droppedNew: Math.max(0, fresh.length - maxNew),
   };
 }

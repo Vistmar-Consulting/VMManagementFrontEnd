@@ -110,8 +110,9 @@ ${orgContext || "(none)"}
 
 ## How to use the inputs
 - NEW transcripts are meetings not yet turned into board changes for this org. Create tasks ONLY from these.
-- CONTEXT-ONLY transcripts are internal Vistamar meetings or meetings already synced for this org. Never create a task from them alone; use them to justify moves and notes and to avoid duplicates.
-- A cross-org meeting (e.g. the Monday Touch Base) covers every organization: take ONLY the parts about ${org?.name || org?.slug}.
+- CONTEXT-ONLY transcripts are meetings already synced for this org. Never create a task from them alone; use them to justify moves and notes and to avoid duplicates.
+- A cross-org meeting (e.g. the Monday Touch Base) covers every organization: take ONLY the parts about ${org?.name || org?.slug}.${internal ? "" : `
+- NEW transcripts marked "Vistamar internal" are internal Vistamar meetings (platform, business development). Create tasks from them ONLY for work they assign to ${org?.name || org?.slug}; ignore the rest. They often repeat what the Touch Base or this org's own meetings already covered, so check the existing tasks before every create.`}
 - Use the existing tasks, recent board activity, this org's current agendas (planning context) and any user-provided context to stay consistent and avoid duplicates.
 
 ${internal ? `${VISTAMAR_BOARD_SCOPE}\n\n` : ""}### boardChanges.creates — NEW tasks
@@ -126,12 +127,18 @@ ${NOTES_RULES}
 Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.${categorizationBlock(categories, tagVocab)}`;
 }
 
-const SCOPE_TAG = { "vistamar-internal": "Vistamar internal", "already-synced": "Already synced" };
+const SCOPE_TAG = { "already-synced": "Already synced" };
+
+function sharedSuffix(tr, orgName) {
+  if (tr.scope === "vistamar-internal") return ` [Vistamar internal — take only ${orgName}'s parts]`;
+  if (tr.crossOrg || tr.scope === "cross-org") return ` [cross-org — take only ${orgName}'s parts]`;
+  return "";
+}
 
 function transcriptLines(lines, list, orgName, tagged) {
   list.forEach((tr) => {
     const tag = tagged ? `[${SCOPE_TAG[tr.scope] || "Context"}] ` : "";
-    const cross = tr.crossOrg || tr.scope === "cross-org" ? ` [cross-org — take only ${orgName}'s parts]` : "";
+    const cross = sharedSuffix(tr, orgName);
     lines.push(`### ${tag}${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}${cross}`);
     if (tr.overview) lines.push(`Overview: ${tr.overview}`);
     if (tr.actionItems) lines.push(`Action items: ${tr.actionItems}`);

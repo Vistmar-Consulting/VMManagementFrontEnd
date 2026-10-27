@@ -12,6 +12,9 @@
 
 ---
 
+
+> **Amended 2026-10-27 after the first live run (Andy):** internal Vistamar meetings are now a new source for client boards (each client takes only its own parts), not context only. Never backfilled for clients. The code listings below show the original context-only rule; `src/lib/boardSyncCore.js`, `api/ai/_handlers/syncBoard.js` and spec §3.2–3.4 are current.
+
 ## Ground rules for the implementer
 
 - Work only in the worktree `.claude/worktrees/board-sync`. `node_modules` and `.env.local` are symlinks to the main checkout — never read `.env.local`.

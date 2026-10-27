@@ -37,6 +37,11 @@ describe("buildSystem", () => {
     expect(s).toContain("Org prompt working");
     expect(s).not.toContain("topicIndex");
   });
+  it("client: internal Vistamar meetings are new sources, only this org's parts", () => {
+    const s = buildSystem({ ...base, org: { slug: "unio", name: "Unio", type: "client" } });
+    expect(s).toContain("CONTEXT-ONLY transcripts are meetings already synced for this org.");
+    expect(s).toContain("internal Vistamar meetings");
+  });
   it("vistamar: includes scope block", () => {
     const s = buildSystem({ ...base, org: { slug: "vistamar", name: "Vistamar", type: "internal" } });
     expect(s).toContain("## SCOPE — what belongs on the Vistamar board");
@@ -47,8 +52,11 @@ describe("buildUserMessage", () => {
   it("separates NEW and CONTEXT transcripts and flags cross-org", () => {
     const m = buildUserMessage({
       org: { slug: "unio", name: "Unio" },
-      transcripts: [{ title: "Touch Base", date: "2026-10-26", scope: "cross-org", overview: "o", actionItems: "a" }],
-      contextTranscripts: [{ title: "Platform dev", date: "2026-10-20", scope: "vistamar-internal", overview: "x", actionItems: "" }],
+      transcripts: [
+        { title: "Touch Base", date: "2026-10-26", scope: "cross-org", overview: "o", actionItems: "a" },
+        { title: "Platform dev", date: "2026-10-20", scope: "vistamar-internal", overview: "x", actionItems: "" },
+      ],
+      contextTranscripts: [{ title: "Unio weekly", date: "2026-10-01", scope: "already-synced", crossOrg: false, overview: "y", actionItems: "" }],
       projectBoard: [], existingTasks: [{ id: "i1", title: "Fix hero", status: "Assigned" }], orgAgendas: [], extraContext: "Blog A published",
     });
     const newIdx = m.indexOf("## NEW meeting transcripts");
@@ -56,7 +64,9 @@ describe("buildUserMessage", () => {
     expect(newIdx).toBeGreaterThan(-1);
     expect(ctxIdx).toBeGreaterThan(newIdx);
     expect(m).toContain("Touch Base (2026-10-26) [cross-org — take only Unio's parts]");
-    expect(m).toContain("[Vistamar internal] Platform dev");
+    expect(m).toContain("Platform dev (2026-10-20) [Vistamar internal — take only Unio's parts]");
+    expect(m.indexOf("Platform dev")).toBeLessThan(ctxIdx);
+    expect(m).toContain("[Already synced] Unio weekly (2026-10-01)");
     expect(m).toContain("[itemId:i1] Fix hero [Assigned]");
     expect(m).toContain("Blog A published");
   });
