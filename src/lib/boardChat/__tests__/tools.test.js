@@ -26,6 +26,7 @@ describe("runReadTool", () => {
     const out = await runReadTool("get_item", { itemId: "p1" }, ctx);
     expect(out.result.description).toBe("Load into db");
     expect(out.result.subtasks).toHaveLength(1);
+    expect(out.result.subtasks[0].ref).toBe("I-4/SI-1");
     expect(out.result.recentComments[0].body).toBe("Done with import");
     expect(out.seen).toEqual({ p1: 1000, s1: 2000 });
   });

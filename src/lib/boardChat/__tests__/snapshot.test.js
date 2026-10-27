@@ -15,6 +15,7 @@ const items = [
 describe("snapshot helpers", () => {
   it("formats refs, names, dates", () => {
     expect(itemRef(items[0])).toBe("I-4");
+    expect(itemRef(items[1], items)).toBe("I-4/SI-1");
     expect(itemRef(items[1])).toBe("SI-1");
     expect(memberName(users[1])).toBe("Scot R");
     expect(ymd(new Date(2026, 9, 24))).toBe("2026-10-24");
@@ -37,7 +38,7 @@ describe("buildBoardSnapshot", () => {
   const snap = buildBoardSnapshot({ items, users, orgs, categories, tags });
   it("lists live items with readable values and excludes archived", () => {
     expect(snap.text).toContain("p1 | I-4 | Unio | - | In Progress | Andy Deemer | High | Data | hipaa | 2026-10-24 |");
-    expect(snap.text).toContain("s1 | SI-1 | Unio | p1 | Done | Scot R |");
+    expect(snap.text).toContain("s1 | I-4/SI-1 | Unio | p1 | Done | Scot R |");
     expect(snap.text).not.toContain("Old thing");
   });
   it("lists members with ids for writes", () => {

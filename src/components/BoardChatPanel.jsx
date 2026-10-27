@@ -66,7 +66,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
   const lookups = makeLookups({ users, orgs, categories, tags });
   const itemLabel = (id) => {
     const it = items.find((i) => i.id === id);
-    return it ? `${itemRef(it)} ${it.title || "(untitled)"}` : id;
+    return it ? `${itemRef(it, items)} ${it.title || "(untitled)"}` : id;
   };
   // A turn runs for many renders. Tools read the board through this ref so
   // each call sees the live items, not the ones from when the user hit Send.

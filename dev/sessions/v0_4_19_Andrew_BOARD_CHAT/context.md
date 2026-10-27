@@ -21,10 +21,11 @@ A chat panel on the Task Board where the user talks to Claude (Anthropic API) ab
 - Amendments to the plan made during the build (code is the source of truth): writer-level field allowlist + conflict guards in `applyChangeSet`; the proposal layer rejects conflicting ops, double deletes, tempId clashes and bad values; at the 10-call cap pending tool calls are answered "not run"; `set_board_filter` validates every column value (`src/lib/boardChat/boardFilter.js`) and rejects an empty AI filter; `/api/ai/chat` validates message roles and caps size (413).
 - 2026-10-27 Task 11: the first live call returned 400 "Schema is too complex", confirming the strict-schema risk. `strict` dropped from `set_board_filter` and `propose_changes` (`8124aee`, pushed, deployed). Re-verified in Chrome on production: a question about the ID Care meeting answered with the meeting time and the related items ($0.12); a filter request set the AI chip "ID Care meeting prep (10)" and narrowed the board ($0.03); a change request opened the Review changes modal with the correct diff, and Cancel wrote nothing; the model reported "no changes were made" ($0.02). Total spend $0.17. Board filters restored afterwards.
 - Not exercised: Apply in the modal (a live write), Shift+Enter.
+- 2026-10-27: fixed subtask refs. SI-N restarts under every parent, so the snapshot showed many identical "SI-1" refs and the model once invented "I-<raw id>" for a subtask. Subtask refs now carry the parent's (`I-4/SI-1`) in the snapshot, tool results and change labels, and the system prompt shows the form. Not re-verified live.
+
 
 ## Deferred
 
 - **Sync Task Board** — Fireflies → board changes from the Task Board (today only Sync Meeting does this). Own session; reuse Board Chat's `itemWrites.js` write layer.
 - Carried from v0.4.18: dev-server blank page (`createTheme_default is not a function`) needs root-causing; table column resizing off; AI Sync Meeting table preservation not exercised; two-person table editing untested; stale-bundle gate SHA / Skew Protection caveat.
-- Noticed 2026-10-27, not fixed: in one reply the model referred to a subtask by a raw Firestore id with an "I-" prefix ("I-pbNucPYVs6pXqWGwgL") instead of its SI ref. Check how subtask refs appear in the board snapshot.
 - Noticed 2026-10-21, not fixed: manual status changes on the board (`TaskBoard.jsx` `handleUpdate`) don't set `completedAt` on Done; only Sync Meeting does.

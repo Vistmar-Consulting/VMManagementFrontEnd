@@ -24,8 +24,12 @@ export function ymd(ts) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function itemRef(item) {
-  return `${item.parentId ? "SI" : "I"}-${item.itemNumber ?? "?"}`;
+// SI-N restarts under every parent, so a subtask's ref carries its parent's
+// ("I-4/SI-1") whenever `items` is given; without it the bare SI-N is ambiguous.
+export function itemRef(item, items = []) {
+  const own = `${item.parentId ? "SI" : "I"}-${item.itemNumber ?? "?"}`;
+  const parent = item.parentId && items.find((i) => i.id === item.parentId);
+  return parent ? `${itemRef(parent)}/${own}` : own;
 }
 
 export function memberName(u) {
@@ -55,10 +59,10 @@ export function makeLookups({ users, orgs, categories, tags }) {
   };
 }
 
-export function itemRow(item, L) {
+export function itemRow(item, L, items) {
   return [
     item.id,
-    itemRef(item),
+    itemRef(item, items),
     L.orgName(item.organizationId),
     item.parentId || "-",
     statusName(item.statusId),
@@ -92,7 +96,7 @@ export function buildBoardSnapshot({ items, users, orgs, categories, tags }) {
     `PRIORITIES: ${PRIORITY_LIST.map((p) => `${p.id} ${p.label}`).join(", ")}`,
     "",
     "ITEMS, not archived (id | ref | org | parentId | status | assignees | priority | category | tags | due | updated | title)",
-    ...live.map((i) => itemRow(i, L)),
+    ...live.map((i) => itemRow(i, L, items)),
   ].join("\n");
   const seen = Object.fromEntries(live.map((i) => [i.id, toMillis(i.updatedAt)]));
   return { text, seen };

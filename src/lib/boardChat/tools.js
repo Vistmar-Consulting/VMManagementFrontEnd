@@ -11,10 +11,10 @@ import { itemRef, priorityName, statusName, toMillis, ymd } from "./snapshot.js"
 
 const SEARCH_LIMIT = 50;
 
-function brief(item, L) {
+function brief(item, L, items) {
   return {
     id: item.id,
-    ref: itemRef(item),
+    ref: itemRef(item, items),
     title: item.title || "(untitled)",
     org: L.orgName(item.organizationId),
     parentId: item.parentId || null,
@@ -50,7 +50,7 @@ export async function runReadTool(name, input, { items, lookups: L }) {
     const seen = { [item.id]: toMillis(item.updatedAt) };
     subs.forEach((s) => { seen[s.id] = toMillis(s.updatedAt); });
     return {
-      result: { ...brief(item, L), description: item.description || "", subtasks: subs.map((s) => brief(s, L)), recentComments },
+      result: { ...brief(item, L, items), description: item.description || "", subtasks: subs.map((s) => brief(s, L, items)), recentComments },
       seen,
     };
   }
@@ -64,7 +64,7 @@ export async function runReadTool(name, input, { items, lookups: L }) {
     });
     const shown = matches.slice(0, SEARCH_LIMIT);
     return {
-      result: { total: matches.length, shown: shown.length, items: shown.map((i) => brief(i, L)) },
+      result: { total: matches.length, shown: shown.length, items: shown.map((i) => brief(i, L, items)) },
       seen: Object.fromEntries(shown.map((i) => [i.id, toMillis(i.updatedAt)])),
     };
   }
