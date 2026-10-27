@@ -10,6 +10,7 @@
 // modal are follow-up slices.
 
 import { useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import {
   addDoc,
@@ -138,7 +139,8 @@ export default function TaskBoard() {
 
   // Board Chat filter views (see lib/boardChat/boardViews.js). An active view
   // re-applies its filters on load.
-  const [viewStore, setViewStore] = useLocalStorage("vm-board-chat-views", EMPTY_VIEWS);
+  const [storedViews, setViewStore] = useLocalStorage("vm-board-chat-views", EMPTY_VIEWS);
+  const viewStore = Array.isArray(storedViews?.views) ? storedViews : EMPTY_VIEWS;
   const [initialView] = useState(() => activeView(viewStore));
 
   // Column sort + filter state.
@@ -345,16 +347,21 @@ export default function TaskBoard() {
   };
 
   // Board Chat's set_board_filter. Throws on any unknown id, so a bad call
-  // errors back to the model and the board is unchanged.
+  // errors back to the model and the board is unchanged. Several calls in one
+  // model reply run back to back with no render between them, so each one
+  // commits synchronously and the next sees its result (the panel reads this
+  // handler fresh from its latest props).
   const handleBoardChatFilter = (input) => {
     const current = { ...ownFilters, aiFilter: activeView(viewStore)?.filters.aiFilter ?? null };
     const plan = planBoardFilter(input, { orgs, items: allItems, users, categories, tags }, current);
     if (plan.kind === "clear") {
-      setViewStore(resetViews(viewStore));
-      applyFilters(plan.filters);
+      flushSync(() => {
+        setViewStore(resetViews(viewStore));
+        applyFilters(plan.filters);
+      });
       return { applied: true, view: null };
     }
-    runViewChange(addView(viewStore, { id: crypto.randomUUID(), label: plan.label, filters: plan.filters }, ownFilters));
+    flushSync(() => runViewChange(addView(viewStore, { id: crypto.randomUUID(), label: plan.label, filters: plan.filters }, ownFilters)));
     return { applied: true, view: plan.label, itemCount: plan.filters.aiFilter?.itemIds.length ?? null };
   };
 

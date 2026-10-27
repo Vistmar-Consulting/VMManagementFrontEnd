@@ -101,6 +101,10 @@ describe("planBoardFilter", () => {
     expect(out.filters.orgFilter).toBe("all");
   });
 
+  it("rejects a call that sets nothing", () => {
+    expect(() => planBoardFilter({ label: "x" }, ctx, current)).toThrow("set_board_filter set nothing");
+  });
+
   it("throws on an unknown value", () => {
     expect(() => planBoardFilter({ columnFilters: { statusId: [3] } }, ctx, current)).toThrow("Unknown status 3");
   });

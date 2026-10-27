@@ -74,5 +74,6 @@ export function planBoardFilter(input, ctx, current) {
   const filters = { ...current, ...next };
   const setsSomething = ["orgId", "titleSearch", "columnFilters", "aiFilter"].some((k) => input[k] !== undefined);
   if (input.clear && !setsSomething) return { kind: "clear", filters };
+  if (!setsSomething) throw new Error("set_board_filter set nothing — pass a filter, or clear: true");
   return { kind: "view", label: input.label || "Board filter", filters };
 }

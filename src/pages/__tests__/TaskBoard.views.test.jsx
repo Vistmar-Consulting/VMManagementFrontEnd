@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -36,6 +36,9 @@ vi.mock("../../hooks/useCollection.js", () => ({
 vi.mock("../../hooks/useCollectionGroup.js", () => ({
   useCollectionGroup: () => ({ data: [], loading: false, error: null }),
 }));
+
+const postChat = vi.fn();
+vi.mock("../../lib/boardChat/api.js", () => ({ postChat: (...a) => postChat(...a) }));
 
 const { default: TaskBoard } = await import("../TaskBoard.jsx");
 
@@ -109,6 +112,14 @@ describe("TaskBoard Board Chat views and Reset", () => {
     expect(screen.getByRole("button", { name: "Reset" }).disabled).toBe(true);
   }, 60000);
 
+  it("ignores a saved views entry with the wrong shape", () => {
+    localStorage.clear();
+    localStorage.setItem(VIEWS_KEY, JSON.stringify({ junk: true }));
+    renderBoard();
+    expect(screen.queryByText("Parent One")).toBeTruthy();
+    expect(screen.queryByText(/AI: /)).toBeNull();
+  }, 60000);
+
   it("x deletes a view", () => {
     seed({ views: [viewA, viewB], activeId: null, before: null });
     renderBoard();
@@ -117,4 +128,32 @@ describe("TaskBoard Board Chat views and Reset", () => {
     expect(stored().views.map((v) => v.id)).toEqual(["va"]);
     expect(screen.queryByText(/AI: Parent two work/)).toBeNull();
   }, 60000);
+
+  it("two filter calls in one Claude reply each build on the one before", async () => {
+    seed({ views: [], activeId: null, before: null });
+    renderBoard();
+    fireEvent.change(screen.getByPlaceholderText("Search items and subtasks…"), { target: { value: "Parent" } });
+    postChat
+      .mockResolvedValueOnce({
+        content: [
+          { type: "tool_use", id: "a", name: "set_board_filter", input: { clear: true } },
+          { type: "tool_use", id: "b", name: "set_board_filter", input: { label: "Two", aiFilter: { itemIds: ["p2"] } } },
+          { type: "tool_use", id: "c", name: "set_board_filter", input: { label: "Two done", columnFilters: { statusId: [5] } } },
+        ],
+        stopReason: "tool_use", costUsd: 0.001, model: "m",
+      })
+      .mockResolvedValueOnce({ content: [{ type: "text", text: "Filtered." }], stopReason: "end_turn", costUsd: 0.001, model: "m" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Board Chat" }));
+    const box = screen.getByPlaceholderText("Ask Board Chat…");
+    fireEvent.change(box, { target: { value: "show parent two" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(await screen.findByText("Filtered.")).toBeTruthy();
+
+    await waitFor(() => expect(stored().views.map((v) => v.label)).toEqual(["Two", "Two done"]));
+    expect(stored().views[0].filters).toMatchObject({ titleSearch: "", aiFilter: { itemIds: ["p2"] } });
+    expect(stored().views[1].filters).toMatchObject({ titleSearch: "", aiFilter: { itemIds: ["p2"] }, columnFilters: { statusId: [5] } });
+    expect(stored().before).toMatchObject({ titleSearch: "", orgFilter: "all" });
+  }, 60000);
 });
+

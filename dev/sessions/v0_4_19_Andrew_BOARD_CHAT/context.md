@@ -23,9 +23,11 @@ A chat panel on the Task Board where the user talks to Claude (Anthropic API) ab
 - Not exercised: Apply in the modal (a live write), Shift+Enter.
 - 2026-10-27: fixed subtask refs. SI-N restarts under every parent, so the snapshot showed many identical "SI-1" refs and the model once invented "I-<raw id>" for a subtask. Subtask refs now carry the parent's (`I-4/SI-1`) in the snapshot, tool results and change labels, and the system prompt shows the form. Not re-verified live.
 
+- 2026-10-27: Andy approved three additions (spec §13): a `?` hints popover in the panel header, switchable filter views (each Board Chat filter saves a chip; click toggles, x deletes, turning a view off restores the user's own filters; persisted in localStorage `vm-board-chat-views`), and a Reset button (views off, search/column/scorecard cleared, org pill kept). Code review: no Critical; the Important finding (several set_board_filter calls in one reply read stale state) fixed with `flushSync` in `TaskBoard.handleBoardChatFilter`; a jsdom test covers it but passed before the fix too, so the browser case is unproven. Also: a filter call that sets nothing now errors; a malformed views entry is ignored. Tests pass; build passes. Not yet verified in the browser.
 
 ## Deferred
 
 - **Sync Task Board** — Fireflies → board changes from the Task Board (today only Sync Meeting does this). Own session; reuse Board Chat's `itemWrites.js` write layer.
 - Carried from v0.4.18: dev-server blank page (`createTheme_default is not a function`) needs root-causing; table column resizing off; AI Sync Meeting table preservation not exercised; two-person table editing untested; stale-bundle gate SHA / Skew Protection caveat.
+- From the 2026-10-27 review, not fixed (minor): views sync across browser tabs but search/column/scorecard filters do not, so another tab can mix them; views are not capped; on reload an active view's org comes from the org pill's own saved value; an active chip stays filled after the user edits filters by hand.
 - Noticed 2026-10-21, not fixed: manual status changes on the board (`TaskBoard.jsx` `handleUpdate`) don't set `completedAt` on Done; only Sync Meeting does.
