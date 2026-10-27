@@ -1,9 +1,11 @@
 // src/lib/itemWrites.js
 //
-// The one writer for items/{itemId}. The Task Board's add / add-subitem /
+// Shared writer for items/{itemId}. The Task Board's add / add-subitem /
 // update / delete handlers and Board Chat's Apply all go through here, so
 // counters (organizations.nextItemNumber, parent.nextSubitemNumber),
-// hasChildren and the delete cascade stay identical everywhere.
+// hasChildren and the delete cascade stay identical everywhere. (Discarding
+// a just-added blank item and the category/tag clean-up still write items
+// directly from TaskBoard.jsx.)
 import { collection, doc, runTransaction, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 import { db } from "../firebase.js";
