@@ -2,7 +2,11 @@
 //
 // Board Chat system prompt + tool schemas. The tools EXECUTE in the browser
 // (src/lib/boardChat/tools.js, BoardChatPanel); only their schemas live here.
-// Every tool is strict: closed objects, optional fields omitted when unused.
+// Every schema is closed, optional fields omitted when unused. The read tools
+// are strict; set_board_filter and propose_changes are not, because together
+// their optional fields exceed the API's strict-schema limit ("Schema is too
+// complex", 2026-10-27). Their inputs are validated in the browser by
+// applyBoardFilter and boardChat/proposal.js.
 
 export const SYSTEM_PROMPT = `You are Board Chat, the assistant on Vistamar Consulting's internal Task Board. You help the signed-in team member understand and update the board.
 
@@ -80,7 +84,6 @@ export const TOOLS = [
   {
     name: "set_board_filter",
     description: "Change what the Task Board shows. Fields you omit keep their current value. clear: true first resets every filter.",
-    strict: true,
     input_schema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -112,7 +115,6 @@ export const TOOLS = [
   {
     name: "propose_changes",
     description: "Propose creates, updates and deletes. The user confirms in a modal; the result says which ops were applied.",
-    strict: true,
     input_schema: {
       type: "object", additionalProperties: false,
       properties: {

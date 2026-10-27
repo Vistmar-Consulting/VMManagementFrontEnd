@@ -59,7 +59,7 @@ The server is **stateless and runs one model call per request**. The browser own
 - `applyCors` + `requireAuth`, same as the sibling handlers.
 - **Model resolution** (`api/ai/_handlers/chatModels.js`): `client.models.list()`, keep ids starting with `claude-sonnet-`, pick the newest `created_at`. Memoized per warm instance for 1 hour. If the list call fails, return a 502 with the reason. There is no fallback to a hard-coded id.
 - **Request:** `{ messages }`. The browser puts the context (board snapshot, the current user, the current time and timezone) as the first text block of the conversation's first user message. The server forwards `messages` unchanged.
-- **Call:** adaptive thinking (model default), `output_config.effort: "medium"`, `tool_choice: auto`, `strict: true` on every tool, automatic prompt caching (top-level `cache_control`), `max_tokens` 16000.
+- **Call:** adaptive thinking (model default), `output_config.effort: "medium"`, `tool_choice: auto`, `strict: true` on the read tools (`get_item`, `search_items`, `list_meetings`), automatic prompt caching (top-level `cache_control`), `max_tokens` 16000.
 - **No refusal fallback in V1.** The installed `@anthropic-ai/sdk` 0.100.1 has no `fallbacks` support (checked 2026-10-21). Adding it means upgrading the SDK, which `prepare.js` also depends on and which another session is changing. A refusal is shown to the user as an error.
 - **Response:** `{ content, stopReason, model, usage, costUsd }`. The browser appends `content` exactly as returned, thinking blocks included. History is append-only, which is required for preserved thinking on current models.
 - **Cost** (`api/ai/_handlers/chatPricing.js`): price table keyed by model id (input, output, cache write, cache read per MTok). `costUsd` is computed from `usage`. If the resolved model isn't in the table, `costUsd` is `null` and the UI shows **"unpriced"**. It never guesses. A new Sonnet therefore shows "unpriced" until someone adds its row.
@@ -69,9 +69,9 @@ The server is **stateless and runs one model call per request**. The browser own
 
 A new Sonnet can change API behavior. Sonnet 5.5, for example, 400s on `thinking: disabled` and on forced `tool_choice`. The request avoids every setting that has broken on a Sonnet so far. If a future model rejects the request anyway, the chat shows the API error verbatim and stops. There is no silent fallback to an older model.
 
-### Known risk — strict schema size (unverified)
+### Known risk — strict schema size (confirmed 2026-10-27, fixed)
 
-Across the strict tools there are about 23 optional parameters. The plan review recalled a limit on optional parameters in strict schemas (around 24). This could not be confirmed in the docs on 2026-10-21. The first real call (plan Task 11) tests it. If the API returns a 400 about schema complexity, the panel shows it verbatim. The fix is to drop `strict` from `set_board_filter` and `propose_changes`. Their inputs are already fully validated by `applyBoardFilter` and `boardChat/proposal.js`. The outcome is recorded in the session `context.md`.
+Across the strict tools there are about 23 optional parameters. The plan review recalled a limit on optional parameters in strict schemas (around 24). This could not be confirmed in the docs on 2026-10-21. The first real call (plan Task 11) tests it. If the API returns a 400 about schema complexity, the panel shows it verbatim. The fix is to drop `strict` from `set_board_filter` and `propose_changes`. Their inputs are already fully validated by `applyBoardFilter` and `boardChat/proposal.js`. Outcome, 2026-10-27: the first real call returned 400 "Schema is too complex", so `strict` was removed from those two tools.
 
 ## 5. Tools
 

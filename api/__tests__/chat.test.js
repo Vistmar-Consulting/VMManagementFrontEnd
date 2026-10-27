@@ -73,11 +73,10 @@ describe("costUsd", () => {
 });
 
 describe("TOOLS", () => {
-  it("every tool is strict with a closed schema", () => {
-    for (const t of TOOLS) {
-      expect(t.strict).toBe(true);
-      expect(t.input_schema.additionalProperties).toBe(false);
-    }
+  it("every schema is closed; only the read tools are strict", () => {
+    const strict = TOOLS.filter((t) => t.strict).map((t) => t.name);
+    expect(strict).toEqual(["get_item", "search_items", "list_meetings"]);
+    for (const t of TOOLS) expect(t.input_schema.additionalProperties).toBe(false);
   });
 });
 
