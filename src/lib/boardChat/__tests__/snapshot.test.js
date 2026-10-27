@@ -1,6 +1,6 @@
 // src/lib/boardChat/__tests__/snapshot.test.js
 import { describe, it, expect } from "vitest";
-import { buildBoardSnapshot, itemRef, memberName, toMillis, ymd } from "../snapshot.js";
+import { buildBoardSnapshot, itemRef, memberName, priorityName, statusName, toMillis, ymd } from "../snapshot.js";
 
 const users = [{ id: "u1", displayName: "Andy Deemer", email: "a@vistamarconsulting.com" }, { id: "u2", firstName: "Scot", lastName: "R", email: "s@x.com" }];
 const orgs = [{ id: "unio", name: "Unio" }];
@@ -20,6 +20,16 @@ describe("snapshot helpers", () => {
     expect(ymd(new Date(2026, 9, 24))).toBe("2026-10-24");
     expect(toMillis({ toMillis: () => 5 })).toBe(5);
     expect(toMillis(null)).toBeNull();
+  });
+});
+
+describe("status and priority names", () => {
+  it("names known ids and returns the raw id for unknown ones", () => {
+    expect(statusName(2)).toBe("In Progress");
+    expect(statusName(42)).toBe("42");
+    expect(priorityName(2)).toBe("High");
+    expect(priorityName(42)).toBe("42");
+    expect(priorityName(null)).toBe("");
   });
 });
 

@@ -78,4 +78,21 @@ describe("BoardChatChangesModal", () => {
     renderModal({ error: "Item p1 no longer exists" });
     expect(screen.getByText("Item p1 no longer exists")).toBeTruthy();
   });
+
+  it("shows member names, not uids, in an assignee diff", () => {
+    const names = { ...L, userName: (id) => ({ u1: "Andy Deemer", u2: "Scot R" }[id] || id) };
+    const assign = [
+      { index: 0, op: "update", ok: true, stale: false, itemId: "p1", reason: "r", patch: { assigneeIds: ["u2"] }, diffs: [{ field: "assigneeIds", before: ["u1"], after: ["u2"] }] },
+    ];
+    renderModal({ rows: assign, lookups: names });
+    expect(screen.getByText("Andy Deemer → Scot R")).toBeTruthy();
+    expect(screen.queryByText(/u1|u2/)).toBeNull();
+  });
+
+  it("disables the checkboxes, Cancel and Apply while applying", () => {
+    renderModal({ applying: true });
+    for (const box of screen.getAllByRole("checkbox")) expect(box.disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Cancel" }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Apply 1 change" }).disabled).toBe(true);
+  });
 });

@@ -38,7 +38,7 @@ export function statusName(id) {
 }
 
 export function priorityName(id) {
-  return PRIORITY_NAME[id] || "";
+  return PRIORITY_NAME[id] || String(id ?? "");
 }
 
 export function makeLookups({ users, orgs, categories, tags }) {
