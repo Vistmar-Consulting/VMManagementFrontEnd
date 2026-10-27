@@ -78,7 +78,7 @@ import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
-import { resolveBoardFilter } from "../lib/boardChat/boardFilter.js";
+import { applyBoardFilter } from "../lib/boardChat/boardFilter.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
 
@@ -317,17 +317,13 @@ export default function TaskBoard() {
     });
   };
 
-  // Board Chat's set_board_filter. resolveBoardFilter throws on any unknown
-  // id, so a bad call errors back to the model and the board is unchanged.
-  const applyBoardFilter = (input) => {
-    const next = resolveBoardFilter(input, { orgs, items: allItems, users, categories, tags });
-    if (next.orgFilter !== undefined) setOrgFilter(next.orgFilter);
-    if (next.titleSearch !== undefined) setTitleSearch(next.titleSearch);
-    if (next.columnFilters !== undefined) setColumnFilters(next.columnFilters);
-    if (next.scorecardFilter !== undefined) setScorecardFilter(next.scorecardFilter);
-    if (next.aiFilter !== undefined) setAiFilter(next.aiFilter);
-    return { applied: true, aiFilterCount: next.aiFilter ? next.aiFilter.ids.size : null };
-  };
+  // Board Chat's set_board_filter. Throws on any unknown id, so a bad call
+  // errors back to the model and the board is unchanged.
+  const handleBoardChatFilter = (input) => applyBoardFilter(
+    input,
+    { orgs, items: allItems, users, categories, tags },
+    { setOrgFilter, setTitleSearch, setColumnFilters, setScorecardFilter, setAiFilter },
+  );
 
   // Firestore writes
   const handleUpdate = (itemId, patch) => updateItem(itemId, patch);
@@ -1032,7 +1028,7 @@ export default function TaskBoard() {
         categories={categories}
         tags={tags}
         user={user}
-        onApplyFilter={applyBoardFilter}
+        onApplyFilter={handleBoardChatFilter}
       />
     </>
   );

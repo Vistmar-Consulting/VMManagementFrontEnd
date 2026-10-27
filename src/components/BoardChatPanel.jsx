@@ -128,11 +128,17 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
       // op on the same item can never be reported as applied.
       const skippedIdx = new Set(skipped.map((s) => s.index));
       const isApplied = (r) => r.ok && checked.has(r.index) && !skippedIdx.has(r.index);
+      // completedAt holds a serverTimestamp sentinel (or null), so it is
+      // reported as "now" / "cleared"; createdVia is ours, not the model's.
+      const completed = (completedAt) => (completedAt !== undefined ? { completedAt: completedAt === null ? "cleared" : "now" } : {});
       const applied = rows.filter(isApplied).map((r) => {
-        if (r.op === "create") return { index: r.index, op: "create", title: r.fields.title, ...createdByTemp.get(r.tempId) };
+        if (r.op === "create") {
+          const { completedAt, createdVia, ...newValues } = r.fields;
+          return { index: r.index, op: "create", title: r.fields.title, ...createdByTemp.get(r.tempId), newValues, ...completed(completedAt) };
+        }
         if (r.op === "delete") return { index: r.index, op: "delete", item: itemLabel(r.itemId), alsoDeletedSubtasks: r.cascadeIds.length };
         const { completedAt, ...newValues } = r.patch;
-        return { index: r.index, op: "update", item: itemLabel(r.itemId), newValues, ...(completedAt !== undefined ? { completedAt: completedAt === null ? "cleared" : "now" } : {}) };
+        return { index: r.index, op: "update", item: itemLabel(r.itemId), newValues, ...completed(completedAt) };
       });
       const declined = rows.filter((r) => !isApplied(r))
         .map((r) => ({ index: r.index, op: r.op, why: r.error || skipped.find((s) => s.index === r.index)?.reason || "unticked by the user" }));
@@ -214,6 +220,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
     setEntries([]);
     setRetry(null);
     seenRef.current = {};
+    pendingSeenRef.current = new Set();
   };
 
   return (

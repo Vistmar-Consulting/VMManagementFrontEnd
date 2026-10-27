@@ -10,25 +10,33 @@ vi.mock("../../lib/boardChat/tools.js", () => ({ runReadTool: (...a) => runReadT
 vi.mock("../../lib/itemWrites.js", () => ({ applyChangeSet: (...a) => applyChangeSet(...a) }));
 
 const { default: BoardChatPanel } = await import("../BoardChatPanel.jsx");
+const { applyBoardFilter } = await import("../../lib/boardChat/boardFilter.js");
 
-const items = [{ id: "p1", itemNumber: 4, title: "Appt data", organizationId: "unio", parentId: null, statusId: 2, updatedAt: new Date(1000) }];
+const items = [
+  { id: "p1", itemNumber: 4, title: "Appt data", organizationId: "unio", parentId: null, statusId: 2, updatedAt: new Date(1000) },
+  { id: "p2", itemNumber: 5, title: "Schema", organizationId: "unio", parentId: null, statusId: 2, updatedAt: new Date(1000) },
+];
+const users = [{ id: "u1", displayName: "Andy" }];
+const orgs = [{ id: "unio", name: "Unio" }];
+// The tool_result the model received in postChat call n (0-based).
+const toolResultIn = (n) => postChat.mock.calls[n][0].at(-1).content[0];
 const toolUse = (id, name, input) => ({ content: [{ type: "tool_use", id, name, input }], stopReason: "tool_use", costUsd: 0.001, model: "m" });
 const reply = (text) => ({ content: [{ type: "text", text }], stopReason: "end_turn", costUsd: 0.001, model: "m" });
 const propose = (id) => toolUse(id, "propose_changes", { summary: "Rename", ops: [{ op: "update", itemId: "p1", fields: { title: `T${id}` } }] });
 
-function renderPanel() {
+function renderPanel({ onApplyFilter = vi.fn() } = {}) {
   return render(
     <ThemeProvider theme={createTheme()}>
       <BoardChatPanel
         open
         onClose={vi.fn()}
         items={items}
-        users={[{ id: "u1", displayName: "Andy" }]}
-        orgs={[{ id: "unio", name: "Unio" }]}
+        users={users}
+        orgs={orgs}
         categories={[]}
         tags={[]}
         user={{ uid: "u1", email: "a@x.com" }}
-        onApplyFilter={vi.fn()}
+        onApplyFilter={onApplyFilter}
       />
     </ThemeProvider>,
   );
@@ -81,5 +89,68 @@ describe("BoardChatPanel", { timeout: 60000 }, () => {
     expect(await screen.findByText("ok")).toBeTruthy();
     const cancelled = JSON.parse(postChat.mock.calls[1][0].at(-1).content[0].content);
     expect(cancelled.applied).toEqual([]);
+  });
+
+  it("reports exactly the ticked rows as applied and the unticked row as declined", async () => {
+    applyChangeSet.mockResolvedValue([]);
+    postChat
+      .mockResolvedValueOnce(toolUse("a", "propose_changes", { summary: "Rename two", ops: [
+        { op: "update", itemId: "p1", fields: { title: "One" } },
+        { op: "update", itemId: "p2", fields: { title: "Two" } },
+      ] }))
+      .mockResolvedValueOnce(reply("done"));
+    renderPanel();
+    ask("rename both");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "I-5 Schema" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply 1 change" }));
+    expect(await screen.findByText("done")).toBeTruthy();
+    expect(applyChangeSet.mock.calls[0][0]).toEqual([{ kind: "update", itemId: "p1", patch: { title: "One" } }]);
+    const result = JSON.parse(toolResultIn(1).content);
+    expect(result.applied).toEqual([{ index: 0, op: "update", item: "I-4 Appt data", newValues: { title: "One" } }]);
+    expect(result.declined).toEqual([{ index: 1, op: "update", why: "unticked by the user" }]);
+  });
+
+  it("reports a created item's new values, with the completedAt sentinel stripped", async () => {
+    applyChangeSet.mockResolvedValue([{ tempId: "t1", itemId: "n1", ref: "I-7" }]);
+    postChat
+      .mockResolvedValueOnce(toolUse("a", "propose_changes", { summary: "Add one", ops: [
+        { op: "create", tempId: "t1", orgId: "unio", fields: { title: "New", statusId: 5, assigneeIds: ["u1"] } },
+      ] }))
+      .mockResolvedValueOnce(reply("done"));
+    renderPanel();
+    ask("add it");
+    fireEvent.click(await screen.findByRole("button", { name: "Apply 1 change" }));
+    expect(await screen.findByText("done")).toBeTruthy();
+    expect(JSON.parse(toolResultIn(1).content).applied).toEqual([{
+      index: 0, op: "create", title: "New", tempId: "t1", itemId: "n1", ref: "I-7",
+      newValues: { title: "New", statusId: 5, assigneeIds: ["u1"] }, completedAt: "now",
+    }]);
+  });
+
+  it("shows an Apply failure; Cancel then returns an is_error result", async () => {
+    applyChangeSet.mockRejectedValue(new Error("Item p1 no longer exists"));
+    postChat.mockResolvedValueOnce(propose("a")).mockResolvedValueOnce(reply("sorry"));
+    renderPanel();
+    ask("rename it");
+    fireEvent.click(await screen.findByRole("button", { name: "Apply 1 change" }));
+    expect(await screen.findByText("Item p1 no longer exists")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByText("sorry")).toBeTruthy();
+    expect(toolResultIn(1)).toMatchObject({ is_error: true, content: "Apply failed: Item p1 no longer exists" });
+  });
+
+  it("an unknown status in set_board_filter is an is_error result and sets nothing", async () => {
+    const setters = {
+      setOrgFilter: vi.fn(), setTitleSearch: vi.fn(), setColumnFilters: vi.fn(), setScorecardFilter: vi.fn(), setAiFilter: vi.fn(),
+    };
+    const onApplyFilter = (input) => applyBoardFilter(input, { orgs, items, users, categories: [], tags: [] }, setters);
+    postChat
+      .mockResolvedValueOnce(toolUse("a", "set_board_filter", { columnFilters: { statusId: [3] } }))
+      .mockResolvedValueOnce(reply("no such status"));
+    renderPanel({ onApplyFilter });
+    ask("show on hold");
+    expect(await screen.findByText("no such status")).toBeTruthy();
+    expect(toolResultIn(1)).toMatchObject({ is_error: true, content: "Unknown status 3 in columnFilters.statusId" });
+    Object.values(setters).forEach((fn) => expect(fn).not.toHaveBeenCalled());
   });
 });

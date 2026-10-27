@@ -46,6 +46,7 @@ export function resolveBoardFilter(input, { orgs, items, users, categories, tags
 
   let ai;
   if (aiFilter) {
+    if (aiFilter.itemIds.length === 0) throw new Error("aiFilter.itemIds is empty — omit aiFilter or use clear");
     const itemIds = new Set(items.map((i) => i.id));
     const bad = aiFilter.itemIds.filter((id) => !itemIds.has(id));
     if (bad.length) throw new Error(`Unknown item ids ${bad.join(", ")}`);
@@ -62,4 +63,15 @@ export function resolveBoardFilter(input, { orgs, items, users, categories, tags
     ...(cols ? { columnFilters: cols } : {}),
     ...(ai ? { aiFilter: ai } : {}),
   };
+}
+
+// Resolve first, then set: an unknown id throws before any setter runs.
+export function applyBoardFilter(input, ctx, set) {
+  const next = resolveBoardFilter(input, ctx);
+  if (next.orgFilter !== undefined) set.setOrgFilter(next.orgFilter);
+  if (next.titleSearch !== undefined) set.setTitleSearch(next.titleSearch);
+  if (next.columnFilters !== undefined) set.setColumnFilters(next.columnFilters);
+  if (next.scorecardFilter !== undefined) set.setScorecardFilter(next.scorecardFilter);
+  if (next.aiFilter !== undefined) set.setAiFilter(next.aiFilter);
+  return { applied: true, aiFilterCount: next.aiFilter ? next.aiFilter.ids.size : null };
 }
