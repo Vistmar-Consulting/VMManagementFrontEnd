@@ -37,7 +37,10 @@ function formatValue(field, value, L) {
 const CREATE_FIELDS = ["statusId", "priorityId", "assigneeIds", "categoryId", "tagIds", "dueDate"];
 function createSummary(r, L) {
   const set = CREATE_FIELDS.filter((f) => formatValue(f, r.fields[f], L) !== "—");
-  return [L.orgName(r.orgId), ...set.map((f) => `${FIELD_LABEL[f]} ${formatValue(f, r.fields[f], L)}`)].join(" · ");
+  const parts = [L.orgName(r.orgId), ...set.map((f) => `${FIELD_LABEL[f]} ${formatValue(f, r.fields[f], L)}`)];
+  const desc = r.fields.description?.trim();
+  if (desc) parts.push(`Description "${desc.length > 60 ? `${desc.slice(0, 60)}…` : desc}"`);
+  return parts.join(" · ");
 }
 
 const GROUPS = [

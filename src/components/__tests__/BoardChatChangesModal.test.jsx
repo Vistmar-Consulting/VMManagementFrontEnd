@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 import BoardChatChangesModal from "../BoardChatChangesModal.jsx";
-import { priorityName } from "../../lib/boardChat/snapshot.js";
+import { priorityName, statusName } from "../../lib/boardChat/snapshot.js";
 
 const L = { userName: (id) => id, orgName: (id) => id, categoryName: (id) => id, tagName: (id) => id };
 const itemLabel = (id) => ({ p1: "I-4 Appt data", s2: "SI-2 Schema", p9: "I-9 Old" }[id] || id);
@@ -78,12 +78,16 @@ describe("BoardChatChangesModal", () => {
   it("shows every field a create sets, by name", () => {
     const create = [
       { index: 0, op: "create", ok: true, stale: false, tempId: "t1", orgId: "unio", parentId: null, parentTempId: null, reason: "new",
-        fields: { title: "New thing", statusId: 5, priorityId: 1, assigneeIds: ["u1"], categoryId: "seo", tagIds: ["urgent", "web"] } },
+        fields: { title: "New thing", statusId: 5, priorityId: 1, assigneeIds: ["u1"], categoryId: "seo", tagIds: ["urgent", "web"],
+          dueDate: new Date(2026, 10, 3), description: "x".repeat(70) } },
+      { index: 1, op: "create", ok: true, stale: false, tempId: "t2", orgId: "unio", parentId: null, parentTempId: null, reason: "new",
+        fields: { title: "Bare" } },
     ];
     renderModal({ rows: create });
     expect(screen.getByText(
-      `unio · Status Done · Priority ${priorityName(1)} · Assigned u1 · Category seo · Tags urgent, web`,
+      `unio · Status ${statusName(5)} · Priority ${priorityName(1)} · Assigned u1 · Category seo · Tags urgent, web · Due 2026-11-03 · Description "${"x".repeat(60)}…"`,
     )).toBeTruthy();
+    expect(screen.getByText("unio")).toBeTruthy();
   });
 
   it("shows an apply error", () => {
