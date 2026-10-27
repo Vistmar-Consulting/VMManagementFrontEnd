@@ -152,7 +152,7 @@ async function fetchDetails(rows) {
       title: rows[i].title || "",
       date: isoDate(rows[i]._ms),
       scope: rows[i].scope,
-      crossOrg: !!rows[i].crossOrg,
+      sharedFrom: rows[i].sharedFrom || "",
       overview: s.overview || s.short_overview || "",
       actionItems: s.action_items || "",
     });

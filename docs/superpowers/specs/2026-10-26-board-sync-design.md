@@ -57,12 +57,12 @@ For org `vistamar` itself, Vistamar meetings are `this-org`.
 
 - **Board Sync apply** — for each applied org X, stamps `orgs[X]` on every new transcript in X's input (`this-org`, `cross-org`, `vistamar-internal`). Inside the apply transaction (`set` merge on `orgs.{X}`).
 - **Sync Meeting apply** (`applyUnified`), per-org — stamps `orgs[targetOrg]` on its `this-org` transcripts only. Never stamps `vistamar-internal` (a client's Sync Meeting reads internal meetings as context only, so Board Sync still treats them as new for that client).
-- **Sync Meeting apply**, master — stamps transcripts mapped to the master agenda for **every** org in `orgMeta` (it produces cross-org board changes); other classified transcripts stamped for `t.org`.
+- **Sync Meeting apply**, master — stamps transcripts mapped to the master agenda, and internal Vistamar meetings, for **every** org in `orgMeta` (the master takes each client's parts from both); other classified transcripts stamped for `t.org`.
 - Requires transcript ids + scope threaded from `assembleGenInputs` (today transcripts do not carry `id`) through the proposal into `applyUnified`. This threading + stamping is the only change to Sync Meeting.
 
 ### 3.4 Backfill (no migration)
 
-Transcripts that predate the ledger are evaluated at read time: a transcript is treated as stamped for org X if its date is **≤ the latest `lastUnifiedGenAt` across X's agendas** (agendas resolved via `calendar_series.organizationId`). Backfill applies only to transcripts dated before `LEDGER_EPOCH_MS` (the moment Sync Meeting stamping goes live); after it, the ledger alone decides. For `cross-org` transcripts the threshold is the master agenda's `lastUnifiedGenAt` only — a client's own Sync Meeting saw the Touch Base as context, not a source. `vistamar-internal` transcripts are never backfilled for a client: no client sync ever used them as a source. No backfill writes. Computed once per run.
+Transcripts that predate the ledger are evaluated at read time: a transcript is treated as stamped for org X if its date is **≤ the latest `lastUnifiedGenAt` across X's agendas** (agendas resolved via `calendar_series.organizationId`). Backfill applies only to transcripts dated before `LEDGER_EPOCH_MS` (the moment Sync Meeting stamping goes live); after it, the ledger alone decides. For `cross-org` and `vistamar-internal` transcripts the threshold is the master agenda's `lastUnifiedGenAt` only — the master's Sync Meeting used them as sources for client tasks, while a client's own Sync Meeting saw them as context. For the vistamar org its own internal meetings are `this-org` and use vistamar's threshold. No backfill writes. Computed once per run.
 
 **Known approximation:** Sync Meeting only looks back one meeting cycle, so backfill can mark a transcript synced that no Sync Meeting actually read. Accepted: such transcripts still reach the model as `already-synced` context.
 

@@ -130,8 +130,9 @@ Be precise, not exhaustive. Return empty arrays for any boardChanges kind with n
 const SCOPE_TAG = { "already-synced": "Already synced" };
 
 function sharedSuffix(tr, orgName) {
-  if (tr.scope === "vistamar-internal") return ` [Vistamar internal — take only ${orgName}'s parts]`;
-  if (tr.crossOrg || tr.scope === "cross-org") return ` [cross-org — take only ${orgName}'s parts]`;
+  const from = tr.sharedFrom || tr.scope;
+  if (from === "vistamar-internal") return ` [Vistamar internal — take only ${orgName}'s parts]`;
+  if (from === "cross-org") return ` [cross-org — take only ${orgName}'s parts]`;
   return "";
 }
 

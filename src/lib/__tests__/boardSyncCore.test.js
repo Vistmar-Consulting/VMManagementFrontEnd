@@ -98,15 +98,15 @@ describe("splitBucket — ledger + backfill", () => {
     expect(s.fresh).toEqual([]);
     expect(s.context[0].scope).toBe("already-synced");
   });
-  it("already-synced cross-org row keeps the crossOrg flag", () => {
+  it("already-synced cross-org row keeps where it was shared from", () => {
     const ledger = new Map([["m", { orgs: { unio: { by: "board" } } }]]);
     const s = splitBucket(bucketOf([tr("m", "VM Weekly Touch Base", "vistamar", 1)], "unio"), "unio", { ...ctxBase, ledger });
-    expect(s.context[0]).toMatchObject({ scope: "already-synced", crossOrg: true });
+    expect(s.context[0]).toMatchObject({ scope: "already-synced", sharedFrom: "cross-org" });
   });
-  it("already-synced this-org row is not flagged crossOrg", () => {
+  it("already-synced this-org row is not shared", () => {
     const ledger = new Map([["a", { orgs: { unio: { by: "agenda" } } }]]);
     const s = splitBucket(bucketOf([tr("a", "Unio weekly", "unio", 2)], "unio"), "unio", { ...ctxBase, ledger });
-    expect(s.context[0].crossOrg).toBe(false);
+    expect(s.context[0].sharedFrom).toBe("");
   });
   it("cross-org stamped for another org is still new for this one", () => {
     const ledger = new Map([["m", { orgs: { vistamar: { by: "board" } } }]]);
@@ -117,17 +117,34 @@ describe("splitBucket — ledger + backfill", () => {
     const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 3)], "unio"), "unio", ctxBase);
     expect(s.fresh.map((t) => [t.id, t.scope])).toEqual([["v", "vistamar-internal"]]);
   });
-  it("backfill never hides vistamar-internal: no Sync Meeting ever used it for a client", () => {
+  it("vistamar-internal stamped for one client is still new for another", () => {
+    const ledger = new Map([["v", { orgs: { unio: { by: "board" } } }]]);
+    const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 3)], "id-care"), "id-care", { ...ctxBase, ledger });
+    expect(s.fresh.map((t) => t.id)).toEqual(["v"]);
+  });
+  it("backfill: vistamar-internal uses the master agenda's last sync", () => {
     const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 5)], "unio"), "unio", {
-      ...ctxBase, thresholds: { unio: NOW - DAY }, masterThreshold: NOW - DAY,
+      ...ctxBase, masterThreshold: NOW - 2 * DAY,
+    });
+    expect(s.fresh).toEqual([]);
+  });
+  it("backfill: a client's own later Sync Meeting does NOT hide a vistamar-internal transcript", () => {
+    const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 5)], "unio"), "unio", {
+      ...ctxBase, thresholds: { unio: NOW - DAY },
     });
     expect(s.fresh.map((t) => t.id)).toEqual(["v"]);
   });
-  it("vistamar-internal stamped for the client → already-synced, flagged crossOrg", () => {
+  it("backfill: the vistamar org's own meeting uses vistamar's last Sync Meeting", () => {
+    const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 5)], "vistamar"), "vistamar", {
+      ...ctxBase, thresholds: { vistamar: NOW - 2 * DAY },
+    });
+    expect(s.fresh).toEqual([]);
+  });
+  it("vistamar-internal stamped for the client → already-synced, shared from vistamar-internal", () => {
     const ledger = new Map([["v", { orgs: { unio: { by: "board" } } }]]);
     const s = splitBucket(bucketOf([tr("v", "Platform dev", null, 3)], "unio"), "unio", { ...ctxBase, ledger });
     expect(s.fresh).toEqual([]);
-    expect(s.context[0]).toMatchObject({ scope: "already-synced", crossOrg: true });
+    expect(s.context[0]).toMatchObject({ scope: "already-synced", sharedFrom: "vistamar-internal" });
   });
   it("backfill: transcript before the org's last Sync Meeting counts as synced", () => {
     const s = splitBucket(bucketOf([tr("a", "Unio weekly", "unio", 5)], "unio"), "unio", {
@@ -174,6 +191,12 @@ describe("syncMeetingStamps — Sync Meeting writer rule", () => {
       targetOrg: "unio", master: false, orgSlugs: [],
     });
     expect(out).toEqual([{ id: "a", org: "unio" }]);
+  });
+  it("master stamps internal meetings for every org: its clients take their parts from them", () => {
+    const out = syncMeetingStamps([t("v", "vistamar-internal", { org: "vistamar" })], {
+      targetOrg: null, master: true, orgSlugs: ["unio", "vistamar"],
+    });
+    expect(out).toEqual([{ id: "v", org: "unio" }, { id: "v", org: "vistamar" }]);
   });
   it("master stamps mapped transcripts for every org, others for their own org", () => {
     const out = syncMeetingStamps([t("m", "vistamar-internal", { org: "vistamar", mapped: true }), t("c", "this-org", { org: "unio" })], {

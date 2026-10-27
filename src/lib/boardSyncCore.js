@@ -82,15 +82,14 @@ export function bucketTranscripts(list, { orgSlugs, masterTitles, titleOrgs, res
 export const LEDGER_EPOCH_MS = Date.parse("2026-10-27T17:05:00Z");
 
 // Ledger stamp, or — for pre-ledger transcripts only — backfill: it counts as
-// synced for org X if it predates X's latest Sync Meeting. A cross-org meeting
-// was only ever a SOURCE for the master agenda's sync (a client's Sync Meeting
-// saw it as context), so it uses the master threshold alone. A vistamar-internal
-// meeting was never a source for a client's tasks, so it has no backfill.
-// Spec 3.4.
+// synced for org X if it predates X's latest Sync Meeting. Cross-org and
+// vistamar-internal meetings were only ever a SOURCE for client tasks via the
+// master agenda's sync (a client's own Sync Meeting saw them as context), so
+// they use the master threshold alone. Spec 3.4.
 function isSyncedFor(t, org, { ledger, thresholds, masterThreshold, epochMs = LEDGER_EPOCH_MS }) {
   if (ledger.get(t.id)?.orgs?.[org]) return true;
-  if (t._ms >= epochMs || t.scope === "vistamar-internal") return false;
-  const th = t.scope === "cross-org" ? masterThreshold || 0 : thresholds[org] || 0;
+  if (t._ms >= epochMs) return false;
+  const th = t.scope === "this-org" ? thresholds[org] || 0 : masterThreshold || 0;
   return t._ms <= th;
 }
 
@@ -102,8 +101,8 @@ export function splitBucket(bucket, org, ctx, { maxNew = MAX_NEW_TRANSCRIPTS, ma
   const fresh = [];
   const synced = [];
   for (const t of sorted) {
-    // crossOrg keeps "take only this org's parts" on a synced shared meeting.
-    if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced", crossOrg: t.scope !== "this-org" });
+    // sharedFrom keeps "take only this org's parts" on a synced shared meeting.
+    if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced", sharedFrom: t.scope === "this-org" ? "" : t.scope });
     else fresh.push(t);
   }
   return {
@@ -120,7 +119,8 @@ export function syncMeetingStamps(transcripts, { targetOrg, master, orgSlugs }) 
   for (const t of transcripts || []) {
     if (!t?.id) continue;
     if (master) {
-      if (t.mapped) orgSlugs.forEach((o) => out.push({ id: t.id, org: o }));
+      // The master takes every org's parts from the Touch Base and from internal meetings.
+      if (t.mapped || t.scope === "vistamar-internal") orgSlugs.forEach((o) => out.push({ id: t.id, org: o }));
       else if (t.org) out.push({ id: t.id, org: t.org });
     } else if (t.scope === "this-org" && targetOrg) {
       out.push({ id: t.id, org: targetOrg });

@@ -56,7 +56,7 @@ describe("buildUserMessage", () => {
         { title: "Touch Base", date: "2026-10-26", scope: "cross-org", overview: "o", actionItems: "a" },
         { title: "Platform dev", date: "2026-10-20", scope: "vistamar-internal", overview: "x", actionItems: "" },
       ],
-      contextTranscripts: [{ title: "Unio weekly", date: "2026-10-01", scope: "already-synced", crossOrg: false, overview: "y", actionItems: "" }],
+      contextTranscripts: [{ title: "Unio weekly", date: "2026-10-01", scope: "already-synced", sharedFrom: "", overview: "y", actionItems: "" }],
       projectBoard: [], existingTasks: [{ id: "i1", title: "Fix hero", status: "Assigned" }], orgAgendas: [], extraContext: "Blog A published",
     });
     const newIdx = m.indexOf("## NEW meeting transcripts");
@@ -76,9 +76,13 @@ describe("buildUserMessage — synced cross-org", () => {
   it("keeps the cross-org suffix on an already-synced Touch Base", () => {
     const m = buildUserMessage({
       org: { slug: "unio", name: "Unio" }, transcripts: [],
-      contextTranscripts: [{ title: "Touch Base", date: "2026-10-26", scope: "already-synced", crossOrg: true, overview: "o", actionItems: "" }],
+      contextTranscripts: [
+        { title: "Touch Base", date: "2026-10-26", scope: "already-synced", sharedFrom: "cross-org", overview: "o", actionItems: "" },
+        { title: "Platform dev", date: "2026-10-20", scope: "already-synced", sharedFrom: "vistamar-internal", overview: "x", actionItems: "" },
+      ],
     });
     expect(m).toContain("[Already synced] Touch Base (2026-10-26) [cross-org — take only Unio's parts]");
+    expect(m).toContain("[Already synced] Platform dev (2026-10-20) [Vistamar internal — take only Unio's parts]");
   });
 });
 
