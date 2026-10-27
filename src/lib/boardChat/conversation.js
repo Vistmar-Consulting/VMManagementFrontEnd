@@ -14,6 +14,7 @@ export const MAX_CALLS_PER_TURN = 10;
 const CAP_MESSAGE = `Not run: this turn reached its limit of ${MAX_CALLS_PER_TURN} model calls. The user can ask again to continue.`;
 
 export function formatUsd(n) {
+  if (n > 0 && n < 0.0001) return "<$0.0001";
   return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
 }
 
@@ -49,11 +50,16 @@ export async function runTurn({ messages: start, post, executeTool, onUpdate }) 
       throw Object.assign(err, { messages, turn });
     }
     addCost(turn, data.costUsd, true);
+    const uses = data.content.filter((b) => b.type === "tool_use");
+    if (data.stopReason === "tool_use" && uses.length === 0) {
+      // An empty tool_result message would 400 on the next request. The reply
+      // is not appended, so `messages` stays resendable for Retry.
+      throw Object.assign(new Error("The model asked for tools but sent none."), { messages, turn, model: data.model });
+    }
     messages = [...messages, { role: "assistant", content: data.content }];
     onUpdate?.({ messages, turn });
     if (data.stopReason !== "tool_use") return { messages, turn, done: true };
 
-    const uses = data.content.filter((b) => b.type === "tool_use");
     const capped = call === MAX_CALLS_PER_TURN;
     const results = capped
       ? uses.map((use) => ({ type: "tool_result", tool_use_id: use.id, content: CAP_MESSAGE, is_error: true }))

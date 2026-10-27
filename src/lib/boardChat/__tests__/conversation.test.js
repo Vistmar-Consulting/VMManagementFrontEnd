@@ -116,9 +116,31 @@ describe("runTurn", () => {
   });
 });
 
+describe("runTurn empty tool_use", () => {
+  it("tool_use stop with no tool_use blocks ends the turn with an error, keeping cost and a resendable history", async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ stopReason: "tool_use", costUsd: 0.01, content: [{ type: "tool_use", id: "t1", name: "x", input: {} }] })
+      .mockResolvedValueOnce({ stopReason: "tool_use", costUsd: 0.02, model: "m", content: [{ type: "text", text: "hmm" }] });
+    const executeTool = vi.fn().mockResolvedValue({ result: {}, step: "x" });
+    const err = await runTurn({ messages: [user], post, executeTool }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe("The model asked for tools but sent none.");
+    expect(err.turn.costUsd).toBeCloseTo(0.03, 6);
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(err.messages).toHaveLength(3);
+    expect(err.messages[2].role).toBe("user");
+    expect(err.messages[2].content[0].tool_use_id).toBe("t1");
+  });
+});
+
 describe("formatUsd", () => {
   it("shows 4 decimals under a cent, 2 above", () => {
     expect(formatUsd(0.00412)).toBe("$0.0041");
     expect(formatUsd(0.5)).toBe("$0.50");
+  });
+
+  it("shows <$0.0001 for a positive amount that would round to zero, $0.0000 for zero", () => {
+    expect(formatUsd(0.00004)).toBe("<$0.0001");
+    expect(formatUsd(0)).toBe("$0.0000");
   });
 });
