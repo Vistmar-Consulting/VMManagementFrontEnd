@@ -39,7 +39,9 @@ import {
   setAgendaStyle,
 } from "../lib/aiAgenda.js";
 import { validateProposal, normalizeTopicRefs, classifyTopicChanges, inheritKeysForCreate } from "../lib/syncMeeting.js";
-import { useOthers } from "../lib/liveblocks.js";
+import { useOthers, useRoom } from "../lib/liveblocks.js";
+import { getYjsProviderForRoom } from "@liveblocks/yjs";
+import { writeTopicBodies } from "./editor/topicBodyYjs.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
@@ -105,10 +107,15 @@ export default function SyncMeetingDialog({
   const { user } = useAuth();
   const [step, setStep] = useState("choose"); // choose | working | review
   const others = useOthers(); // live collaborators in this agenda's room (presence-aware apply warning)
+  // The agenda room's Yjs provider — applied topic bodies are written into its
+  // live fragments, since the fragment wins over Firestore once it has content.
+  const room = useRoom();
+  const yProvider = useMemo(() => getYjsProviderForRoom(room), [room]);
   const [meetingStyle, setMeetingStyle] = useState(agenda?.meetingStyle === "executive" ? "executive" : "working");
   const [extraContext, setExtraContext] = useState("");
   const [includeSops, setIncludeSops] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [applied, setApplied] = useState(false); // committed; Apply stays disabled
   const [error, setError] = useState(null);
   const [proposal, setProposal] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -124,6 +131,9 @@ export default function SyncMeetingDialog({
   const [selCreates, setSelCreates] = useState(() => new Set());
   const [selMoves, setSelMoves] = useState(() => new Set());
   const [selNotes, setSelNotes] = useState(() => new Set());
+  // Topics the AI omitted that a person checked for deletion. A sync never
+  // deletes a topic on its own.
+  const [selDeleteTopics, setSelDeleteTopics] = useState(() => new Set());
   // Inline promotions per create index: { [idx]: { statusId, assigneeIds?, categoryId, tagIds } }.
   const [promotions, setPromotions] = useState({});
   // Previous agenda — captured once at mount so refine can restore dropped topics.
@@ -315,17 +325,27 @@ export default function SyncMeetingDialog({
     setPromotions((prev) => ({ ...prev, [idx]: { ...(prev[idx] || {}), ...patch } }));
 
   const apply = async () => {
-    // Presence-aware guard: applyUnified replaces ALL topics. If others are live
-    // in this agenda right now, confirm before blowing away what they're editing.
+    // The live editor must be connected: updated bodies are written into it
+    // after the Firestore commit. Refuse before writing anything otherwise.
+    if (!yProvider.synced) {
+      setError("Live editor not connected — reload the agenda and retry.");
+      return;
+    }
+    // Presence-aware guard: applyUnified overwrites the bodies of the topics it
+    // carries forward. If others are live in this agenda, confirm first.
     if (others.length > 0) {
       const ok = window.confirm(
-        `${others.length} other ${others.length === 1 ? "person is" : "people are"} editing this agenda right now. Applying Sync Meeting replaces all topics. Continue?`,
+        `${others.length} other ${others.length === 1 ? "person is" : "people are"} editing this agenda right now. Applying Sync Meeting overwrites the updated topics' text. Continue?`,
       );
       if (!ok) return;
     }
     setBusy(true);
     setError(null);
     try {
+      // Only topics still listed as omitted can be deleted (a refine may have
+      // brought a checked topic back).
+      const omittedIds = new Set(classifyTopicChanges(topics, proposal.topics || []).dropped.map((d) => d.id));
+      const deleteTopicIds = [...selDeleteTopics].filter((id) => omittedIds.has(id));
       // Only checked + valid creates are accepted (rejected creates are never
       // selectable, but intersect defensively against the valid set).
       const createIdxs = [...selCreates].filter((i) => validCreateIdxs.has(i));
@@ -341,8 +361,19 @@ export default function SyncMeetingDialog({
         noteIdxs,
         promotions: promo,
         existingTasks, // threaded through for applyUnified's at-apply re-validation
+        deleteTopicIds,
       };
-      await applyUnified(agendaId, orgSlug, proposal, accepted, user?.uid || null, { master });
+      const { updatedBodies } = await applyUnified(agendaId, orgSlug, proposal, accepted, user?.uid || null, { master });
+      // Committed from here on — a second Apply would duplicate new topics and
+      // board items, so a live-editor failure must not re-enable it.
+      try {
+        writeTopicBodies(yProvider.getYDoc(), updatedBodies);
+      } catch (err) {
+        setApplied(true);
+        setError(`Applied and saved, but the live editor update failed (${err.message}). Reload the agenda before editing — otherwise the old text can be saved back over the new.`);
+        setBusy(false);
+        return;
+      }
       onClose();
     } catch (err) {
       setError(err.message || "Failed to apply");
@@ -480,7 +511,11 @@ export default function SyncMeetingDialog({
               </Typography>
             )}
             {(() => {
-              const { statuses, dropped } = classifyTopicChanges(topics, proposal.topics || []);
+              const { statuses, dropped: omitted } = classifyTopicChanges(topics, proposal.topics || []);
+              // Only topics the AI was shown can be "suggested for removal"; one
+              // added after the sync started is simply kept.
+              const shownIds = new Set(prevTopicsSnapshot.map((t) => t.id));
+              const dropped = omitted.filter((d) => shownIds.has(d.id));
               return (
                 <Box sx={{ mb: 1.5 }}>
                   <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mb: dropped.length ? 0.75 : 0 }}>
@@ -495,9 +530,25 @@ export default function SyncMeetingDialog({
                     ))}
                   </Stack>
                   {dropped.length > 0 && (
-                    <Typography variant="caption" color="text.secondary">
-                      Dropped: {dropped.map((d) => d.name).join(", ")}
-                    </Typography>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        AI suggests removing — kept unless you check Delete:
+                      </Typography>
+                      {dropped.map((d) => (
+                        <FormControlLabel
+                          key={d.id}
+                          sx={{ display: "flex", ml: 0 }}
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={selDeleteTopics.has(d.id)}
+                              onChange={() => toggle(setSelDeleteTopics)(d.id)}
+                            />
+                          }
+                          label={<Typography variant="body2">Delete “{d.name || "(untitled)"}”</Typography>}
+                        />
+                      ))}
+                    </Box>
                   )}
                 </Box>
               );
@@ -714,8 +765,9 @@ export default function SyncMeetingDialog({
             )}
 
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
-              Applying replaces the topics and Open Floor, and writes the checked board changes —
-              all in one transaction. The current agenda was saved to version history first.
+              Applying updates the topics and Open Floor in place, adds new topics, deletes only the
+              topics you checked, and writes the checked board changes — all in one transaction. The
+              current agenda was saved to version history first.
             </Typography>
           </Box>
         ) : step === "working" ? (
@@ -784,7 +836,7 @@ export default function SyncMeetingDialog({
           {step === "review" ? "Discard" : "Cancel"}
         </Button>
         {step === "review" ? (
-          <Button variant="contained" onClick={apply} disabled={busy || refining}>
+          <Button variant="contained" onClick={apply} disabled={busy || refining || applied}>
             {busy ? "Applying…" : "Apply"}
           </Button>
         ) : (

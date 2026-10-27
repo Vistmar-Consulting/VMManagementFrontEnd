@@ -28,7 +28,7 @@ import { sanitizeHtml } from "./agendaHtml.js";
 import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
-import { validateProposal, inheritKeysForCreate } from "./syncMeeting.js";
+import { validateProposal, inheritKeysForCreate, planTopicWrites } from "./syncMeeting.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_WINDOW_MS = 21 * DAY_MS; // used only when this agenda has no mapped past meeting yet
@@ -474,11 +474,17 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
   const catBySlug = new Set(catSnap.docs.map((d) => d.id));
   const catByName = new Map(catSnap.docs.map((d) => [(d.data().name || "").toLowerCase(), d.id]));
 
-  // Canonical topic identity: a continued topic (carrying a ref to an existing
-  // topic doc id) keeps its Firestore name (and, for master, org) — the model's
-  // name is discarded. This is the structural title-lock.
-  const curNameById = new Map(curTopics.docs.map((d) => [d.id, d.data().name || ""]));
-  const curOrgById = new Map(curTopics.docs.map((d) => [d.id, d.data().organizationId ?? null]));
+  // Topic writes, planned before the transaction so a bad delete request throws
+  // before anything is written. Current topics in their agenda order.
+  const currentTopics = curTopics.docs
+    .map((d) => ({ id: d.id, sortOrder: d.data().sortOrder ?? 0 }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const topicPlan = planTopicWrites(currentTopics, proposal.topics || [], sel.deleteTopicIds || []);
+  const curBodyById = new Map(curTopics.docs.map((d) => [d.id, sanitizeHtml(d.data().bodyHtml || "")]));
+  // Retained topic id → the body written to Firestore; returned so the caller
+  // can write the same body into each topic's live Yjs fragment.
+  let updatedBodies = {};
+
   const resolveCat = (c) => {
     const val = String(c || "").trim();
     if (catBySlug.has(val)) return val;
@@ -557,7 +563,8 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     }
 
     // ---- WRITES PHASE ----
-    // Fresh-per-attempt coined-tag accumulator (retries must not double-append).
+    // Fresh-per-attempt accumulators (retries must not double-append).
+    updatedBodies = {};
     const newTagWrites = [];
     const resolveTag = (t) => {
       const name = String(t || "").trim();
@@ -580,26 +587,46 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       lastUnifiedGenAt: serverTimestamp(),
     });
 
-    // Replace the topic set.
-    curTopics.docs.forEach((d) => tx.delete(d.ref));
-    (proposal.topics || []).forEach((t, i) => {
-      const categoryIds = [...new Set((t.categories || []).map(resolveCat).filter(Boolean))];
-      const tagIds = [...new Set((t.tags || []).map(resolveTag).filter(Boolean))];
-      const ref = doc(collection(db, "agendas", agendaId, "topics"));
-      const retained = t.ref && curNameById.has(t.ref);
-      tx.set(ref, {
-        name: retained ? curNameById.get(t.ref) : String(t.name || ""),
-        bodyHtml: sanitizeHtml(t.bodyHtml || ""),
-        sortOrder: i + 1,
-        categoryIds,
-        tagIds,
-        organizationId: retained && curOrgById.has(t.ref) ? curOrgById.get(t.ref) : (t.organizationId || null),
+    // Topics: a sync never deletes a topic on its own (planTopicWrites).
+    // Retained topics update in place, keeping their doc id, Firestore name and
+    // org — the structural title-lock. Omitted topics are kept; only the ones a
+    // person checked for deletion are deleted.
+    const topicRef = (id) => doc(db, "agendas", agendaId, "topics", id);
+    const keysOf = (t) => ({
+      categoryIds: [...new Set((t.categories || []).map(resolveCat).filter(Boolean))],
+      tagIds: [...new Set((t.tags || []).map(resolveTag).filter(Boolean))],
+    });
+    topicPlan.updates.forEach(({ id, topic, sortOrder }) => {
+      // An unchanged body is left alone in Firestore AND the live fragment, so
+      // edits made in the room during review are not overwritten for nothing.
+      const bodyHtml = sanitizeHtml(topic.bodyHtml || "");
+      const bodyChanged = bodyHtml !== curBodyById.get(id);
+      if (bodyChanged) updatedBodies[id] = bodyHtml;
+      tx.update(topicRef(id), {
+        ...(bodyChanged ? { bodyHtml } : {}),
+        sortOrder,
+        ...keysOf(topic),
+        updatedAt: serverTimestamp(),
+        updatedByUid: uid,
+      });
+    });
+    topicPlan.creates.forEach(({ topic, sortOrder }) => {
+      tx.set(doc(collection(db, "agendas", agendaId, "topics")), {
+        name: String(topic.name || ""),
+        bodyHtml: sanitizeHtml(topic.bodyHtml || ""),
+        sortOrder,
+        ...keysOf(topic),
+        organizationId: topic.organizationId || null,
         createdAt: serverTimestamp(),
         createdByUid: uid,
         updatedAt: serverTimestamp(),
         updatedByUid: uid,
       });
     });
+    topicPlan.keeps.forEach(({ id, sortOrder }) => {
+      tx.update(topicRef(id), { sortOrder });
+    });
+    topicPlan.deletes.forEach((id) => tx.delete(topicRef(id)));
 
     // Accepted creates → new items. itemNumber from each org's counter.
     const orgNum = new Map();
@@ -723,5 +750,5 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     console.warn("aiGenLog (unified) write skipped:", e?.message);
   }
 
-  return { created: createdCount, moved: movedCount, noted: notedCount, newTags: newTagCount };
+  return { created: createdCount, moved: movedCount, noted: notedCount, newTags: newTagCount, updatedBodies };
 }

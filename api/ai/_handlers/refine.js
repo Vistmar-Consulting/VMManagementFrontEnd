@@ -83,7 +83,7 @@ PRESERVE HYPERLINKS: keep every existing <a href="…"> verbatim (exact href + t
 
 PRESERVE TOPIC IDS: each input topic carries a topicId (e.g. "t0", "t2"). For every topic you keep or edit, copy its topicId exactly into the output. Do NOT invent or change topicIds. Omit topicId only for a brand-new topic you add — the caller will assign a fresh id.
 
-PRESERVE TOPIC REFS: each input topic may carry a ref (e.g. "docABC123"). Copy each topic's ref into the output EXACTLY. Never invent or change a ref. A brand-new topic you add has ref "".
+PRESERVE TOPIC REFS: each input topic may carry a ref (e.g. "docABC123"). Copy each topic's ref into the output EXACTLY. Never invent or change a ref. A topic you restore from the Previous agenda takes the [ref: id] listed there, and keeps that topic's title. A brand-new topic you add has ref "".
 
 HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Exception: if a body already contains a <table>, keep it as a table (<table>, <tbody>, <tr>, <th>, <td>, each cell's text in a <p>) with the same columns and header row; update cell text in place, add a row only for a new item and remove a row only for a dropped item; never create a new table. Be concise.${bulletFormatBlock}
 ${master ? `\nThis is the MASTER Touch Base agenda — organized org by org. EVERY topic must keep/set its organizationId (slug from the list). Place any new topic under the right org and keep org grouping intact.\n\n## Organizations (use these slugs for organizationId)\n${orgListBlock(orgMeta)}\n` : ""}
@@ -107,9 +107,9 @@ function buildUserMessage(proposal, instruction, master, prevTopics) {
   if (p.openFloorHtml) lines.push(`Open Floor (HTML): ${p.openFloorHtml}`);
   if (Array.isArray(prevTopics) && prevTopics.length) {
     lines.push("");
-    lines.push("## Previous agenda (topics before this sync run — use when restoring dropped content)");
+    lines.push("## Previous agenda (topics before this sync run — use when restoring dropped content; a restored topic keeps its [ref: id] as its ref)");
     prevTopics.forEach((t, i) => {
-      lines.push(`Topic ${i + 1}: ${t.name || ""}`);
+      lines.push(`Topic ${i + 1}: ${t.name || ""}${t.id ? ` [ref: ${t.id}]` : ""}`);
       if (t.bodyHtml) lines.push(`  Body (HTML): ${t.bodyHtml}`);
     });
   }

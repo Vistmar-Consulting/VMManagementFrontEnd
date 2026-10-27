@@ -117,7 +117,7 @@ export function normalizeTopicRefs(topics, currentTopicIds) {
 
 // Classify proposal topics against the current agenda topics for the review
 // diff. Returns { statuses, dropped }:
-//   statuses[i] = "retained" (proposal topic i's ref matches a current id)
+//   statuses[i] = "retained" (proposal topic i is the first to ref a current id)
 //                 | "new"
 //   dropped     = current topics whose id no proposal topic references
 // Pure. Pass current topics as [{ id, name }, ...].
@@ -126,7 +126,7 @@ export function classifyTopicChanges(currentTopics, proposalTopics) {
   const referenced = new Set();
   const statuses = (proposalTopics || []).map((t) => {
     const ref = typeof t?.ref === "string" ? t.ref : "";
-    if (ref && currentById.has(ref)) {
+    if (ref && currentById.has(ref) && !referenced.has(ref)) {
       referenced.add(ref);
       return "retained";
     }
@@ -136,4 +136,32 @@ export function classifyTopicChanges(currentTopics, proposalTopics) {
     .filter((t) => !referenced.has(t.id))
     .map((t) => ({ id: t.id, name: t.name || "" }));
   return { statuses, dropped };
+}
+
+// Plan the topic writes for an apply. A sync never deletes a topic on its own:
+// retained topics are updated in place (same doc id), ref-less topics are
+// created, and topics the proposal omits are kept, ordered after the proposal's
+// topics. Only ids in deleteTopicIds (omitted topics a person checked) are
+// deleted; any other id there throws. Pure. currentTopics in current order.
+// Returns { updates: [{ id, topic, sortOrder }], creates: [{ topic, sortOrder }],
+//           keeps: [{ id, sortOrder }], deletes: [id] }.
+export function planTopicWrites(currentTopics, proposalTopics, deleteTopicIds = []) {
+  const { statuses, dropped } = classifyTopicChanges(currentTopics, proposalTopics);
+  const droppedIds = new Set(dropped.map((d) => d.id));
+  const deletes = [...new Set(deleteTopicIds || [])];
+  const bad = deletes.filter((id) => !droppedIds.has(id));
+  if (bad.length) throw new Error(`Cannot delete topics the sync keeps or that are not on this agenda: ${bad.join(", ")}`);
+  const deleteSet = new Set(deletes);
+
+  const updates = [];
+  const creates = [];
+  (proposalTopics || []).forEach((topic, i) => {
+    if (statuses[i] === "retained") updates.push({ id: topic.ref, topic, sortOrder: i + 1 });
+    else creates.push({ topic, sortOrder: i + 1 });
+  });
+  let next = (proposalTopics || []).length;
+  const keeps = dropped
+    .filter((d) => !deleteSet.has(d.id))
+    .map((d) => ({ id: d.id, sortOrder: ++next }));
+  return { updates, creates, keeps, deletes };
 }

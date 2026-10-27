@@ -1,9 +1,11 @@
 import * as Y from "yjs";
-import { ySyncPluginKey } from "y-prosemirror";
+import { ySyncPluginKey } from "@tiptap/y-tiptap";
 
-// TipTap's onUpdate hands a ProseMirror transaction. y-prosemirror tags any
-// transaction it applies from a REMOTE Yjs update with { isChangeOrigin: true }
-// under ySyncPluginKey. Return true only for genuine LOCAL user edits, so the
+// TipTap's onUpdate hands a ProseMirror transaction. The Collaboration
+// extension binds through @tiptap/y-tiptap (NOT y-prosemirror — its PluginKey
+// is a different object, "y-sync$" vs "y-sync$1", so the meta lookup must use
+// y-tiptap's key). The binding tags any transaction it applies from a REMOTE
+// Yjs update with { isChangeOrigin: true } under ySyncPluginKey. Return true only for genuine LOCAL user edits, so the
 // Firestore mirror writes once (from the originating client) instead of N times.
 export function isLocalEditTransaction(transaction) {
   const meta = transaction?.getMeta?.(ySyncPluginKey);

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { TableKit } from "@tiptap/extension-table";
+import { bodyContentExtensions } from "./editorExtensions.js";
 import { Placeholder } from "@tiptap/extensions";
 import { Collaboration } from "@tiptap/extension-collaboration";
 import { CollaborationCaret } from "@tiptap/extension-collaboration-caret";
@@ -136,38 +135,13 @@ export default function CollabBodyEditor({
     immediatelyRender: false,
 
     extensions: [
-      StarterKit.configure({
-        // undoRedo: false is mandatory — Collaboration owns undo/redo history.
-        // (NOT history: false — that's ignored in StarterKit v3.)
-        undoRedo: false,
-
-        // Disable extensions we don't expose in this editor
-        heading: false,
-        codeBlock: false,
-        blockquote: false,
-        horizontalRule: false,
-
-        // Configure Link (bundled in StarterKit v3 — do NOT add standalone)
-        link: {
-          openOnClick: false,
-          autolink: true,
-          HTMLAttributes: {
-            rel: "noopener noreferrer",
-            target: "_blank",
-          },
-        },
-
-        // Configure Underline (bundled in StarterKit v3 — do NOT add standalone)
-        underline: {},
-      }),
+      // StarterKit + TableKit — the schema-defining set (editorExtensions.js).
+      ...bodyContentExtensions(),
 
       // Placeholder is NOT bundled in StarterKit v3 — register it from
       // @tiptap/extensions. Emits data-placeholder attr + is-editor-empty class
       // on the empty first node, which the CSS rule above targets.
       Placeholder.configure({ placeholder }),
-
-      // Table, TableRow, TableHeader, TableCell. No column resizing.
-      TableKit.configure({ table: { resizable: false } }),
 
       // Collaboration takes over history and binds to the Yjs doc fragment.
       // NO `content` prop on useEditor — Yjs is the source.

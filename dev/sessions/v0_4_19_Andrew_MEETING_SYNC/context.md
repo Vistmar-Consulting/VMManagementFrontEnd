@@ -29,8 +29,16 @@
 
 `applyUnified` (`src/lib/aiAgenda.js:584`) deletes **every** topic doc and recreates the proposal's topics with new doc IDs. Any topic the model omits is lost (the prompt explicitly allows omitting "fully complete" topics). New IDs are also what make AI bodies appear: the collab fragment is keyed by topic id and only seeds from Firestore `bodyHtml` when empty (`CollabBodyEditor.jsx` seed effect). An in-place fix therefore has to write AI bodies into the live Yjs fragment too. Needs design (brainstorming) before code.
 
+**Implemented 2026-10-26** per `docs/superpowers/specs/2026-10-26-sync-topic-no-delete-design.md`: in-place apply (`planTopicWrites`), unchecked Delete boxes for AI-suggested removals, updated bodies written into the live Yjs fragments (`writeTopicBodies`), apply refused when the live editor is not connected. Code review also found the Firestore mirror guard used the wrong plugin key (`y-prosemirror` vs TipTap's `@tiptap/y-tiptap`), so every remote change was mirrored by each viewing client — fixed with a real-binding test.
+
+## 3. Test failures — finding
+
+The 12 failures from 2026-10-21 did not reproduce: serial run with a 15s timeout passed 31 files / 226 tests. Three tests exceed vitest's 5s default even then (`TaskBoard.expandAll` 18.3s and 11.2s, `NewMeetingDialog.attendees` 6.0s), so they fail whenever the machine is loaded; module import took 327s of the 553s run.
+
 ## Deferred
 
-- Topic no-delete design + implementation (item 2).
+- Slow tests above — look again when no other worktrees are checked out (Andrew, 2026-10-26).
+- Master (Touch Base) sync on Opus 5.5 — Andrew will run it later.
 - Optional: server-side refusal fallback (`fallbacks: "default"`) on the Opus 5.5 calls — untested combination with fast mode.
 - `generate.js` still on Sonnet 4.6 — no FE caller found.
+- `y-prosemirror` is no longer imported by `src/`; it can be dropped from `package.json`.

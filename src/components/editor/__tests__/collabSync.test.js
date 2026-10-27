@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { ySyncPluginKey } from "y-prosemirror";
+import { ySyncPluginKey } from "@tiptap/y-tiptap";
+import { Collaboration } from "@tiptap/extension-collaboration";
+import { Editor } from "@tiptap/core";
+import { bodyContentExtensions } from "../editorExtensions.js";
 import {
   isLocalEditTransaction,
   isBlankContent,
@@ -26,6 +29,25 @@ describe("isLocalEditTransaction", () => {
   });
   it("malformed transaction (no getMeta) → true (treat as local, fail safe to mirror)", () => {
     expect(isLocalEditTransaction({})).toBe(true);
+  });
+
+  // Against the REAL Collaboration binding, not a hand-built meta: the fake
+  // above once used y-prosemirror's key and passed while every remote change
+  // was misread as local (TipTap binds through @tiptap/y-tiptap).
+  it("a remote Yjs update applied through the real binding reads as NOT local", () => {
+    const ydoc = new Y.Doc();
+    const seen = [];
+    const editor = new Editor({
+      extensions: [...bodyContentExtensions(), Collaboration.configure({ document: ydoc, field: "topicA" })],
+      onUpdate: ({ transaction }) => seen.push(isLocalEditTransaction(transaction)),
+    });
+    const remote = new Y.Doc();
+    remote.get("topicA", Y.XmlFragment).insert(0, [paragraphWithText("from elsewhere")]);
+    Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(remote));
+    expect(editor.getHTML()).toContain("from elsewhere");
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((local) => local === false)).toBe(true);
+    editor.destroy();
   });
 });
 

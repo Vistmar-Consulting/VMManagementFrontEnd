@@ -98,6 +98,7 @@ const HOW_IT_WORKS = [
     group: "Safe to run",
     items: [
       ["Review before apply", "Nothing changes until you click Apply on the proposal. Applying saves the current agenda to version history first, so it's always revertible."],
+      ["Topics are never deleted by a sync", "Apply updates continuing topics in place and writes their new text straight into the live editor, so everyone sees it at once. A topic the AI leaves out is listed as a suggested removal and kept unless you tick its Delete box. Apply refuses if the live editor isn't connected."],
       ["Admin-only", "The AI Gen button appears only for admins."],
     ],
   },

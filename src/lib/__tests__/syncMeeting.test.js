@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mintTopicIds, validateProposal, inheritKeysForCreate, normalizeTopicRefs, classifyTopicChanges } from "../syncMeeting.js";
+import { mintTopicIds, validateProposal, inheritKeysForCreate, normalizeTopicRefs, classifyTopicChanges, planTopicWrites } from "../syncMeeting.js";
 
 const topics = [
   { name: "Website", categoryIds: ["website"], tagIds: ["t-hours"] },
@@ -259,5 +259,58 @@ describe("classifyTopicChanges", () => {
 
   it("handles empty inputs", () => {
     expect(classifyTopicChanges([], [])).toEqual({ statuses: [], dropped: [] });
+  });
+
+  it("retains only the first proposal topic that claims a ref; later claims are new", () => {
+    const { statuses } = classifyTopicChanges(current, [
+      { ref: "docA", name: "Alpha" },
+      { ref: "docA", name: "Alpha again" },
+    ]);
+    expect(statuses).toEqual(["retained", "new"]);
+  });
+});
+
+describe("planTopicWrites", () => {
+  const current = [{ id: "docA" }, { id: "docB" }, { id: "docC" }];
+
+  it("updates a retained topic in place and never deletes an omitted one", () => {
+    const plan = planTopicWrites(current, [{ ref: "docB", bodyHtml: "<p>b</p>" }]);
+    expect(plan.updates).toEqual([{ id: "docB", topic: { ref: "docB", bodyHtml: "<p>b</p>" }, sortOrder: 1 }]);
+    expect(plan.deletes).toEqual([]);
+    expect(plan.keeps).toEqual([{ id: "docA", sortOrder: 2 }, { id: "docC", sortOrder: 3 }]);
+  });
+
+  it("creates ref-less topics in proposal order alongside updates", () => {
+    const plan = planTopicWrites(current, [{ ref: "", name: "New" }, { ref: "docA" }, { ref: "docB" }, { ref: "docC" }]);
+    expect(plan.creates).toEqual([{ topic: { ref: "", name: "New" }, sortOrder: 1 }]);
+    expect(plan.updates.map((u) => [u.id, u.sortOrder])).toEqual([["docA", 2], ["docB", 3], ["docC", 4]]);
+    expect(plan.keeps).toEqual([]);
+  });
+
+  it("deletes only the omitted topics a person checked", () => {
+    const plan = planTopicWrites(current, [{ ref: "docA" }], ["docC"]);
+    expect(plan.deletes).toEqual(["docC"]);
+    expect(plan.keeps).toEqual([{ id: "docB", sortOrder: 2 }]);
+  });
+
+  it("refuses to delete a topic the proposal carries forward", () => {
+    expect(() => planTopicWrites(current, [{ ref: "docA" }], ["docA"])).toThrow(/docA/);
+  });
+
+  it("refuses to delete an id that is not on the agenda", () => {
+    expect(() => planTopicWrites(current, [], ["ghost"])).toThrow(/ghost/);
+  });
+
+  it("turns a second claim on the same ref into a new topic", () => {
+    const plan = planTopicWrites(current, [{ ref: "docA" }, { ref: "docA", name: "Dup" }]);
+    expect(plan.updates.map((u) => u.id)).toEqual(["docA"]);
+    expect(plan.creates).toEqual([{ topic: { ref: "docA", name: "Dup" }, sortOrder: 2 }]);
+  });
+
+  it("treats an unknown ref as a new topic", () => {
+    const plan = planTopicWrites(current, [{ ref: "ghost", name: "X" }]);
+    expect(plan.creates).toHaveLength(1);
+    expect(plan.updates).toEqual([]);
+    expect(plan.keeps.map((k) => k.id)).toEqual(["docA", "docB", "docC"]);
   });
 });
