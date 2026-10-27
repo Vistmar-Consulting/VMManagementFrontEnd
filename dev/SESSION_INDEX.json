@@ -485,6 +485,15 @@
       "summary": "Board Chat: Claude chat panel on the Task Board — Q&A over tasks/meetings, AI board filter, confirmed task/subtask writes, cost tracker.",
       "folder": "dev/sessions/v0_4_19_Andrew_BOARD_CHAT/",
       "status": "active"
+    },
+    {
+      "session_id": "SES-20261026-Andrew-v0.4.19-board-sync",
+      "developer": "Andrew",
+      "date": "2026-10-26",
+      "commit_start": "c923daf",
+      "summary": "Board Sync: Task Board all-org sync (per-org AI calls, transcript ledger shared with Sync Meeting), Andy only.",
+      "folder": "dev/sessions/v0_4_19_Andrew_BOARD_SYNC/",
+      "status": "active"
     }
   ]
 }
