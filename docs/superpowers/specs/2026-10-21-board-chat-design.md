@@ -57,16 +57,21 @@ The server is **stateless and runs one model call per request**. The browser own
 
 - Registered in `ROUTES` in `api/ai/dispatch.js`. URL `/api/ai/chat`. No `vercel.json` change: the existing `/api/ai/:action` rewrite covers it.
 - `applyCors` + `requireAuth`, same as the sibling handlers.
-- **Model resolution** (`api/ai/_handlers/_models.js`): `client.models.list()`, keep ids starting with `claude-sonnet-`, pick the newest `created_at`. Memoized per warm instance for 1 hour. If the list call fails, return a 502 with the reason. There is no fallback to a hard-coded id.
-- **Request:** `{ messages, context }`. `context` = `{ boardSnapshot, me, now, timezone }`, sent only on the first call of a conversation and placed in the first user message.
-- **Call:** adaptive thinking (model default), `output_config.effort: "medium"`, `tool_choice: auto`, `strict: true` on every tool, prompt caching on the system prompt + tools + board snapshot, `max_tokens` 16000. The refusal fallback (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) is on by default. Andy can turn it off.
+- **Model resolution** (`api/ai/_handlers/chatModels.js`): `client.models.list()`, keep ids starting with `claude-sonnet-`, pick the newest `created_at`. Memoized per warm instance for 1 hour. If the list call fails, return a 502 with the reason. There is no fallback to a hard-coded id.
+- **Request:** `{ messages }`. The browser puts the context (board snapshot, the current user, the current time and timezone) as the first text block of the conversation's first user message. The server forwards `messages` unchanged.
+- **Call:** adaptive thinking (model default), `output_config.effort: "medium"`, `tool_choice: auto`, `strict: true` on every tool, automatic prompt caching (top-level `cache_control`), `max_tokens` 16000.
+- **No refusal fallback in V1.** The installed `@anthropic-ai/sdk` 0.100.1 has no `fallbacks` support (checked 2026-10-21). Adding it means upgrading the SDK, which `prepare.js` also depends on and which another session is changing. A refusal is shown to the user as an error.
 - **Response:** `{ content, stopReason, model, usage, costUsd }`. The browser appends `content` exactly as returned, thinking blocks included. History is append-only, which is required for preserved thinking on current models.
-- **Cost** (`api/ai/_handlers/_pricing.js`): price table keyed by model id (input, output, cache write, cache read per MTok). `costUsd` is computed from `usage`. If the resolved model isn't in the table, `costUsd` is `null` and the UI shows **"unpriced"**. It never guesses. A new Sonnet therefore shows "unpriced" until someone adds its row.
+- **Cost** (`api/ai/_handlers/chatPricing.js`): price table keyed by model id (input, output, cache write, cache read per MTok). `costUsd` is computed from `usage`. If the resolved model isn't in the table, `costUsd` is `null` and the UI shows **"unpriced"**. It never guesses. A new Sonnet therefore shows "unpriced" until someone adds its row.
 - **Errors:** typed SDK errors are mapped to status codes (429 → 429 with retry hint, 4xx → 400, 5xx/connection → 502). `refusal` → 502 with `stop_details.category`.
 
 ### Known risk — auto-upgrading model
 
 A new Sonnet can change API behavior. Sonnet 5.5, for example, 400s on `thinking: disabled` and on forced `tool_choice`. The request avoids every setting that has broken on a Sonnet so far. If a future model rejects the request anyway, the chat shows the API error verbatim and stops. There is no silent fallback to an older model.
+
+### Known risk — strict schema size (unverified)
+
+Across the strict tools there are about 23 optional parameters. The plan review recalled a limit on optional parameters in strict schemas (around 24). This could not be confirmed in the docs on 2026-10-21. The first real call (plan Task 11) tests it. If the API returns a 400 about schema complexity, the panel shows it verbatim. The fix is to drop `strict` from `set_board_filter` and `propose_changes`. Their inputs are already fully validated by `applyBoardFilter` and `boardChat/proposal.js`. The outcome is recorded in the session `context.md`.
 
 ## 5. Tools
 
@@ -78,13 +83,13 @@ The schemas live on the server, in `chat.js`. Execution happens in the browser, 
 |---|---|---|
 | `get_item` | read | Full item, including description, subitems and the 5 latest comments. |
 | `search_items` | read | Keyword search over title + description, including archived items. Used when the snapshot isn't enough. |
-| `list_meetings` | read | `meetingsApi.listMeetings({ start, end })`, trimmed to title, time, attendees and org. |
+| `list_meetings` | read | `meetingsApi.listMeetings({ start, end })`, trimmed to title, start, end and attendee emails. Org is left out because the list API's `org_id` is a legacy Console id, and attendee domains identify the client. |
 | `set_board_filter` | view | Sets any of: `orgFilter`, `columnFilters`, `titleSearch`, and **`aiFilter: { label, itemIds[] }`**. `clear: true` resets all of them plus the scorecard filter (Claude does not set scorecards). |
 | `propose_changes` | write | `{ summary, ops[] }`. Opens the change modal. Returns what was applied or declined. |
 
 **`propose_changes` ops:**
 - `create` — `{ tempId, orgId, parentRef?, title, description?, statusId?, assigneeIds?, dueDate?, priorityId?, categoryId?, tagIds? }`. `parentRef` is an existing item id or another op's `tempId`, which lets Claude create a project with subtasks in one proposal.
-- `update` — `{ itemId, patch }`. `patch` is an explicit, strict object, and any field can be omitted: `title, description, statusId, assigneeIds, dueDate, priorityId, categoryId, tagIds`. That covers status moves, reassignment, renames, due dates, priority, category and tags. Moving an item to another project or org (`parentId` / `organizationId`) is **not** supported in V1. Moving to Done sets `completedAt`; moving out of Done clears it, the same as Sync Meeting. That rule lives in the **Board Chat proposal layer** (`boardChat/proposal.js`), which adds `completedAt` to the patch. The shared writer does not, so the board's manual status changes keep their current behavior.
+- `update` — `{ itemId, fields, clear? }`. `fields` is an explicit, strict object, and any field can be omitted: `title, description, statusId, assigneeIds, dueDate, priorityId, categoryId, tagIds`. `clear` lists fields to null out (`dueDate`, `priorityId`, `categoryId`). Creates use the same `fields` object. That covers status moves, reassignment, renames, due dates, priority, category and tags. Moving an item to another project or org (`parentId` / `organizationId`) is **not** supported in V1. Moving to Done sets `completedAt`; moving out of Done clears it, the same as Sync Meeting. That rule lives in the **Board Chat proposal layer** (`boardChat/proposal.js`), which adds `completedAt` to the patch. The shared writer does not, so the board's manual status changes keep their current behavior.
 - `delete` — `{ itemId }`. Cascades to subitems, the same as the board's delete. The cascade set comes from the live client item list (`useItems`) and is fixed when the modal opens. The modal shows the cascade count.
 
 Allowed statuses: Assigned, In Progress, Blocked, Review, Done, Archive. Claude never sets AI Gen (8). Categories and tags must be existing ones. Board Chat does not create new categories or tags.
@@ -122,11 +127,11 @@ Unit tests (`__tests__` beside the code):
 - `boardChat/proposal` — op validation, tempId parent resolution, before/after diff, staleness detection, Done → `completedAt`.
 - `itemWrites.applyChangeSet` — transaction plan: counters, `hasChildren`, cascade (Firestore mocked the way existing tests do).
 - `boardFilters` — `idSet` ANDs with the column filters.
-- `_models` — picks the newest Sonnet; throws on an empty or failed list.
-- `_pricing` — known model → cost; unknown model → `null`.
+- `chatModels` — picks the newest Sonnet; throws on an empty or failed list.
+- `chatPricing` — known model → cost; unknown model → `null`.
 - `chat.js` handler — auth gate, route registered, error mapping (Anthropic client mocked).
 
-Board refactor safety: the only existing TaskBoard test (`TaskBoard.expandAll.test.jsx`) doesn't touch the write handlers. **Characterization tests** for create, subitem, update and delete (the exact Firestore writes each handler makes today) are written first, against the current inline handlers. The extraction to `itemWrites.js` must keep them green.
+Board refactor safety: the only existing TaskBoard test (`TaskBoard.expandAll.test.jsx`) doesn't touch the write handlers. **Characterization tests** for create, subitem, update and delete are written first. They assert exactly the Firestore writes each handler makes today, with the expected documents copied field for field from the current inline handlers, and they run against the extracted `itemWrites.js` functions. The board then calls those functions, and the full suite plus `vite build` must pass.
 
 UI verification: drive `localhost:5173` with agent-browser. Ask the three example questions, apply one change set, use the AI filter. **This spends real Anthropic credit.** Estimate the cost and get Andy's OK before running it.
 
