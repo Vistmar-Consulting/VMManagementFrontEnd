@@ -1792,6 +1792,9 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
   // Per org: { status: "running" | "done" | "failed", error?, result?, valid?, sel?, promotions? }
   const [runs, setRuns] = useState({});
   const [applyResult, setApplyResult] = useState(null);
+  // Discard after a run throws away paid proposals, so it takes two clicks;
+  // any other action in the dialog disarms it.
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   useEffect(() => {
     gatherBoardSyncInputs()
@@ -1806,8 +1809,9 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
   const itemsById = useMemo(() => new Map((items || []).map((it) => [it.id, it])), [items]);
   const orgBySlug = useMemo(() => new Map((gathered?.orgs || []).map((o) => [o.slug, o])), [gathered]);
 
-  const runOne = async (slug) => {
-    setRuns((prev) => ({ ...prev, [slug]: { status: "running" } }));
+  // Caller marks the org "running" first (runAll for all ticked orgs at once,
+  // retry for one).
+  const startRun = async (slug) => {
     try {
       const result = await runOrgSync(orgBySlug.get(slug), gathered, items, extraContext.trim());
       const v = validateProposal({ topics: [], boardChanges: result.boardChanges, existingTasks: result.existingTasks, requireTopic: false });
@@ -1825,43 +1829,60 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
   };
 
   const runAll = () => {
+    const slugs = [...included];
     setError(null);
+    setRuns(Object.fromEntries(slugs.map((slug) => [slug, { status: "running" }])));
     setStep("review");
-    [...included].forEach((slug) => runOne(slug));
+    slugs.forEach(startRun);
   };
 
-  const toggleSel = (slug, kind, i) => setRuns((prev) => {
+  const retry = (slug) => {
+    setConfirmDiscard(false);
+    setRuns((prev) => ({ ...prev, [slug]: { status: "running" } }));
+    startRun(slug);
+  };
+
+  const toggleSel = (slug, kind, i) => { setConfirmDiscard(false); setRuns((prev) => {
     const r = prev[slug];
     if (!r.valid[kind].has(i)) return prev;
     const next = new Set(r.sel[kind]);
     if (next.has(i)) next.delete(i); else next.add(i);
     return { ...prev, [slug]: { ...r, sel: { ...r.sel, [kind]: next } } };
-  });
+  }); };
 
-  const setCreateField = (slug) => (idx, field, value) => setRuns((prev) => {
+  const setCreateField = (slug) => (idx, field, value) => { setConfirmDiscard(false); setRuns((prev) => {
     const r = prev[slug];
     const creates = [...r.result.boardChanges.creates];
     creates[idx] = { ...creates[idx], [field]: value };
     return { ...prev, [slug]: { ...r, result: { ...r.result, boardChanges: { ...r.result.boardChanges, creates } } } };
-  });
+  }); };
 
-  const updatePromotion = (slug) => (idx, patch) => setRuns((prev) => {
+  const updatePromotion = (slug) => (idx, patch) => { setConfirmDiscard(false); setRuns((prev) => {
     const r = prev[slug];
     return { ...prev, [slug]: { ...r, promotions: { ...r.promotions, [idx]: { ...(r.promotions[idx] || {}), ...patch } } } };
-  });
+  }); };
 
   // Drop a coined tag from every create in this org (it won't be added).
-  const removeNewTag = (slug, name) => setRuns((prev) => {
+  const removeNewTag = (slug, name) => { setConfirmDiscard(false); setRuns((prev) => {
     const r = prev[slug];
     const promotions = Object.fromEntries(Object.entries(r.promotions).map(([i, p]) => [i, { ...p, newTags: (p.newTags || []).filter((t) => t !== name) }]));
     return { ...prev, [slug]: { ...r, promotions } };
-  });
+  }); };
 
+  // Spec 7: failed or still-running orgs block nothing — Apply takes the done
+  // orgs as of the click; a run that lands afterwards is discarded.
   const runEntries = Object.entries(runs);
-  const anyRunning = runEntries.some(([, r]) => r.status === "running");
+  const runningCount = runEntries.filter(([, r]) => r.status === "running").length;
   const doneSlugs = runEntries.filter(([, r]) => r.status === "done").map(([s]) => s);
+  const hasPaidWork = runningCount > 0 || doneSlugs.length > 0;
+
+  const discard = () => {
+    if (step === "review" && hasPaidWork && !confirmDiscard) { setConfirmDiscard(true); return; }
+    onClose();
+  };
 
   const apply = async () => {
+    setConfirmDiscard(false);
     setStep("applying");
     setError(null);
     try {
@@ -1885,7 +1906,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
 
   const renderOrg = (slug) => {
     const org = orgBySlug.get(slug);
-    const r = runs[slug];
+    const r = runs[slug] || {};
     const accent = org?.accentColor || "#888";
     const bc = r.result?.boardChanges;
     const v = r.validation;
@@ -1899,7 +1920,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
               {bc.creates.length} new · {bc.moves.length} moves · {bc.notes.length} notes
             </Typography>
           )}
-          {r.status === "failed" && <Button size="small" onClick={() => runOne(slug)}>Retry</Button>}
+          {r.status === "failed" && step !== "applying" && <Button size="small" onClick={() => retry(slug)}>Retry</Button>}
         </Box>
         {r.status === "failed" && <Alert severity="error">{r.error}</Alert>}
         {r.status === "done" && (
@@ -2061,14 +2082,21 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
           <Button variant="contained" onClick={onClose}>Close</Button>
         ) : (
           <>
-            <Button onClick={onClose} disabled={step === "applying"}>{step === "review" ? "Discard" : "Cancel"}</Button>
+            {(step === "review" || step === "applying") && runningCount > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ flex: 1, pl: 1 }}>
+                {runningCount} still running — not included in this apply; their results will be discarded.
+              </Typography>
+            )}
+            <Button onClick={discard} disabled={step === "applying"} color={confirmDiscard ? "error" : "primary"}>
+              {step === "review" || step === "applying" ? (confirmDiscard ? "Discard paid proposals?" : "Discard") : "Cancel"}
+            </Button>
             {step === "preflight" && (
               <Button variant="contained" onClick={runAll} disabled={!gathered || included.size === 0}>
                 Run ({included.size} org{included.size === 1 ? "" : "s"})
               </Button>
             )}
             {(step === "review" || step === "applying") && (
-              <Button variant="contained" onClick={apply} disabled={anyRunning || doneSlugs.length === 0 || step === "applying"}>
+              <Button variant="contained" onClick={apply} disabled={doneSlugs.length === 0 || step === "applying"}>
                 {step === "applying" ? <CircularProgress size={18} color="inherit" /> : `Apply ${doneSlugs.length} org${doneSlugs.length === 1 ? "" : "s"}`}
               </Button>
             )}
@@ -2080,15 +2108,17 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
 }
 ```
 
-Notes: coined tags (`promotion.newTags`, seeded by `initPromotion` for every valid create) are shown and removed only via the dialog's "New tags to add" chip row — `ProposedBoardRow`'s tag picker edits `tagIds` only, so the two never conflict. An `applyBoardSync` throw (incl. the 500-write limit) lands in the error Alert and returns to review.
+Notes:
+- Spec 7 ("failed or still-running orgs block nothing") wins over the earlier draft: Apply is enabled whenever ≥1 org is done, takes the done orgs as of the click, and a caption says how many are still running and that their results will be discarded. A failed org's transcripts are never stamped, because `applyBoardSync` only receives done runs.
+- Discard after a run needs a second click ("Discard paid proposals?", inline — no `window.confirm`); any other action disarms it. Cancel in pre-flight closes at once. Retry is hidden while applying.
+- `runAll` marks every ticked org running in one `setRuns` before switching to review; `renderOrg` tolerates a missing entry.
+- Coined tags (`promotion.newTags`, seeded by `initPromotion` for every valid create) are shown and removed only via the "New tags to add" chip row — `ProposedBoardRow`'s tag picker edits `tagIds` only. An `applyBoardSync` throw (incl. the 500-write limit) lands in the error Alert and returns to review.
 
-Note on "applies done orgs, ignores failed ones": a failed org's transcripts are never stamped, because `applyBoardSync` only receives done runs.
-
-- [ ] **Step 2: Render test** — mocks `boardSync.js` and `AuthContext.jsx`; asserts pre-flight lists both orgs, the 0-new org starts unticked, the ambiguous-title caption renders, the button reads "Run (1 org)", and `runOrgSync` is not called until Run is clicked.
+- [ ] **Step 2: Tests** — mock `boardSync.js` and `AuthContext.jsx`. Pre-flight: both orgs listed, the 0-new org unticked, ambiguous-title caption, "Run (1 org)", `runOrgSync` not called before Run. Review: Retry on a failed org; Apply sends only the done org with its checked indices; an apply rejection returns to review with selections intact; Apply enabled while another org still runs, with the "still running" caption; Discard after a run takes two clicks and any other action disarms it; Cancel in pre-flight closes at once.
 
 ```jsx
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 
 const GATHERED = {
@@ -2146,9 +2176,109 @@ describe("SyncBoardDialog pre-flight", () => {
     expect(runOrgSync.mock.calls[0][0].slug).toBe("acme");
   });
 });
+
+const TWO_FRESH = {
+  ...GATHERED,
+  orgs: [
+    GATHERED.orgs[0],
+    { slug: "beta", name: "Beta Vision", type: "client", accentColor: null, fresh: [{ id: "t3" }], context: [], droppedNew: 0 },
+  ],
+  ambiguousTitles: [],
+};
+
+const ACME_RESULT = {
+  boardChanges: {
+    creates: [{ title: "Draft GBP posts", note: "", parentRef: null }, { title: "Fix footer link", note: "", parentRef: null }],
+    moves: [],
+    notes: [],
+  },
+  usage: null,
+  existingTasks: [],
+  transcriptIds: ["t1"],
+  failedTranscripts: [],
+};
+
+describe("SyncBoardDialog review + apply", () => {
+  let onClose;
+  beforeEach(() => {
+    onClose = vi.fn();
+    gatherBoardSyncInputs.mockReset().mockResolvedValue(TWO_FRESH);
+    runOrgSync.mockReset();
+    applyBoardSync.mockReset();
+  });
+
+  // betaResult is a factory: a rejection created before the mock is called would be unhandled.
+  async function runBoth(betaResult) {
+    runOrgSync.mockImplementation((org) => (org.slug === "acme" ? Promise.resolve(ACME_RESULT) : betaResult()));
+    wrap(<SyncBoardDialog items={[]} users={[]} categories={[]} tags={[]} onClose={onClose} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Run (2 orgs)" }));
+    await screen.findByText("Draft GBP posts");
+  }
+
+  it("offers Retry on a failed org and applies only the done org's checked creates", async () => {
+    await runBoth(() => Promise.reject(new Error("model timeout")));
+    expect(await screen.findByText("model timeout")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("checkbox")[1]); // untick "Fix footer link"
+    applyBoardSync.mockResolvedValue({ counts: { acme: { created: 1, moved: 0, noted: 0 } }, dropped: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Apply 1 org" }));
+
+    await screen.findByText("Board Sync applied.");
+    expect(applyBoardSync).toHaveBeenCalledTimes(1);
+    const [runs, selections, uid] = applyBoardSync.mock.calls[0];
+    expect(Object.keys(runs)).toEqual(["acme"]);
+    expect(runs.acme.transcriptIds).toEqual(["t1"]);
+    expect(selections.acme.createIdxs).toEqual([0]);
+    expect(selections.acme.moveIdxs).toEqual([]);
+    expect(selections.acme.noteIdxs).toEqual([]);
+    expect(Object.keys(selections.acme.promotions)).toEqual(["0"]);
+    expect(selections.acme.promotions[0].statusId).toBe(8);
+    expect(uid).toBe("u1");
+  });
+
+  it("returns to review with selections intact when apply fails", async () => {
+    await runBoth(() => Promise.reject(new Error("model timeout")));
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    applyBoardSync.mockRejectedValue(new Error("Board Sync would write 600 docs"));
+    fireEvent.click(screen.getByRole("button", { name: "Apply 1 org" }));
+
+    expect(await screen.findByText("Board Sync would write 600 docs")).toBeInTheDocument();
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes[0]).toBeChecked();
+    expect(boxes[1]).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Apply 1 org" })).toBeEnabled();
+  });
+
+  it("enables Apply while another org is still running and says it is excluded", async () => {
+    await runBoth(() => new Promise(() => {}));
+    expect(screen.getByText(/1 still running — not included in this apply; their results will be discarded/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply 1 org" })).toBeEnabled();
+  });
+
+  it("asks twice before discarding paid proposals; another action disarms it", async () => {
+    await runBoth(() => new Promise(() => {}));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Discard paid proposals?" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard paid proposals?" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("Cancel in pre-flight closes immediately", async () => {
+    wrap(<SyncBoardDialog items={[]} users={[]} categories={[]} tags={[]} onClose={onClose} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
 ```
 
-Run: `npx vitest run src/components/__tests__/SyncBoardDialog.test.jsx` (and `ProposedBoardRow.test.jsx`), then `npx vite build`.
+Run: `npx vitest run src/components/__tests__/SyncBoardDialog.test.jsx` (and `ProposedBoardRow.test.jsx`), one at a time, then `npx vite build`.
 
 - [ ] **Step 3: Commit**
 

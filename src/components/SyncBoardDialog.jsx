@@ -46,6 +46,9 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
   // Per org: { status: "running" | "done" | "failed", error?, result?, valid?, sel?, promotions? }
   const [runs, setRuns] = useState({});
   const [applyResult, setApplyResult] = useState(null);
+  // Discard after a run throws away paid proposals, so it takes two clicks;
+  // any other action in the dialog disarms it.
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   useEffect(() => {
     gatherBoardSyncInputs()
@@ -60,8 +63,9 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
   const itemsById = useMemo(() => new Map((items || []).map((it) => [it.id, it])), [items]);
   const orgBySlug = useMemo(() => new Map((gathered?.orgs || []).map((o) => [o.slug, o])), [gathered]);
 
-  const runOne = async (slug) => {
-    setRuns((prev) => ({ ...prev, [slug]: { status: "running" } }));
+  // Caller marks the org "running" first (runAll for all ticked orgs at once,
+  // retry for one).
+  const startRun = async (slug) => {
     try {
       const result = await runOrgSync(orgBySlug.get(slug), gathered, items, extraContext.trim());
       const v = validateProposal({ topics: [], boardChanges: result.boardChanges, existingTasks: result.existingTasks, requireTopic: false });
@@ -79,43 +83,60 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
   };
 
   const runAll = () => {
+    const slugs = [...included];
     setError(null);
+    setRuns(Object.fromEntries(slugs.map((slug) => [slug, { status: "running" }])));
     setStep("review");
-    [...included].forEach((slug) => runOne(slug));
+    slugs.forEach(startRun);
   };
 
-  const toggleSel = (slug, kind, i) => setRuns((prev) => {
+  const retry = (slug) => {
+    setConfirmDiscard(false);
+    setRuns((prev) => ({ ...prev, [slug]: { status: "running" } }));
+    startRun(slug);
+  };
+
+  const toggleSel = (slug, kind, i) => { setConfirmDiscard(false); setRuns((prev) => {
     const r = prev[slug];
     if (!r.valid[kind].has(i)) return prev;
     const next = new Set(r.sel[kind]);
     if (next.has(i)) next.delete(i); else next.add(i);
     return { ...prev, [slug]: { ...r, sel: { ...r.sel, [kind]: next } } };
-  });
+  }); };
 
-  const setCreateField = (slug) => (idx, field, value) => setRuns((prev) => {
+  const setCreateField = (slug) => (idx, field, value) => { setConfirmDiscard(false); setRuns((prev) => {
     const r = prev[slug];
     const creates = [...r.result.boardChanges.creates];
     creates[idx] = { ...creates[idx], [field]: value };
     return { ...prev, [slug]: { ...r, result: { ...r.result, boardChanges: { ...r.result.boardChanges, creates } } } };
-  });
+  }); };
 
-  const updatePromotion = (slug) => (idx, patch) => setRuns((prev) => {
+  const updatePromotion = (slug) => (idx, patch) => { setConfirmDiscard(false); setRuns((prev) => {
     const r = prev[slug];
     return { ...prev, [slug]: { ...r, promotions: { ...r.promotions, [idx]: { ...(r.promotions[idx] || {}), ...patch } } } };
-  });
+  }); };
 
   // Drop a coined tag from every create in this org (it won't be added).
-  const removeNewTag = (slug, name) => setRuns((prev) => {
+  const removeNewTag = (slug, name) => { setConfirmDiscard(false); setRuns((prev) => {
     const r = prev[slug];
     const promotions = Object.fromEntries(Object.entries(r.promotions).map(([i, p]) => [i, { ...p, newTags: (p.newTags || []).filter((t) => t !== name) }]));
     return { ...prev, [slug]: { ...r, promotions } };
-  });
+  }); };
 
+  // Spec 7: failed or still-running orgs block nothing — Apply takes the done
+  // orgs as of the click; a run that lands afterwards is discarded.
   const runEntries = Object.entries(runs);
-  const anyRunning = runEntries.some(([, r]) => r.status === "running");
+  const runningCount = runEntries.filter(([, r]) => r.status === "running").length;
   const doneSlugs = runEntries.filter(([, r]) => r.status === "done").map(([s]) => s);
+  const hasPaidWork = runningCount > 0 || doneSlugs.length > 0;
+
+  const discard = () => {
+    if (step === "review" && hasPaidWork && !confirmDiscard) { setConfirmDiscard(true); return; }
+    onClose();
+  };
 
   const apply = async () => {
+    setConfirmDiscard(false);
     setStep("applying");
     setError(null);
     try {
@@ -139,7 +160,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
 
   const renderOrg = (slug) => {
     const org = orgBySlug.get(slug);
-    const r = runs[slug];
+    const r = runs[slug] || {};
     const accent = org?.accentColor || "#888";
     const bc = r.result?.boardChanges;
     const v = r.validation;
@@ -153,7 +174,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
               {bc.creates.length} new · {bc.moves.length} moves · {bc.notes.length} notes
             </Typography>
           )}
-          {r.status === "failed" && <Button size="small" onClick={() => runOne(slug)}>Retry</Button>}
+          {r.status === "failed" && step !== "applying" && <Button size="small" onClick={() => retry(slug)}>Retry</Button>}
         </Box>
         {r.status === "failed" && <Alert severity="error">{r.error}</Alert>}
         {r.status === "done" && (
@@ -315,14 +336,21 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
           <Button variant="contained" onClick={onClose}>Close</Button>
         ) : (
           <>
-            <Button onClick={onClose} disabled={step === "applying"}>{step === "review" ? "Discard" : "Cancel"}</Button>
+            {(step === "review" || step === "applying") && runningCount > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ flex: 1, pl: 1 }}>
+                {runningCount} still running — not included in this apply; their results will be discarded.
+              </Typography>
+            )}
+            <Button onClick={discard} disabled={step === "applying"} color={confirmDiscard ? "error" : "primary"}>
+              {step === "review" || step === "applying" ? (confirmDiscard ? "Discard paid proposals?" : "Discard") : "Cancel"}
+            </Button>
             {step === "preflight" && (
               <Button variant="contained" onClick={runAll} disabled={!gathered || included.size === 0}>
                 Run ({included.size} org{included.size === 1 ? "" : "s"})
               </Button>
             )}
             {(step === "review" || step === "applying") && (
-              <Button variant="contained" onClick={apply} disabled={anyRunning || doneSlugs.length === 0 || step === "applying"}>
+              <Button variant="contained" onClick={apply} disabled={doneSlugs.length === 0 || step === "applying"}>
                 {step === "applying" ? <CircularProgress size={18} color="inherit" /> : `Apply ${doneSlugs.length} org${doneSlugs.length === 1 ? "" : "s"}`}
               </Button>
             )}
