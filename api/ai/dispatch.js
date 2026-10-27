@@ -26,6 +26,7 @@
 // vercel.json rewrites /api/ai/:action onto it (that rewrite MUST stay
 // ordered before the /(.*) SPA catch-all, or the SPA swallows it again).
 
+import chat from "./_handlers/chat.js";
 import generate from "./_handlers/generate.js";
 import prepare from "./_handlers/prepare.js";
 import refine from "./_handlers/refine.js";
@@ -34,7 +35,7 @@ import refine from "./_handlers/refine.js";
 // three previously declared 300 and the longest (prepare) genuinely needs it.
 export const config = { maxDuration: 300 };
 
-const ROUTES = { generate, prepare, refine };
+const ROUTES = { chat, generate, prepare, refine };
 
 export default async function handler(req, res) {
   // Vercel populates req.query.action from the [action] path segment.
