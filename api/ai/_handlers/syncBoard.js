@@ -85,10 +85,13 @@ const SCHEMA = {
 function categorizationBlock(categories, tagVocab) {
   const cats = Array.isArray(categories) ? categories : [];
   const tags = Array.isArray(tagVocab) ? tagVocab : [];
-  const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n") || "(none)";
+  if (cats.length === 0) return "";
+  const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n");
   const tagList = tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean).join(", ");
   const sops = cats.filter((c) => c.sop).map((c) => `### ${c.name} (${c.slug})\n${c.sop}`).join("\n\n");
-  return `## Categories (slugs)
+  return `
+
+## Categories (slugs)
 ${catList}
 
 ## Tag vocabulary
@@ -113,16 +116,14 @@ ${orgContext || "(none)"}
 
 ${internal ? `${VISTAMAR_BOARD_SCOPE}\n\n` : ""}### boardChanges.creates — NEW tasks
 ${CREATE_BASE_RULES}
-- Set categories to the ONE best-fitting category SLUG from the list below, and tags from the vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur.
+- Set categories to an array with exactly ONE category SLUG from the list below (use the slug exactly), and tags from the vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur.
 ${PARENT_REF_RULES}
 
 ${MOVES_RULES}
 
 ${NOTES_RULES}
 
-Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.
-
-${categorizationBlock(categories, tagVocab)}`;
+Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.${categorizationBlock(categories, tagVocab)}`;
 }
 
 const SCOPE_TAG = { "vistamar-internal": "Vistamar internal", "already-synced": "Already synced" };
@@ -130,7 +131,7 @@ const SCOPE_TAG = { "vistamar-internal": "Vistamar internal", "already-synced": 
 function transcriptLines(lines, list, orgName, tagged) {
   list.forEach((tr) => {
     const tag = tagged ? `[${SCOPE_TAG[tr.scope] || "Context"}] ` : "";
-    const cross = tr.scope === "cross-org" ? ` [cross-org — take only ${orgName}'s parts]` : "";
+    const cross = tr.crossOrg || tr.scope === "cross-org" ? ` [cross-org — take only ${orgName}'s parts]` : "";
     lines.push(`### ${tag}${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}${cross}`);
     if (tr.overview) lines.push(`Overview: ${tr.overview}`);
     if (tr.actionItems) lines.push(`Action items: ${tr.actionItems}`);

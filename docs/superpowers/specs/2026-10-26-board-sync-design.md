@@ -89,7 +89,7 @@ Lives in a new `src/lib/boardSync.js`, reusing helpers from `src/lib/aiAgenda.js
 
 ## 6. Access constant
 
-`BOARD_SYNC_EMAIL = "adeemer@vistamarconsulting.com"` defined in two places — `src/lib/boardSync.js` (FE) and `api/ai/_handlers/syncBoard.js` (server) — because nothing under `api/` imports from `src/` today. A unit test asserts the two values match. FE hides the button unless `user.email` matches; server checks `req.authUser.email` (set by `requireAuth`) and returns 403 otherwise.
+`BOARD_SYNC_EMAIL = "adeemer@vistamarconsulting.com"` defined in two places — `src/lib/boardSyncCore.js` (FE) and `api/ai/_handlers/syncBoard.js` (server) — because nothing under `api/` imports from `src/` today. A unit test asserts the two values match. FE hides the button unless `user.email` matches; server checks `req.authUser.email` (set by `requireAuth`) and returns 403 otherwise.
 
 ## 7. UI
 

@@ -62,6 +62,29 @@ describe("buildUserMessage", () => {
   });
 });
 
+describe("buildUserMessage — synced cross-org", () => {
+  it("keeps the cross-org suffix on an already-synced Touch Base", () => {
+    const m = buildUserMessage({
+      org: { slug: "unio", name: "Unio" }, transcripts: [],
+      contextTranscripts: [{ title: "Touch Base", date: "2026-10-26", scope: "already-synced", crossOrg: true, overview: "o", actionItems: "" }],
+    });
+    expect(m).toContain("[Already synced] Touch Base (2026-10-26) [cross-org — take only Unio's parts]");
+  });
+});
+
+describe("buildSystem — categories", () => {
+  const org = { slug: "unio", name: "Unio", type: "client" };
+  it("omits the categories section when there are none", () => {
+    const s = buildSystem({ orgPrompt: "", org, categories: [], tagVocab: [] });
+    expect(s).not.toContain("## Categories");
+    expect(s).not.toContain("(none)\n\n## Tag");
+  });
+  it("tells the model to use exactly one slug", () => {
+    const s = buildSystem({ orgPrompt: "", org, categories: [{ slug: "website", name: "Website", description: "", sop: "" }], tagVocab: [] });
+    expect(s).toContain("an array with exactly ONE category SLUG");
+  });
+});
+
 describe("normalizeBoardChanges", () => {
   it("coerces and drops incomplete rows", () => {
     const out = normalizeBoardChanges({

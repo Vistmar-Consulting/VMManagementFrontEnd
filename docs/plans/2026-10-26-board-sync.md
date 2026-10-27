@@ -266,6 +266,16 @@ describe("splitBucket — ledger + backfill", () => {
     expect(s.fresh).toEqual([]);
     expect(s.context[0].scope).toBe("already-synced");
   });
+  it("already-synced cross-org row keeps the crossOrg flag", () => {
+    const ledger = new Map([["m", { orgs: { unio: { by: "board" } } }]]);
+    const s = splitBucket(bucketOf([tr("m", "VM Weekly Touch Base", "vistamar", 1)], "unio"), "unio", { ...ctxBase, ledger });
+    expect(s.context[0]).toMatchObject({ scope: "already-synced", crossOrg: true });
+  });
+  it("already-synced this-org row is not flagged crossOrg", () => {
+    const ledger = new Map([["a", { orgs: { unio: { by: "agenda" } } }]]);
+    const s = splitBucket(bucketOf([tr("a", "Unio weekly", "unio", 2)], "unio"), "unio", { ...ctxBase, ledger });
+    expect(s.context[0].crossOrg).toBe(false);
+  });
   it("cross-org stamped for another org is still new for this one", () => {
     const ledger = new Map([["m", { orgs: { vistamar: { by: "board" } } }]]);
     const s = splitBucket(bucketOf([tr("m", "VM Weekly Touch Base", "vistamar", 1)], "unio"), "unio", { ...ctxBase, ledger });
@@ -510,7 +520,7 @@ export function splitBucket(bucket, org, ctx, { maxNew = MAX_NEW_TRANSCRIPTS, ma
   const internal = [];
   for (const t of sorted) {
     if (!NEW_SCOPES.has(t.scope)) internal.push(t);
-    else if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced" });
+    else if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced", crossOrg: t.scope === "cross-org" });
     else fresh.push(t);
   }
   // already-synced is the do-not-duplicate signal, so it survives the cap first.
@@ -822,6 +832,29 @@ describe("buildUserMessage", () => {
   });
 });
 
+describe("buildUserMessage — synced cross-org", () => {
+  it("keeps the cross-org suffix on an already-synced Touch Base", () => {
+    const m = buildUserMessage({
+      org: { slug: "unio", name: "Unio" }, transcripts: [],
+      contextTranscripts: [{ title: "Touch Base", date: "2026-10-26", scope: "already-synced", crossOrg: true, overview: "o", actionItems: "" }],
+    });
+    expect(m).toContain("[Already synced] Touch Base (2026-10-26) [cross-org — take only Unio's parts]");
+  });
+});
+
+describe("buildSystem — categories", () => {
+  const org = { slug: "unio", name: "Unio", type: "client" };
+  it("omits the categories section when there are none", () => {
+    const s = buildSystem({ orgPrompt: "", org, categories: [], tagVocab: [] });
+    expect(s).not.toContain("## Categories");
+    expect(s).not.toContain("(none)\n\n## Tag");
+  });
+  it("tells the model to use exactly one slug", () => {
+    const s = buildSystem({ orgPrompt: "", org, categories: [{ slug: "website", name: "Website", description: "", sop: "" }], tagVocab: [] });
+    expect(s).toContain("an array with exactly ONE category SLUG");
+  });
+});
+
 describe("normalizeBoardChanges", () => {
   it("coerces and drops incomplete rows", () => {
     const out = normalizeBoardChanges({
@@ -933,10 +966,13 @@ const SCHEMA = {
 function categorizationBlock(categories, tagVocab) {
   const cats = Array.isArray(categories) ? categories : [];
   const tags = Array.isArray(tagVocab) ? tagVocab : [];
-  const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n") || "(none)";
+  if (cats.length === 0) return "";
+  const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n");
   const tagList = tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean).join(", ");
   const sops = cats.filter((c) => c.sop).map((c) => `### ${c.name} (${c.slug})\n${c.sop}`).join("\n\n");
-  return `## Categories (slugs)
+  return `
+
+## Categories (slugs)
 ${catList}
 
 ## Tag vocabulary
@@ -961,16 +997,14 @@ ${orgContext || "(none)"}
 
 ${internal ? `${VISTAMAR_BOARD_SCOPE}\n\n` : ""}### boardChanges.creates — NEW tasks
 ${CREATE_BASE_RULES}
-- Set categories to the ONE best-fitting category SLUG from the list below, and tags from the vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur.
+- Set categories to an array with exactly ONE category SLUG from the list below (use the slug exactly), and tags from the vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur.
 ${PARENT_REF_RULES}
 
 ${MOVES_RULES}
 
 ${NOTES_RULES}
 
-Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.
-
-${categorizationBlock(categories, tagVocab)}`;
+Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.${categorizationBlock(categories, tagVocab)}`;
 }
 
 const SCOPE_TAG = { "vistamar-internal": "Vistamar internal", "already-synced": "Already synced" };
@@ -978,7 +1012,7 @@ const SCOPE_TAG = { "vistamar-internal": "Vistamar internal", "already-synced": 
 function transcriptLines(lines, list, orgName, tagged) {
   list.forEach((tr) => {
     const tag = tagged ? `[${SCOPE_TAG[tr.scope] || "Context"}] ` : "";
-    const cross = tr.scope === "cross-org" ? ` [cross-org — take only ${orgName}'s parts]` : "";
+    const cross = tr.crossOrg || tr.scope === "cross-org" ? ` [cross-org — take only ${orgName}'s parts]` : "";
     lines.push(`### ${tag}${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}${cross}`);
     if (tr.overview) lines.push(`Overview: ${tr.overview}`);
     if (tr.actionItems) lines.push(`Action items: ${tr.actionItems}`);
@@ -1372,6 +1406,7 @@ async function fetchDetails(rows) {
       title: rows[i].title || "",
       date: isoDate(rows[i]._ms),
       scope: rows[i].scope,
+      crossOrg: !!rows[i].crossOrg,
       overview: s.overview || s.short_overview || "",
       actionItems: s.action_items || "",
     });

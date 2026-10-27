@@ -96,6 +96,16 @@ describe("splitBucket — ledger + backfill", () => {
     expect(s.fresh).toEqual([]);
     expect(s.context[0].scope).toBe("already-synced");
   });
+  it("already-synced cross-org row keeps the crossOrg flag", () => {
+    const ledger = new Map([["m", { orgs: { unio: { by: "board" } } }]]);
+    const s = splitBucket(bucketOf([tr("m", "VM Weekly Touch Base", "vistamar", 1)], "unio"), "unio", { ...ctxBase, ledger });
+    expect(s.context[0]).toMatchObject({ scope: "already-synced", crossOrg: true });
+  });
+  it("already-synced this-org row is not flagged crossOrg", () => {
+    const ledger = new Map([["a", { orgs: { unio: { by: "agenda" } } }]]);
+    const s = splitBucket(bucketOf([tr("a", "Unio weekly", "unio", 2)], "unio"), "unio", { ...ctxBase, ledger });
+    expect(s.context[0].crossOrg).toBe(false);
+  });
   it("cross-org stamped for another org is still new for this one", () => {
     const ledger = new Map([["m", { orgs: { vistamar: { by: "board" } } }]]);
     const s = splitBucket(bucketOf([tr("m", "VM Weekly Touch Base", "vistamar", 1)], "unio"), "unio", { ...ctxBase, ledger });

@@ -103,7 +103,7 @@ export function splitBucket(bucket, org, ctx, { maxNew = MAX_NEW_TRANSCRIPTS, ma
   const internal = [];
   for (const t of sorted) {
     if (!NEW_SCOPES.has(t.scope)) internal.push(t);
-    else if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced" });
+    else if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced", crossOrg: t.scope === "cross-org" });
     else fresh.push(t);
   }
   // already-synced is the do-not-duplicate signal, so it survives the cap first.
