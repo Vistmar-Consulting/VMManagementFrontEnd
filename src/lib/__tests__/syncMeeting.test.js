@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mintTopicIds, validateProposal, inheritKeysForCreate, normalizeTopicRefs, classifyTopicChanges, planTopicWrites } from "../syncMeeting.js";
+import { mintTopicIds, validateProposal, inheritKeysForCreate, normalizeTopicRefs, classifyTopicChanges, planTopicWrites, inferAssigneeIds } from "../syncMeeting.js";
 
 const topics = [
   { name: "Website", categoryIds: ["website"], tagIds: ["t-hours"] },
@@ -312,5 +312,49 @@ describe("planTopicWrites", () => {
     expect(plan.creates).toHaveLength(1);
     expect(plan.updates).toEqual([]);
     expect(plan.keeps.map((k) => k.id)).toEqual(["docA", "docB", "docC"]);
+  });
+});
+
+describe("validateProposal requireTopic:false (Board Sync)", () => {
+  const existingTasks = [{ id: "i1", title: "Existing" }];
+  it("accepts a create with no topicId", () => {
+    const v = validateProposal({
+      topics: [],
+      boardChanges: { creates: [{ title: "New task", note: "n" }], moves: [], notes: [] },
+      existingTasks,
+      requireTopic: false,
+    });
+    expect(v.acceptedCreates).toHaveLength(1);
+    expect(v.hasRejections).toBe(false);
+  });
+  it("still enforces parentRef rules", () => {
+    const v = validateProposal({
+      topics: [],
+      boardChanges: { creates: [{ title: "Child", parentRef: "missing" }], moves: [], notes: [] },
+      existingTasks,
+      requireTopic: false,
+    });
+    expect(v.rejectedCreates[0].reason).toBe("parentRef itemId not found on board");
+  });
+  it("defaults to requiring a topic", () => {
+    const v = validateProposal({
+      topics: [],
+      boardChanges: { creates: [{ title: "New task" }], moves: [], notes: [] },
+      existingTasks,
+    });
+    expect(v.rejectedCreates[0].reason).toBe("owning topic no longer in proposal");
+  });
+});
+
+describe("inferAssigneeIds", () => {
+  const users = [{ id: "u1", displayName: "Cedric Smith" }, { id: "u2", displayName: "Bill Jones" }];
+  it("matches Owner: first name", () => {
+    expect(inferAssigneeIds("Source 10/20. Owner: Cedric", users)).toEqual(["u1"]);
+  });
+  it("matches Action item for full name", () => {
+    expect(inferAssigneeIds("Action item for Bill Jones.", users)).toEqual(["u2"]);
+  });
+  it("returns [] when no name", () => {
+    expect(inferAssigneeIds("No owner here", users)).toEqual([]);
   });
 });

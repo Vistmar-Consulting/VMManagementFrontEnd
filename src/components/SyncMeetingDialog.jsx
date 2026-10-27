@@ -38,7 +38,7 @@ import {
   applyUnified,
   setAgendaStyle,
 } from "../lib/aiAgenda.js";
-import { validateProposal, normalizeTopicRefs, classifyTopicChanges, inheritKeysForCreate } from "../lib/syncMeeting.js";
+import { validateProposal, normalizeTopicRefs, classifyTopicChanges, inheritKeysForCreate, inferAssigneeIds } from "../lib/syncMeeting.js";
 import { useOthers, useRoom } from "../lib/liveblocks.js";
 import { getYjsProviderForRoom } from "@liveblocks/yjs";
 import { writeTopicBodies } from "./editor/topicBodyYjs.js";
@@ -49,23 +49,6 @@ import ProposedBoardRow from "./ProposedBoardRow.jsx";
 
 const STATUS_BY_ID   = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id,   s]));
 const STATUS_BY_NAME = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.name, s]));
-
-// Parse "Owner: <name>" or "Action item for <name>" from a create note and
-// return the matching user's id, if found.
-function inferAssigneeIds(note, users) {
-  if (!note || !users?.length) return [];
-  const ownerMatch = note.match(/\bOwner:\s*([^;,.\n]+)/i);
-  const actionMatch = note.match(/\bAction item for\s+([^;,.\n]+)/i);
-  const rawName = (ownerMatch?.[1] || actionMatch?.[1] || "").trim();
-  if (!rawName) return [];
-  const lower = rawName.toLowerCase();
-  const matched = users.find((u) => {
-    const dn = (u.displayName || "").toLowerCase();
-    const firstName = dn.split(" ")[0];
-    return dn === lower || firstName === lower;
-  });
-  return matched ? [matched.id] : [];
-}
 
 // One-line summary of what fed the model — so the user always sees the actual
 // input set (no silent caps / dropped data).

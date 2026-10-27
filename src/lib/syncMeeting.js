@@ -19,8 +19,9 @@ export function inheritKeysForCreate(create, topicsById) {
 
 // Validate a proposal against current topics + the live board. Runs on receipt
 // and again at apply (topics may have been refined between). `topics` MUST
-// already carry topicId (call mintTopicIds first).
-export function validateProposal({ topics, boardChanges, existingTasks }) {
+// already carry topicId (call mintTopicIds first). Board Sync has no topics and
+// passes requireTopic:false — every other rule still applies.
+export function validateProposal({ topics, boardChanges, existingTasks, requireTopic = true }) {
   const byId = Object.fromEntries((topics || []).map((t) => [t.topicId, t]));
   const knownItemIds = new Set((existingTasks || []).map((it) => it.id));
   const moveStatuses = new Set(MOVE_STATUSES);
@@ -32,7 +33,7 @@ export function validateProposal({ topics, boardChanges, existingTasks }) {
   for (let idx = 0; idx < creates.length; idx++) {
     const c = creates[idx];
     const t = byId[c.topicId];
-    if (!t) {
+    if (requireTopic && !t) {
       rejectedCreates.push({ ...c, reason: "owning topic no longer in proposal" });
       rejectedIdxs.add(idx);
       continue;
@@ -164,4 +165,21 @@ export function planTopicWrites(currentTopics, proposalTopics, deleteTopicIds = 
     .filter((d) => !deleteSet.has(d.id))
     .map((d) => ({ id: d.id, sortOrder: ++next }));
   return { updates, creates, keeps, deletes };
+}
+
+// Parse "Owner: <name>" or "Action item for <name>" from a create note and
+// return the matching user's id, if found. Shared by Sync Meeting + Board Sync.
+export function inferAssigneeIds(note, users) {
+  if (!note || !users?.length) return [];
+  const ownerMatch = note.match(/\bOwner:\s*([^;,.\n]+)/i);
+  const actionMatch = note.match(/\bAction item for\s+([^;,.\n]+)/i);
+  const rawName = (ownerMatch?.[1] || actionMatch?.[1] || "").trim();
+  if (!rawName) return [];
+  const lower = rawName.toLowerCase();
+  const matched = users.find((u) => {
+    const dn = (u.displayName || "").toLowerCase();
+    const firstName = dn.split(" ")[0];
+    return dn === lower || firstName === lower;
+  });
+  return matched ? [matched.id] : [];
 }
