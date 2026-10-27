@@ -49,7 +49,7 @@ export function resetViews(store) {
 }
 
 // Whether the user's own filters (`current`) no longer match the view's.
-// Key order, empty column filters, "" and missing values don't count.
+// Key order, value order, empty column filters, "" and missing values don't count.
 export function isEdited(view, current) {
   return JSON.stringify(ownPart(view.filters)) !== JSON.stringify(ownPart(current));
 }
@@ -57,6 +57,7 @@ export function isEdited(view, current) {
 function ownPart(f) {
   const cols = Object.entries(f.columnFilters ?? {})
     .filter(([, values]) => values?.length)
+    .map(([key, values]) => [key, [...values].sort()])
     .sort(([x], [y]) => x.localeCompare(y));
   return [f.orgFilter ?? null, f.titleSearch || null, f.scorecardFilter ?? null, cols];
 }

@@ -77,6 +77,8 @@ describe("boardViews", () => {
     const view = { id: "v2", label: "B", filters: { ...fB, columnFilters: { statusId: [2], priorityId: [1] } } };
     expect(isEdited(view, { orgFilter: "unio", titleSearch: "", columnFilters: { priorityId: [1], statusId: [2], tagIds: [] }, scorecardFilter: null })).toBe(false);
     expect(isEdited(view, { orgFilter: "unio", titleSearch: undefined, columnFilters: { priorityId: [1], statusId: [2] }, scorecardFilter: undefined })).toBe(false);
+    const two = { id: "v3", label: "C", filters: { ...fB, columnFilters: { statusId: [2, 3] } } };
+    expect(isEdited(two, { ...fB, columnFilters: { statusId: [3, 2] } })).toBe(false);
   });
 
   it("isEdited is true once the user changes any of the view's filters", () => {

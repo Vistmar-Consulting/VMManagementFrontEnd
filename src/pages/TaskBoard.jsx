@@ -89,6 +89,13 @@ import { canBoardSync } from "../lib/boardSyncCore.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
 
+const NO_VIEWS = [];
+const LAST_ORG_KEY = "vm-board-org-filter";
+const readLastOrg = () => {
+  const raw = localStorage.getItem(LAST_ORG_KEY);
+  return raw ? JSON.parse(raw) : "all";
+};
+
 export default function TaskBoard() {
   const { user } = useAuth();
   const { data: allItems, loading: itemsLoading, error: itemsError } = useItems();
@@ -131,8 +138,6 @@ export default function TaskBoard() {
   const [notesModalItem, setNotesModalItem] = useState(null);
   const [filesModalItem, setFilesModalItem] = useState(null);
 
-  // Org filter chip group — persisted in localStorage.
-  const [orgFilter, setOrgFilter] = useLocalStorage("vm-board-org-filter", "all");
   const [orgPickerOpen, setOrgPickerOpen] = useState(false);
   const [syncBoardOpen, setSyncBoardOpen] = useState(false);
   const [orgPickerCreating, setOrgPickerCreating] = useState(false);
@@ -140,17 +145,28 @@ export default function TaskBoard() {
   // Board Chat filter views (see lib/boardChat/boardViews.js). An active view
   // re-applies its filters on load. The saved views are shared by every tab;
   // which one is on (and the filters to restore) is per tab, since each tab
-  // keeps its own search and column filters.
-  const [storedViews, setStoredViews] = useLocalStorage("vm-board-chat-views", []);
+  // keeps its own filters. Views saved before the split ({ views, ... }) are
+  // read as a plain list.
+  const [storedViews, setStoredViews] = useLocalStorage("vm-board-chat-views", NO_VIEWS);
   const [storedActive, setStoredActive] = useSessionStorage("vm-board-chat-active", EMPTY_ACTIVE);
-  const views = Array.isArray(storedViews) ? storedViews : [];
+  const views = Array.isArray(storedViews) ? storedViews
+    : Array.isArray(storedViews?.views) ? storedViews.views
+    : NO_VIEWS;
   const activeId = views.some((v) => v.id === storedActive?.activeId) ? storedActive.activeId : null;
   const viewStore = { views, activeId, before: activeId ? storedActive.before : null };
   const setViewStore = (store) => {
-    setStoredViews(store.views);
+    if (store.views !== views) setStoredViews(store.views);
     setStoredActive({ activeId: store.activeId, before: store.before });
   };
   const [initialView] = useState(() => activeView(viewStore));
+
+  // Org filter chip group. Each tab keeps its own; a new tab starts on the
+  // last org picked in any tab, or on the active view's org.
+  const [orgFilter, setOrgFilterState] = useState(() => initialView?.filters.orgFilter ?? readLastOrg());
+  const setOrgFilter = (org) => {
+    setOrgFilterState(org);
+    localStorage.setItem(LAST_ORG_KEY, JSON.stringify(org));
+  };
 
   // Column sort + filter state.
   const [sorts, setSorts] = useState([]);

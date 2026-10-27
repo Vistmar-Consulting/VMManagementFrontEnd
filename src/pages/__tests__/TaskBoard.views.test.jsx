@@ -147,6 +147,26 @@ describe("TaskBoard Board Chat views and Reset", () => {
     expect(screen.getByRole("button", { name: "Reset" }).disabled).toBe(true);
   }, 60000);
 
+  it("on load an active view brings its own org, not the last org picked elsewhere", () => {
+    const unioView = { ...viewA, filters: { ...viewA.filters, orgFilter: "unio" } };
+    seed({ views: [unioView], activeId: "va", before: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null } });
+    localStorage.setItem("vm-board-org-filter", JSON.stringify("all"));
+    renderBoard();
+    expect(chip("AI: Parent one work").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByText(/· edited/)).toBeNull();
+  }, 60000);
+
+  it("keeps views saved in the old single-object format", () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem(VIEWS_KEY, JSON.stringify({ views: [viewA], activeId: "va", before: null }));
+    renderBoard();
+    expect(chip("AI: Parent one work").getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(chip("AI: Parent one work"));
+    expect(chip("AI: Parent one work").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByText("Parent Two")).toBeNull();
+  }, 60000);
+
   it("ignores a saved views entry with the wrong shape", () => {
     localStorage.clear();
     sessionStorage.clear();
