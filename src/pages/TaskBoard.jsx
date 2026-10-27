@@ -60,11 +60,13 @@ import {
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
   Search as SearchIcon,
+  Sync as SyncIcon,
 } from "@mui/icons-material";
 
 import BoardChatPanel, { PANEL_WIDTH } from "../components/BoardChatPanel.jsx";
 import ColorPicker from "../components/ColorPicker.jsx";
 import { getContrastText } from "../theme/pillColors.js";
+import SyncBoardDialog from "../components/SyncBoardDialog.jsx";
 import TaskBoardColumnHeader from "../components/TaskBoardColumnHeader.jsx";
 import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
 import TaskBoardModal from "../components/TaskBoardModal.jsx";
@@ -80,6 +82,7 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
 import { applyBoardFilter } from "../lib/boardChat/boardFilter.js";
+import { canBoardSync } from "../lib/boardSyncCore.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
 
@@ -128,6 +131,7 @@ export default function TaskBoard() {
   // Org filter chip group — persisted in localStorage.
   const [orgFilter, setOrgFilter] = useLocalStorage("vm-board-org-filter", "all");
   const [orgPickerOpen, setOrgPickerOpen] = useState(false);
+  const [syncBoardOpen, setSyncBoardOpen] = useState(false);
   const [orgPickerCreating, setOrgPickerCreating] = useState(false);
 
   // Column sort + filter state.
@@ -702,6 +706,11 @@ export default function TaskBoard() {
           <Button variant={chatOpen ? "contained" : "outlined"} startIcon={<AutoAwesomeIcon />} onClick={() => setChatOpen((v) => !v)}>
             Board Chat
           </Button>
+          {canBoardSync(user?.email) && (
+            <Button variant="outlined" startIcon={<SyncIcon />} onClick={() => setSyncBoardOpen(true)}>
+              Sync Board
+            </Button>
+          )}
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -1019,6 +1028,16 @@ export default function TaskBoard() {
           <Button onClick={() => setOrgPickerOpen(false)}>Cancel</Button>
         </DialogActions>
       </Dialog>
+
+      {syncBoardOpen && (
+        <SyncBoardDialog
+          items={allItems}
+          users={users}
+          categories={categories}
+          tags={tags}
+          onClose={() => setSyncBoardOpen(false)}
+        />
+      )}
     </Stack>
       <BoardChatPanel
         open={chatOpen}

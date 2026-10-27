@@ -83,6 +83,7 @@ const HOW_IT_WORKS = [
       ["Concise output", "A short, tight agenda — never a multi-page document."],
       ["Tables kept", "A table already in a topic body or Open Floor stays a table with the same columns — the AI updates cell text in place, adds a row only for a new item and removes one only for a dropped item. It never creates a new table."],
       ["Status moves", "Proposed moves on existing tasks only target Assigned, In Progress, Blocked, Review or Done. Work that is blocked or waiting on someone moves to Blocked."],
+      ["Sync ledger", "Each Sync Meeting apply records which meetings it used, per org, so Board Sync never re-creates tasks from them."],
     ],
   },
   {
@@ -100,6 +101,19 @@ const HOW_IT_WORKS = [
       ["Review before apply", "Nothing changes until you click Apply on the proposal. Applying saves the current agenda to version history first, so it's always revertible."],
       ["Topics are never deleted by a sync", "Apply updates continuing topics in place and writes their new text straight into the live editor, so everyone sees it at once. A topic the AI leaves out is listed as a suggested removal and kept unless you tick its Delete box. Apply refuses if the live editor isn't connected."],
       ["Admin-only", "The AI Gen button appears only for admins."],
+    ],
+  },
+  {
+    group: "Board Sync (Task Board · Andy only)",
+    items: [
+      ["What it does", "One run proposes new tasks, status moves and notes for every org's board from the same sources as Sync Meeting. It never touches an agenda."],
+      ["What counts as new", "Fireflies meetings from the last 30 days not yet used for that org, tracked by a shared per-org ledger. Only meetings from before the ledger started are backfilled, and only if they predate that org's last Sync Meeting."],
+      ["Which org a meeting belongs to", "A title mapped to an agenda wins over who attended; otherwise attendees decide. Meetings that can't be matched are listed as unclassified, and ambiguous titles are reported rather than guessed."],
+      ["Touch Base", "Meetings mapped to the master (Touch Base) agenda feed every org's run; each org takes only its own parts. These are backfilled only by the Touch Base agenda's last sync."],
+      ["Context only", "Internal Vistamar meetings (for client boards) and already-used meetings are read for moves, notes and duplicate checks, but never create tasks."],
+      ["One call per org", "Orgs run in parallel; orgs with nothing new are skipped unless ticked. Review is grouped by org, and orgs that have finished can be applied while others are still running."],
+      ["Apply and retry", "Apply is one atomic write with a log entry. A failed org can be retried, and its meetings stay unused until it succeeds."],
+      ["Access", "Only adeemer@vistamarconsulting.com — the button is hidden for everyone else and the server refuses other accounts."],
     ],
   },
 ];
