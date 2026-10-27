@@ -29,6 +29,7 @@ import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
 import { validateProposal, inheritKeysForCreate, planTopicWrites } from "./syncMeeting.js";
+import { tagSlug } from "./boardSyncCore.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_WINDOW_MS = 21 * DAY_MS; // used only when this agenda has no mapped past meeting yet
@@ -373,10 +374,8 @@ export async function refineProposal({ proposal, instruction, categories, tagVoc
   return { ...refined, topics: topicsWithIds };
 }
 
-// slugify a coined tag name → a stable lowercase-hyphenated id.
-export function tagSlug(name) {
-  return String(name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
+// slugify a coined tag name → a stable lowercase-hyphenated id (shared with Board Sync).
+export { tagSlug } from "./boardSyncCore.js";
 
 // Sync Meeting (unified): POST the assembled inputs to /api/ai/prepare and get
 // back ONE proposal covering both the agenda (topics/openFloorHtml)
