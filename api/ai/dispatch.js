@@ -16,7 +16,7 @@
 // "_" is NOT treated as a function by Vercel, so they add nothing to the count.
 //
 // URLs are unchanged — /api/ai/prepare, /api/ai/refine, /api/ai/generate (and
-// the new /api/ai/chat) all still resolve here and dispatch to the same code as before. No frontend
+// the new /api/ai/chat and /api/ai/sync-board) all still resolve here and dispatch to the same code as before. No frontend
 // change; src/lib/aiAgenda.js keeps calling the same paths.
 //
 // WHY A STATIC FILENAME + AN EXPLICIT REWRITE, NOT api/ai/[action].js:
@@ -32,13 +32,14 @@ import chat from "./_handlers/chat.js";
 import generate from "./_handlers/generate.js";
 import prepare from "./_handlers/prepare.js";
 import refine from "./_handlers/refine.js";
+import syncBoard from "./_handlers/syncBoard.js";
 
 // maxDuration must live on the function file itself, not the handlers. The
 // three original handlers previously declared 300 and the longest (prepare)
 // genuinely needs it; chat shares the same ceiling.
 export const config = { maxDuration: 300 };
 
-const ROUTES = { chat, generate, prepare, refine };
+const ROUTES = { chat, generate, prepare, refine, "sync-board": syncBoard };
 
 export default async function handler(req, res) {
   // Vercel populates req.query.action from the [action] path segment.
