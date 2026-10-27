@@ -9,12 +9,14 @@
 //
 // Collapsing generate/prepare/refine into this one dispatcher takes the count
 // 13 -> 11, which restores deploys and leaves room for the next Studio route.
+// Board Chat's /api/ai/chat route (chat) was added as a fourth handler here for
+// the same reason: a new route is a new entry in ROUTES, not a new function file.
 //
 // The real handlers live in ./_handlers/. A directory whose name starts with
 // "_" is NOT treated as a function by Vercel, so they add nothing to the count.
 //
-// URLs are unchanged — /api/ai/prepare, /api/ai/refine, /api/ai/generate all
-// still resolve here and dispatch to the same code as before. No frontend
+// URLs are unchanged — /api/ai/prepare, /api/ai/refine, /api/ai/generate (and
+// the new /api/ai/chat) all still resolve here and dispatch to the same code as before. No frontend
 // change; src/lib/aiAgenda.js keeps calling the same paths.
 //
 // WHY A STATIC FILENAME + AN EXPLICIT REWRITE, NOT api/ai/[action].js:
@@ -31,8 +33,9 @@ import generate from "./_handlers/generate.js";
 import prepare from "./_handlers/prepare.js";
 import refine from "./_handlers/refine.js";
 
-// maxDuration must live on the function file itself, not the handlers. All
-// three previously declared 300 and the longest (prepare) genuinely needs it.
+// maxDuration must live on the function file itself, not the handlers. The
+// three original handlers previously declared 300 and the longest (prepare)
+// genuinely needs it; chat shares the same ceiling.
 export const config = { maxDuration: 300 };
 
 const ROUTES = { chat, generate, prepare, refine };

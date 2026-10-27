@@ -71,6 +71,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: err.message });
     }
     if (err instanceof Anthropic.APIError) {
+      if (err.status === undefined) {
+        return res.status(502).json({ error: `Could not reach the Anthropic API: ${err.message}` });
+      }
       return res.status(502).json({ error: `Anthropic API error ${err.status}: ${err.message}` });
     }
     return res.status(500).json({ error: err.message });

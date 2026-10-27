@@ -2,6 +2,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const create = vi.fn();
+const list = vi.fn();
+const requireAuth = vi.fn();
 const MODELS = [
   { id: "claude-opus-5-5", created_at: "2026-09-01T00:00:00Z" },
   { id: "claude-sonnet-5", created_at: "2026-05-01T00:00:00Z" },
@@ -12,19 +14,21 @@ vi.mock("@anthropic-ai/sdk", () => {
   class APIError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
   class RateLimitError extends APIError {}
   class BadRequestError extends APIError {}
+  class APIConnectionError extends APIError {}
   class Anthropic {
     constructor() {
       this.messages = { create };
-      this.models = { list: () => (async function* () { yield* MODELS; })() };
+      this.models = { list };
     }
   }
   Anthropic.APIError = APIError;
   Anthropic.RateLimitError = RateLimitError;
   Anthropic.BadRequestError = BadRequestError;
+  Anthropic.APIConnectionError = APIConnectionError;
   return { default: Anthropic };
 });
 vi.mock("../meetings/_lib/cors.js", () => ({ applyCors: () => false }));
-vi.mock("../meetings/_lib/auth.js", () => ({ requireAuth: async () => true }));
+vi.mock("../meetings/_lib/auth.js", () => ({ requireAuth }));
 
 const { pickLatestSonnet, resetModelCache } = await import("../ai/_handlers/chatModels.js");
 const { costUsd } = await import("../ai/_handlers/chatPricing.js");
@@ -41,6 +45,10 @@ const req = (body) => ({ method: "POST", headers: {}, body });
 
 beforeEach(() => {
   create.mockReset();
+  list.mockReset();
+  list.mockImplementation(() => (async function* () { yield* MODELS; })());
+  requireAuth.mockReset();
+  requireAuth.mockResolvedValue(true);
   resetModelCache();
   process.env.ANTHROPIC_API_KEY = "test-key";
 });
@@ -114,5 +122,93 @@ describe("POST /api/ai/chat", () => {
     await chat(req({ messages: [{ role: "user", content: "x" }] }), res);
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toBe("tool_choice not supported");
+  });
+
+  const ok = {
+    model: "claude-sonnet-5-5", stop_reason: "end_turn",
+    content: [{ type: "text", text: "Hi" }],
+    usage: { input_tokens: 1, output_tokens: 1 },
+  };
+  const msgs = { messages: [{ role: "user", content: "x" }] };
+
+  it("maps RateLimitError to 429 with a retry hint", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    create.mockRejectedValue(new Anthropic.RateLimitError(429, "slow down"));
+    const res = fakeRes();
+    await chat(req(msgs), res);
+    expect(res.statusCode).toBe(429);
+    expect(res.body.error).toMatch(/try again/);
+  });
+
+  it("maps a generic APIError to 502", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    create.mockRejectedValue(new Anthropic.APIError(500, "boom"));
+    const res = fakeRes();
+    await chat(req(msgs), res);
+    expect(res.statusCode).toBe(502);
+    expect(res.body.error).toBe("Anthropic API error 500: boom");
+  });
+
+  it("maps a connection error to 502 without an undefined status", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    create.mockRejectedValue(new Anthropic.APIConnectionError(undefined, "socket hang up"));
+    const res = fakeRes();
+    await chat(req(msgs), res);
+    expect(res.statusCode).toBe(502);
+    expect(res.body.error).toBe("Could not reach the Anthropic API: socket hang up");
+  });
+
+  it("reports max_tokens as 502 with model and cost", async () => {
+    create.mockResolvedValue({
+      model: "claude-sonnet-5-5", stop_reason: "max_tokens", content: [],
+      usage: { input_tokens: 1000, output_tokens: 0 },
+    });
+    const res = fakeRes();
+    await chat(req(msgs), res);
+    expect(res.statusCode).toBe(502);
+    expect(res.body.model).toBe("claude-sonnet-5-5");
+    expect(res.body.costUsd).toBeCloseTo(0.002, 6);
+  });
+
+  it("400s when messages is a string", async () => {
+    const res = fakeRes();
+    await chat(req({ messages: "hi" }), res);
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("405s on GET", async () => {
+    const res = fakeRes();
+    await chat({ method: "GET", headers: {}, body: {} }, res);
+    expect(res.statusCode).toBe(405);
+  });
+
+  it("memoizes the model until the cache is reset", async () => {
+    create.mockResolvedValue(ok);
+    await chat(req(msgs), fakeRes());
+    await chat(req(msgs), fakeRes());
+    expect(list).toHaveBeenCalledTimes(1);
+    resetModelCache();
+    await chat(req(msgs), fakeRes());
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("502s when the model list fails and does not cache the failure", async () => {
+    list.mockImplementationOnce(() => (async function* () { throw new Error("list down"); })());
+    create.mockResolvedValue(ok);
+    const res = fakeRes();
+    await chat(req(msgs), res);
+    expect(res.statusCode).toBe(502);
+    expect(res.body.error).toMatch(/list down/);
+    const res2 = fakeRes();
+    await chat(req(msgs), res2);
+    expect(res2.statusCode).toBe(200);
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls nothing when auth fails", async () => {
+    requireAuth.mockResolvedValue(false);
+    await chat(req(msgs), fakeRes());
+    expect(create).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
   });
 });
