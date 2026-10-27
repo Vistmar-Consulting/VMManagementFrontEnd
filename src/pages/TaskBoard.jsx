@@ -54,12 +54,14 @@ import {
 } from "@mui/material";
 import {
   Add as AddIcon,
+  AutoAwesome as AutoAwesomeIcon,
   ChevronRight as ChevronRightIcon,
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
   Search as SearchIcon,
 } from "@mui/icons-material";
 
+import BoardChatPanel, { PANEL_WIDTH } from "../components/BoardChatPanel.jsx";
 import ColorPicker from "../components/ColorPicker.jsx";
 import { getContrastText } from "../theme/pillColors.js";
 import TaskBoardColumnHeader from "../components/TaskBoardColumnHeader.jsx";
@@ -76,6 +78,7 @@ import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
+import { resolveBoardFilter } from "../lib/boardChat/boardFilter.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
 
@@ -134,6 +137,10 @@ export default function TaskBoard() {
   // Scorecard single-select filter.
   const [scorecardFilter, setScorecardFilter] = useState(null);
 
+  // Board Chat AI filter: { label, ids: Set } — the exact items Claude picked.
+  const [aiFilter, setAiFilter] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false);
+
   // Group expanded state.
   const [activeExpanded, setActiveExpanded] = useState(true);
   const [completedExpanded, setCompletedExpanded] = useState(false);
@@ -147,8 +154,8 @@ export default function TaskBoard() {
   // they respond to the column filters without zeroing each other out when a
   // card is selected.
   const matchesSearchAndColumns = useMemo(
-    () => buildItemMatcher({ titleSearch, columnFilters }),
-    [titleSearch, columnFilters],
+    () => buildItemMatcher({ titleSearch, columnFilters, idSet: aiFilter?.ids }),
+    [titleSearch, columnFilters, aiFilter],
   );
 
   const selectedCard = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
@@ -177,8 +184,9 @@ export default function TaskBoard() {
   const hasAnyFilter = useMemo(() => {
     return Boolean(titleSearch)
       || Boolean(scorecardFilter)
-      || Object.values(columnFilters).some((v) => v && v.length > 0);
-  }, [titleSearch, scorecardFilter, columnFilters]);
+      || Object.values(columnFilters).some((v) => v && v.length > 0)
+      || Boolean(aiFilter);
+  }, [titleSearch, scorecardFilter, columnFilters, aiFilter]);
 
   // What gets RENDERED under an expanded parent. When any filter is active,
   // narrow each parent's subitems to those that match the filter; otherwise
@@ -238,17 +246,18 @@ export default function TaskBoard() {
   // rows and filter-matched parents open by default; an explicit collapse
   // overrides that default and is cleared whenever the filters change.
   const [expansion, setExpansion] = useState(() => ({
-    filters: [scorecardFilter, titleSearch, columnFilters],
+    filters: [scorecardFilter, titleSearch, columnFilters, aiFilter],
     open: new Set(),
     closed: new Set(),
   }));
   const filtersChanged = expansion.filters[0] !== scorecardFilter
     || expansion.filters[1] !== titleSearch
-    || expansion.filters[2] !== columnFilters;
+    || expansion.filters[2] !== columnFilters
+    || expansion.filters[3] !== aiFilter;
   if (filtersChanged) {
     setExpansion((prev) => ({
       ...prev,
-      filters: [scorecardFilter, titleSearch, columnFilters],
+      filters: [scorecardFilter, titleSearch, columnFilters, aiFilter],
       closed: new Set(),
     }));
   }
@@ -306,6 +315,18 @@ export default function TaskBoard() {
       else next[field] = values;
       return next;
     });
+  };
+
+  // Board Chat's set_board_filter. resolveBoardFilter throws on any unknown
+  // id, so a bad call errors back to the model and the board is unchanged.
+  const applyBoardFilter = (input) => {
+    const next = resolveBoardFilter(input, { orgs, items: allItems, users, categories, tags });
+    if (next.orgFilter !== undefined) setOrgFilter(next.orgFilter);
+    if (next.titleSearch !== undefined) setTitleSearch(next.titleSearch);
+    if (next.columnFilters !== undefined) setColumnFilters(next.columnFilters);
+    if (next.scorecardFilter !== undefined) setScorecardFilter(next.scorecardFilter);
+    if (next.aiFilter !== undefined) setAiFilter(next.aiFilter);
+    return { applied: true, aiFilterCount: next.aiFilter ? next.aiFilter.ids.size : null };
   };
 
   // Firestore writes
@@ -676,16 +697,22 @@ export default function TaskBoard() {
   }
 
   return (
-    <Stack spacing={4}>
+    <>
+    <Stack spacing={4} sx={{ pr: chatOpen ? { md: `${PANEL_WIDTH}px` } : 0, transition: "padding 0.2s" }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Typography variant="h4" component="h1">Project Board</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setOrgPickerOpen(true)}
-        >
-          New item
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button variant={chatOpen ? "contained" : "outlined"} startIcon={<AutoAwesomeIcon />} onClick={() => setChatOpen((v) => !v)}>
+            Board Chat
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setOrgPickerOpen(true)}
+          >
+            New item
+          </Button>
+        </Stack>
       </Stack>
 
       {/* Scorecards */}
@@ -773,6 +800,16 @@ export default function TaskBoard() {
           ) : null,
         }}
       />
+
+      {aiFilter && (
+        <Box>
+          <Chip
+            color="secondary"
+            label={`AI: ${aiFilter.label} (${aiFilter.ids.size})`}
+            onDelete={() => setAiFilter(null)}
+          />
+        </Box>
+      )}
 
       {itemsLoading && (
         <Typography variant="body2" color="text.secondary">Loading…</Typography>
@@ -986,5 +1023,17 @@ export default function TaskBoard() {
         </DialogActions>
       </Dialog>
     </Stack>
+      <BoardChatPanel
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        items={allItems}
+        users={users}
+        orgs={orgs}
+        categories={categories}
+        tags={tags}
+        user={user}
+        onApplyFilter={applyBoardFilter}
+      />
+    </>
   );
 }
