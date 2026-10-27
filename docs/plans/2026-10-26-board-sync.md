@@ -1739,6 +1739,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `src/components/SyncBoardDialog.jsx`
+- Create: `src/components/__tests__/SyncBoardDialog.test.jsx`
 
 - [ ] **Step 1: Implement**
 
@@ -2015,6 +2016,12 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
                 {gathered.unclassified} meeting(s) couldn't be matched to an org and are not included.
               </Typography>
             )}
+            {gathered.ambiguousTitles.length > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                {gathered.ambiguousTitles.length} meeting title(s) are mapped to agendas in more than one org and were classified by attendees instead:{" "}
+                {gathered.ambiguousTitles.map((a) => `${a.title} (${a.orgs.map((s) => orgBySlug.get(s)?.name || s).join(", ")})`).join("; ")}
+              </Typography>
+            )}
             <Divider sx={{ my: 2 }} />
             <TextField
               label="Additional context (sent to every org)"
@@ -2073,17 +2080,84 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
 }
 ```
 
+Notes: coined tags (`promotion.newTags`, seeded by `initPromotion` for every valid create) are shown and removed only via the dialog's "New tags to add" chip row — `ProposedBoardRow`'s tag picker edits `tagIds` only, so the two never conflict. An `applyBoardSync` throw (incl. the 500-write limit) lands in the error Alert and returns to review.
+
 Note on "applies done orgs, ignores failed ones": a failed org's transcripts are never stamped, because `applyBoardSync` only receives done runs.
 
-- [ ] **Step 2: Compile check** — no ESLint config in this repo; the dialog compiles as part of Task 9's page test and Task 10's build.
+- [ ] **Step 2: Render test** — mocks `boardSync.js` and `AuthContext.jsx`; asserts pre-flight lists both orgs, the 0-new org starts unticked, the ambiguous-title caption renders, the button reads "Run (1 org)", and `runOrgSync` is not called until Run is clicked.
+
+```jsx
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { ThemeProvider, createTheme } from "@mui/material";
+
+const GATHERED = {
+  sinceMs: 0,
+  orgs: [
+    { slug: "acme", name: "Acme Dental", type: "client", accentColor: "#123456", fresh: [{ id: "t1" }], context: [], droppedNew: 0 },
+    { slug: "vistamar", name: "Vistamar", type: "internal", accentColor: null, fresh: [], context: [{ id: "t2" }], droppedNew: 0 },
+  ],
+  unclassified: 0,
+  ambiguousTitles: [{ title: "weekly sync", orgs: ["acme", "vistamar"] }],
+  lastSyncAt: null,
+  agendasByOrg: {},
+  categories: [],
+  tagVocab: [],
+};
+
+const gatherBoardSyncInputs = vi.fn();
+const runOrgSync = vi.fn();
+const applyBoardSync = vi.fn();
+
+vi.mock("../../lib/boardSync.js", () => ({ gatherBoardSyncInputs, runOrgSync, applyBoardSync }));
+vi.mock("../../contexts/AuthContext.jsx", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
+
+const { default: SyncBoardDialog } = await import("../SyncBoardDialog.jsx");
+
+function wrap(ui) {
+  return render(<ThemeProvider theme={createTheme()}>{ui}</ThemeProvider>);
+}
+
+describe("SyncBoardDialog pre-flight", () => {
+  beforeEach(() => {
+    gatherBoardSyncInputs.mockReset().mockResolvedValue(GATHERED);
+    runOrgSync.mockReset().mockReturnValue(new Promise(() => {}));
+    applyBoardSync.mockReset();
+  });
+
+  it("lists every org, unticks orgs with nothing new, and runs only on click", async () => {
+    wrap(<SyncBoardDialog items={[]} users={[]} categories={[]} tags={[]} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("Acme Dental")).toBeInTheDocument();
+    expect(screen.getByText("Vistamar")).toBeInTheDocument();
+    expect(screen.getByText(/1 new/)).toBeInTheDocument();
+    expect(screen.getByText(/nothing new/)).toBeInTheDocument();
+    expect(screen.getByText(/weekly sync \(Acme Dental, Vistamar\)/)).toBeInTheDocument();
+
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes[0]).toBeChecked();
+    expect(boxes[1]).not.toBeChecked();
+
+    const run = screen.getByRole("button", { name: "Run (1 org)" });
+    expect(runOrgSync).not.toHaveBeenCalled();
+
+    fireEvent.click(run);
+    expect(runOrgSync).toHaveBeenCalledTimes(1);
+    expect(runOrgSync.mock.calls[0][0].slug).toBe("acme");
+  });
+});
+```
+
+Run: `npx vitest run src/components/__tests__/SyncBoardDialog.test.jsx` (and `ProposedBoardRow.test.jsx`), then `npx vite build`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/components/SyncBoardDialog.jsx
+git add src/components/SyncBoardDialog.jsx src/components/__tests__/SyncBoardDialog.test.jsx docs/plans/2026-10-26-board-sync.md
 git commit -m "feat(board-sync): Sync Board dialog — pre-flight, per-org review, apply
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KjvmVVBT2MNhANs3AWQu11"
 ```
 
 ---
