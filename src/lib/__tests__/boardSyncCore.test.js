@@ -8,6 +8,7 @@ import {
   syncMeetingStamps,
   groupStamps,
   isLedgerId,
+  isDocId,
   fetchTranscriptsSince,
   boardContextForOrg,
   initPromotion,
@@ -179,6 +180,11 @@ describe("syncMeetingStamps — Sync Meeting writer rule", () => {
   it("isLedgerId rejects ids Firestore can't use as a doc id", () => {
     expect(isLedgerId("01JABCDEF123")).toBe(true);
     for (const bad of ["", "a/b", ".", "..", "__x__", null, 42]) expect(isLedgerId(bad)).toBe(false);
+  });
+  it("isDocId rejects item ids doc() would throw on; isLedgerId is the same check", () => {
+    expect(isDocId("abc123")).toBe(true);
+    for (const bad of ["", "a/b/c", "a/b", ".", "..", "__x__", undefined, 7]) expect(isDocId(bad)).toBe(false);
+    expect(isLedgerId).toBe(isDocId);
   });
   it("groupStamps drops ids Firestore would reject, so one bad id can't abort an apply", () => {
     expect(groupStamps([{ id: "a/b", org: "unio" }, { id: "ok", org: "unio" }])).toEqual({ ok: ["unio"] });

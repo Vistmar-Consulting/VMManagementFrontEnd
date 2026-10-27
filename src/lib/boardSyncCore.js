@@ -130,18 +130,20 @@ export function syncMeetingStamps(transcripts, { targetOrg, master, orgSlugs }) 
   return out;
 }
 
-// A Fireflies id usable as a syncedTranscripts doc id. doc() throws on these
-// inside the transaction, which would abort the whole apply over one stamp.
-export function isLedgerId(id) {
+// A string usable as a Firestore doc id (a transcript id for the ledger, an
+// item id from the model). doc() throws on anything else inside a transaction,
+// which would abort the whole apply over one bad id.
+export function isDocId(id) {
   return typeof id === "string" && id !== "" && id !== "." && id !== ".." && !id.includes("/") && !/^__.*__$/.test(id);
 }
+export const isLedgerId = isDocId;
 
 // [{ id, org }] → { [id]: [org, …] } so each ledger doc is written once per tx.
 // Ids Firestore can't use are skipped (that transcript stays unstamped = new).
 export function groupStamps(stamps) {
   const out = {};
   for (const { id, org } of stamps || []) {
-    if (!isLedgerId(id)) continue;
+    if (!isDocId(id)) continue;
     if (!out[id]) out[id] = [];
     if (!out[id].includes(org)) out[id].push(org);
   }

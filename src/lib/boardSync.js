@@ -29,6 +29,7 @@ import {
   boardContextForOrg,
   fetchTranscriptsSince,
   groupStamps,
+  isDocId,
   isLedgerId,
   splitBucket,
   tagSlug,
@@ -82,12 +83,13 @@ export async function gatherBoardSyncInputs({ now = Date.now() } = {}) {
   // Title → org from non-master agenda mappings. A title mapped to agendas of
   // two different orgs has no single right answer, so it is left out of the
   // map (the attendee classifier decides that transcript) and reported for the
-  // pre-flight screen. A title that is also master-mapped is cross-org first
-  // (bucketTranscripts checks masterTitles before titleOrgs).
+  // pre-flight screen. A master-mapped title is cross-org regardless, so it is
+  // skipped here.
   const orgsByTitle = new Map();
   for (const a of agendas) {
     if (a.master || !a.org) continue;
     for (const t of a.firefliesTitles) {
+      if (masterTitles.has(t)) continue;
       if (!orgsByTitle.has(t)) orgsByTitle.set(t, new Set());
       orgsByTitle.get(t).add(a.org);
     }
@@ -234,11 +236,21 @@ export async function applyBoardSync(runs, selections, uid = null) {
       dropped.push({ org: slug, title: create.title, reason: parent ? "parent is itself a subitem" : "parent task not selected" });
       return false;
     });
+    // An item id doc() can't take would throw inside the tx and abort every org.
+    const validId = (id, title) => {
+      if (isDocId(id)) return true;
+      dropped.push({ org: slug, title, reason: "invalid item id" });
+      return false;
+    };
+    creates = creates.filter(({ create }) => {
+      const ref = create.parentRef || "";
+      return !ref || ref.startsWith("new:") || validId(ref, create.title);
+    });
     return {
       slug,
       creates,
-      moves: (sel.moveIdxs || []).map((i) => (bc.moves || [])[i]).filter(Boolean),
-      notes: (sel.noteIdxs || []).map((i) => (bc.notes || [])[i]).filter(Boolean),
+      moves: (sel.moveIdxs || []).map((i) => (bc.moves || [])[i]).filter(Boolean).filter((m) => validId(m.itemId, m.title)),
+      notes: (sel.noteIdxs || []).map((i) => (bc.notes || [])[i]).filter(Boolean).filter((n) => validId(n.itemId, n.title)),
       promotions: sel.promotions || {},
       refs: creates.map(() => doc(collection(db, "items"))),
     };
@@ -277,11 +289,19 @@ export async function applyBoardSync(runs, selections, uid = null) {
   const counts = {};
   const preDropped = [...dropped];
   await runTransaction(db, async (tx) => {
-    // ---- READS ----
-    const orgSnaps = new Map();
-    for (const p of plan) if (p.creates.length) orgSnaps.set(p.slug, await tx.get(doc(db, "organizations", p.slug)));
-    const targets = new Map();
-    for (const id of targetIds) targets.set(id, await tx.get(doc(db, "items", id)));
+    // ---- READS (all before any write) ----
+    // Tags to coin are re-read here: the outer read can be stale, and a tag
+    // created since must not be overwritten.
+    const orgSlugsToRead = plan.filter((p) => p.creates.length).map((p) => p.slug);
+    const coinIds = [...coinable];
+    const [orgList, targetList, tagList] = await Promise.all([
+      Promise.all(orgSlugsToRead.map((slug) => tx.get(doc(db, "organizations", slug)))),
+      Promise.all(targetIds.map((id) => tx.get(doc(db, "items", id)))),
+      Promise.all(coinIds.map((id) => tx.get(doc(db, "tags", id)))),
+    ]);
+    const orgSnaps = new Map(orgSlugsToRead.map((slug, i) => [slug, orgList[i]]));
+    const targets = new Map(targetIds.map((id, i) => [id, targetList[i]]));
+    const tagNowExists = new Set(coinIds.filter((id, i) => tagList[i].exists()));
     // A target must still exist and belong to the org whose run proposed it.
     const problem = (id, slug) => {
       const snap = targets.get(id);
@@ -298,7 +318,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
     const coin = (name) => {
       const id = tagSlug(name);
       if (!id) return null;
-      if (!existingTagIds.has(id) && !newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name: String(name).trim() });
+      if (!existingTagIds.has(id) && !tagNowExists.has(id) && !newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name: String(name).trim() });
       return id;
     };
     // Running descriptions, so two notes on one item both land.
@@ -322,6 +342,8 @@ export async function applyBoardSync(runs, selections, uid = null) {
         } else if (ref) {
           const why = problem(ref, p.slug);
           if (why) { dropped.push({ org: p.slug, title: create.title, reason: `parent ${why}` }); return; }
+          // One level of nesting only (same rule as the new:N guard above).
+          if (targets.get(ref).data().parentId) { dropped.push({ org: p.slug, title: create.title, reason: "parent is itself a subitem" }); return; }
           parentId = ref;
           existingParents.add(ref);
         }
