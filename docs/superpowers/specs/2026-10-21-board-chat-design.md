@@ -150,3 +150,19 @@ At $2 / $10 per MTok in/out with $0.20 cache reads, a typical question takes 2â€
 
 1. Name: **Board Chat**.
 2. Audit: `createdVia: "board-chat"` on creates only. No automatic comments on updates or deletes in V1.
+
+## 13. Addendum 2026-10-27 â€” hints, filter views, Reset
+
+Approved by Andy 2026-10-27 after the first live use.
+
+**Hints.** A `?` icon next to the "Board Chat" title (tooltip "How to use Board Chat"). Click opens a popover covering: asking questions; what it can see (board + calendar, not Fireflies); that "show / list / filter" changes the board; changes go through the review modal; the cost display; filter views and Reset.
+
+**Filter views.** Every `set_board_filter` call that sets something saves a **view** and turns it on. A view stores the full board filter state after the call (org, search, column filters, scorecard, AI item list) and a label (`set_board_filter` takes a top-level `label`; `aiFilter` is now `{ itemIds }`). Views show as a row of chips: the active one filled, the rest outlined.
+- Click an inactive chip: it becomes the only active view and its filters apply. Click the active chip: it turns off and the filters from before any view was turned on come back.
+- `x` deletes a view; deleting the active one restores those earlier filters first.
+- A call with only `clear: true` deletes nothing; it turns the active view off and clears the filters (as before, org goes to "all").
+- Views, the active view and the earlier filters persist in localStorage (`vm-board-chat-views`); on load an active view re-applies.
+- A view is a snapshot: items created later do not join it. Chip counts show only items that still exist.
+- Logic is pure in `src/lib/boardChat/boardViews.js`.
+
+**Reset.** A Reset button beside the search box: turns every view off (without restoring earlier filters, without deleting any), and clears search, column filters and the scorecard. The org pill is left alone. Disabled when there is nothing to reset.
