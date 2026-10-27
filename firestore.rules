@@ -97,6 +97,19 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Board Sync transcript ledger (spec 2026-10-26 §3): which Fireflies
+    // transcripts each org's Sync Meeting / Board Sync already used. Written by
+    // whoever runs Sync Meeting, so any active user. Never deleted.
+    match /syncedTranscripts/{transcriptId} {
+      allow read, create, update: if isActiveUser();
+    }
+
+    // Board Sync run log — Andy only (spec §8). Append-only.
+    match /boardSyncLog/{logId} {
+      allow read, create: if isActiveUser()
+                          && request.auth.token.email == 'adeemer@vistamarconsulting.com';
+    }
+
     match /items/{itemId} {
       allow read, write: if isActiveUser();
 
