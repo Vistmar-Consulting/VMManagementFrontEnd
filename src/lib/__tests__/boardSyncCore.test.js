@@ -227,6 +227,14 @@ describe("boardContextForOrg", () => {
     expect(existingTasks.map((t) => t.id)).toEqual(["p"]);
     expect(projectBoard.map((b) => [b.name, b.isNew, b.project])).toEqual([["Parent", false, null], ["Child", true, "Parent"]]);
   });
+  it("reads item titles — item docs carry `title`, not `name`", () => {
+    const real = [
+      { id: "p", title: "Parent", organizationId: "unio", statusId: 2, updatedAt: NOW - DAY, createdAt: NOW - 60 * DAY },
+      { id: "c", title: "Child", organizationId: "unio", parentId: "p", statusId: 1, updatedAt: NOW - DAY, createdAt: NOW - DAY },
+    ];
+    const { projectBoard } = boardContextForOrg(real, "unio", NOW - 30 * DAY);
+    expect(projectBoard.map((b) => [b.name, b.project])).toEqual([["Parent", null], ["Child", "Parent"]]);
+  });
 });
 
 describe("initPromotion", () => {

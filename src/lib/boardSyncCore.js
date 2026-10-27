@@ -168,15 +168,16 @@ export async function fetchTranscriptsSince(queryFn, listQuery, sinceMs, { pageS
 const statusLabel = (id) => STATUS_OPTIONS.find((s) => s.id === id)?.name || "?";
 
 // One org's board inputs — same shapes as assembleGenInputs' per-org output.
+// Item docs carry `title`; the projectBoard row field is still called `name`.
 export function boardContextForOrg(items, org, sinceMs) {
   const own = (items || []).filter((it) => it.organizationId === org);
-  const nameById = new Map((items || []).map((it) => [it.id, it.name]));
+  const nameById = new Map((items || []).map((it) => [it.id, it.title]));
   const projectBoard = own
     .filter((it) => toMs(it.createdAt) >= sinceMs || toMs(it.updatedAt) >= sinceMs)
     .sort((a, b) => toMs(b.updatedAt) - toMs(a.updatedAt))
     .slice(0, MAX_BOARD_ITEMS)
     .map((it) => ({
-      name: it.name || "",
+      name: it.title || "",
       status: statusLabel(it.statusId),
       isNew: toMs(it.createdAt) >= sinceMs,
       project: it.parentId ? nameById.get(it.parentId) || null : null,
