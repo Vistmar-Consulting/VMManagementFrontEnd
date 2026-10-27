@@ -31,6 +31,8 @@
 
 **Implemented 2026-10-26** per `docs/superpowers/specs/2026-10-26-sync-topic-no-delete-design.md`: in-place apply (`planTopicWrites`), unchecked Delete boxes for AI-suggested removals, updated bodies written into the live Yjs fragments (`writeTopicBodies`), apply refused when the live editor is not connected. Code review also found the Firestore mirror guard used the wrong plugin key (`y-prosemirror` vs TipTap's `@tiptap/y-tiptap`), so every remote change was mirrored by each viewing client — fixed with a real-binding test.
 
+**Verified live 2026-10-27** (prod deploy `3t17mv8d2`, commit `a5a01b2`): Unio Biweekly sync — prepare ~59s; review showed 10 retained + 1 new, none suggested for removal; after Apply all 10 original topic doc ids were unchanged plus one new id; the Google Ads body showed the AI text exactly once in the live editor, identical after a reload. **Not exercised live:** the Delete checkbox path (no removals proposed) — covered by unit tests only.
+
 ## 3. Test failures — finding
 
 The 12 failures from 2026-10-21 did not reproduce: serial run with a 15s timeout passed 31 files / 226 tests. Three tests exceed vitest's 5s default even then (`TaskBoard.expandAll` 18.3s and 11.2s, `NewMeetingDialog.attendees` 6.0s), so they fail whenever the machine is loaded; module import took 327s of the 553s run.
