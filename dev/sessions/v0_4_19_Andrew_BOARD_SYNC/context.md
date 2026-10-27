@@ -70,7 +70,7 @@ A Sync feature on the Task Board that updates every client's and Vistamar's task
 
 ## Morning checklist (Task 11 — each needs Andy's yes)
 
-1. **Deploy rules:** `firebase deploy --only firestore:rules --project management-db9eb`. This must come before the push, or Sync Meeting apply fails for everyone.
+1. **Deploy rules — DONE 2026-10-27T15:32Z** (`--account adeemer@vistamarconsulting.com`; the CLI default account `deemerwsp@gmail.com` gets a 403). Compiled and released. This must come before the push, or Sync Meeting apply fails for everyone.
 2. **Pre-flight browser check:** local dev on 5173, signed in as Andy → Task Board → Sync Board. Check the per-org new/context counts, unticked zero-new orgs, the last-sync line, and the unclassified and ambiguous notes. Stop before Run.
 3. **Set `LEDGER_EPOCH_MS`** in `src/lib/boardSyncCore.js` (currently `2026-10-27T12:00:00Z`) to the deploy time or slightly after, then commit.
 4. **Push:** `git pull --rebase origin dev && git push origin HEAD:dev`. Andy's requested order put the push last, but the live run cannot reach `/api/ai/sync-board` until this is deployed.
