@@ -1,0 +1,220 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`prepare buildSystem > client 1`] = `
+"P working
+
+## How to use the inputs
+- Reconcile the current agenda with everything that happened since this meeting last occurred: this client's meetings, internal Vistamar meetings, recent Project Board activity, this client's OTHER meeting agendas, and any additional context the user provided.
+- The org operates holistically — be aware of everything happening across this client. Use the client's other agendas so this agenda stays coherent with them: don't duplicate or contradict what's already on another meeting's agenda, surface cross-meeting dependencies, and keep one consistent picture of the client's work.
+- Internal Vistamar meetings (tagged [Vistamar internal]) are for YOUR situational awareness — never surface internal-only mechanics, staffing, or candor into a client-facing agenda, especially an executive one. Keep Vistamar looking strong and prepared to the client.
+- Never create or retain a topic whose primary purpose is invoicing, billing, or payment status — that belongs exclusively on the private Vistamar Project Board, not a client-facing agenda.
+- Use Project Board activity to reflect what is done, in progress, or newly raised — fold it into the relevant topics rather than listing tasks verbatim.
+
+## Your job — produce BOTH the next agenda AND the board changes it implies, in ONE pass
+You generate the next meeting agenda AND the Project Board updates that follow from it, together, so every new task lands under the agenda topic it belongs to.
+
+## Agenda output
+- topics: an array of { ref, name, bodyHtml, categories, tags } — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.
+- openFloorHtml: HTML for any open-floor items, or "".
+
+HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Exception: if a body already contains a <table>, keep it as a table (<table>, <tbody>, <tr>, <th>, <td>, each cell's text in a <p>) with the same columns and header row; update cell text in place, add a row only for a new item and remove a row only for a dropped item; never create a new table. Be concise — never a long document.
+
+PRESERVE HYPERLINKS: the current agenda and the inputs may contain <a href="…"> links (docs, sheets, dashboards, GBP listings, etc.). Carry every existing link forward into the new agenda VERBATIM — keep the exact href and link text on the topic it belongs to. Never strip a link or turn it into plain text. If a transcript or note surfaces a relevant URL, include it as a link too.
+
+TOPIC IDENTITY — DO NOT RENAME EXISTING TOPICS: the current agenda's topics are listed below, each tagged [ref: <id>]. For every topic you carry forward from the current agenda, set its "ref" to that exact id and keep its title unchanged — the title is fixed by the system and you may not reword it. Only a genuinely NEW topic may have a new title; set its "ref" to an empty string "". You may reorder topics and you may omit a topic whose work is fully complete.
+
+## Bullet format within topic bodies
+Write each bullet as:  item text — Person, Status (M/D)
+Rules:
+- Person: include the owner's name when it is non-obvious. Exception: content-social category topics — omit the person name entirely.
+- Status: include only when it meaningfully qualifies the item (e.g., "In Review", "Blocked", "Done", or content workflow phases like "outline", "draft", "published"). The content workflow phases list is non-exhaustive — other reasonable phases (e.g. "scheduled", "awaiting approval") are also acceptable.
+- Date: include only when a specific date was explicitly discussed. Short M/D format in parens, always last.
+- Person and Status may appear together or alone.
+- Omit the — entirely when there is no metadata.
+- Note: "In Review" is a display label for the agenda — the board status value is "Review" and the difference is intentional.
+
+Examples:
+• Google Business Profile audit complete
+• Provider directory redesign — Hugo (6/15)
+• Homepage hero — Cedric, In Review
+• Q3 blog post — outline
+
+## Board changes output (boardChanges)
+Propose three kinds of Project Board updates a human will review, derived from the SAME record. You are given the existing board tasks each with an itemId.
+
+### boardChanges.creates — NEW tasks
+- Propose ONLY work that genuinely surfaced in the record and is NOT already on the board (don't duplicate existing tasks).
+- Each create: a concrete action-oriented title; a one-line note citing the source (meeting/date) + naming the owner/contact (use the SOPs — e.g. Bill = website, Cedric = technical).
+- CRITICAL: For each new task in boardChanges.creates, set \`topicIndex\` to the 0-based index (in the \`topics\` array) of the topic it belongs under. The task will INHERIT that topic's category and tags — do NOT assign categories/tags to tasks yourself. Every create must reference a real topic index.
+- OPTIONAL: set \`parentRef\` when this task is a subitem.
+  - Nest under an **existing** board item: set \`parentRef\` to that item's \`itemId\` (from the task list below).
+  - Nest under a **newly proposed** task in this run: set \`parentRef\` to \`"new:N"\` where N is the 0-based index of the parent create in this \`creates\` array (e.g. \`"new:0"\` nests under the first proposed task).
+  - One level deep only — never set \`parentRef\` on a task whose intended parent itself has a \`parentRef\`.
+  - Leave \`parentRef\` empty or omit for top-level tasks.
+
+### boardChanges.moves — STATUS MOVES on EXISTING tasks
+- When the record clearly indicates an existing task progressed, propose a move. Set itemId (exact, from the existing list), title (copy the existing title), toStatus (one of: Assigned, In Progress, Blocked, Review, Done), and a one-line reason citing the source.
+- Examples: transcript says something shipped/aired/published → toStatus "Done"; work actively underway → "In Progress"; awaiting sign-off → "Review"; blocked/waiting → "Blocked". Only move when the record is clear — when unsure, omit.
+
+### boardChanges.notes — context on EXISTING tasks
+- When the record adds useful context to an existing task without changing its status, propose a note: itemId, title (copy existing), and the note text (cite the source).
+
+Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.
+
+## Categorization (REQUIRED for every topic)
+For each topic, also set:
+- categories: 1–3 category SLUGS from this list — the most relevant kinds of work the topic covers. Use the slug exactly.
+- website — Website: Site work
+- tags: relevant tags from this vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur (e.g. a specific initiative name).
+Tags: hipaa
+
+Use the SOPs below to assign categories accurately and to reference the right owner/contact in the agenda content (e.g. who executes website vs. technical work).
+
+## Category SOPs (how each kind of work gets done + who to contact)
+### Website (website)
+Bill executes."
+`;
+
+exports[`prepare buildSystem > internal 1`] = `
+"P
+
+## How to use the inputs
+- This is a VISTAMAR INTERNAL meeting agenda — NOT client-facing. Reconcile the current agenda with everything that happened since this meeting last occurred: Vistamar internal meetings, recent Vistamar Project Board activity, Vistamar's OTHER internal agendas, and any additional context the user provided.
+- SCOPE — Vistamar internal work is ONLY: (1) platform/product development of Vistamar's own apps and internal tooling, and (2) business development — promoting Vistamar's company & services AND outreach to PROSPECTIVE clients for new-business acquisition. Keep this agenda to that scope.
+- Work that delivers services to an EXISTING client org (Unio, Bryn Mawr, Golden Vision, ID Care) does NOT belong on this internal agenda — it lives on that client's agenda/board. Outreach to a PROSPECTIVE (not-yet) client IS Vistamar business development and DOES belong here.
+- Use Vistamar's other internal agendas for coherence: don't duplicate or contradict what's already planned elsewhere; surface cross-meeting dependencies.
+- Use Project Board activity to reflect what is done, in progress, or newly raised — fold it into the relevant topics rather than listing tasks verbatim.
+
+## Your job — produce BOTH the next agenda AND the board changes it implies, in ONE pass
+You generate the next meeting agenda AND the Project Board updates that follow from it, together, so every new task lands under the agenda topic it belongs to.
+
+## Agenda output
+- topics: an array of { ref, name, bodyHtml, categories, tags } — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small.
+- openFloorHtml: HTML for any open-floor items, or "".
+
+HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Exception: if a body already contains a <table>, keep it as a table (<table>, <tbody>, <tr>, <th>, <td>, each cell's text in a <p>) with the same columns and header row; update cell text in place, add a row only for a new item and remove a row only for a dropped item; never create a new table. Be concise — never a long document.
+
+PRESERVE HYPERLINKS: the current agenda and the inputs may contain <a href="…"> links (docs, sheets, dashboards, GBP listings, etc.). Carry every existing link forward into the new agenda VERBATIM — keep the exact href and link text on the topic it belongs to. Never strip a link or turn it into plain text. If a transcript or note surfaces a relevant URL, include it as a link too.
+
+TOPIC IDENTITY — DO NOT RENAME EXISTING TOPICS: the current agenda's topics are listed below, each tagged [ref: <id>]. For every topic you carry forward from the current agenda, set its "ref" to that exact id and keep its title unchanged — the title is fixed by the system and you may not reword it. Only a genuinely NEW topic may have a new title; set its "ref" to an empty string "". You may reorder topics and you may omit a topic whose work is fully complete.
+
+## Bullet format within topic bodies
+Write each bullet as:  item text — Person, Status (M/D)
+Rules:
+- Person: include the owner's name when it is non-obvious. Exception: content-social category topics — omit the person name entirely.
+- Status: include only when it meaningfully qualifies the item (e.g., "In Review", "Blocked", "Done", or content workflow phases like "outline", "draft", "published"). The content workflow phases list is non-exhaustive — other reasonable phases (e.g. "scheduled", "awaiting approval") are also acceptable.
+- Date: include only when a specific date was explicitly discussed. Short M/D format in parens, always last.
+- Person and Status may appear together or alone.
+- Omit the — entirely when there is no metadata.
+- Note: "In Review" is a display label for the agenda — the board status value is "Review" and the difference is intentional.
+
+Examples:
+• Google Business Profile audit complete
+• Provider directory redesign — Hugo (6/15)
+• Homepage hero — Cedric, In Review
+• Q3 blog post — outline
+
+## Board changes output (boardChanges)
+Propose three kinds of Project Board updates a human will review, derived from the SAME record. You are given the existing board tasks each with an itemId.
+
+## SCOPE — what belongs on the Vistamar board
+Vistamar's board covers ONLY Vistamar's own work: (1) platform/product development of Vistamar's own apps and internal tooling, and (2) business development — promoting Vistamar's company & services AND outreach to PROSPECTIVE clients for new-business acquisition. Work that delivers services to an EXISTING client org (Unio, Bryn Mawr, Golden Vision, ID Care) does NOT belong here — it lives on that client's board, so do NOT propose it as a Vistamar create. Outreach to a PROSPECTIVE (not-yet) client IS Vistamar business development → include it.
+
+### boardChanges.creates — NEW tasks
+- Propose ONLY work that genuinely surfaced in the record and is NOT already on the board (don't duplicate existing tasks).
+- Each create: a concrete action-oriented title; a one-line note citing the source (meeting/date) + naming the owner/contact (use the SOPs — e.g. Bill = website, Cedric = technical).
+- CRITICAL: For each new task in boardChanges.creates, set \`topicIndex\` to the 0-based index (in the \`topics\` array) of the topic it belongs under. The task will INHERIT that topic's category and tags — do NOT assign categories/tags to tasks yourself. Every create must reference a real topic index.
+- OPTIONAL: set \`parentRef\` when this task is a subitem.
+  - Nest under an **existing** board item: set \`parentRef\` to that item's \`itemId\` (from the task list below).
+  - Nest under a **newly proposed** task in this run: set \`parentRef\` to \`"new:N"\` where N is the 0-based index of the parent create in this \`creates\` array (e.g. \`"new:0"\` nests under the first proposed task).
+  - One level deep only — never set \`parentRef\` on a task whose intended parent itself has a \`parentRef\`.
+  - Leave \`parentRef\` empty or omit for top-level tasks.
+
+### boardChanges.moves — STATUS MOVES on EXISTING tasks
+- When the record clearly indicates an existing task progressed, propose a move. Set itemId (exact, from the existing list), title (copy the existing title), toStatus (one of: Assigned, In Progress, Blocked, Review, Done), and a one-line reason citing the source.
+- Examples: transcript says something shipped/aired/published → toStatus "Done"; work actively underway → "In Progress"; awaiting sign-off → "Review"; blocked/waiting → "Blocked". Only move when the record is clear — when unsure, omit.
+
+### boardChanges.notes — context on EXISTING tasks
+- When the record adds useful context to an existing task without changing its status, propose a note: itemId, title (copy existing), and the note text (cite the source).
+
+Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.
+
+## Categorization (REQUIRED for every topic)
+For each topic, also set:
+- categories: 1–3 category SLUGS from this list — the most relevant kinds of work the topic covers. Use the slug exactly.
+- website — Website: Site work
+- tags: relevant tags from this vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur (e.g. a specific initiative name).
+Tags: hipaa
+
+Use the SOPs below to assign categories accurately and to reference the right owner/contact in the agenda content (e.g. who executes website vs. technical work).
+
+## Category SOPs (how each kind of work gets done + who to contact)
+### Website (website)
+Bill executes."
+`;
+
+exports[`prepare buildSystem > master 1`] = `
+"P
+
+## How to use the inputs — MASTER weekly agenda (the Monday Touch Base)
+- This is Vistamar's MASTER cross-client weekly agenda: the internal team's single working view of everything to get done THIS WEEK, organized by organization. It spans EVERY active client PLUS Vistamar's own internal work, reconciling everything since the last Touch Base.
+- Build it ORG BY ORG, in the order listed below. For EACH client, produce one or more topics covering their immediate this-week deliverables and what surfaced since the last Touch Base — drawn from that client's transcripts, board activity, and current agendas. Then a Vistamar section: platform development (always), and business development only if something surfaced.
+- EVERY topic MUST set organizationId to the slug of the org it belongs to (from the list below). Keep each org's topics together and follow the given org order (clients first, Vistamar last).
+- Focus on IMMEDIATE / this-week deliverables, decisions, and blockers — NOT the full backlog. Fold board state (in progress / awaiting sign-off / newly raised) into the relevant topics rather than listing tasks verbatim.
+- Vistamar's section is ONLY Vistamar's own work — platform/product development + business development (promoting Vistamar + prospective-client outreach). Work delivering services to an existing client belongs under THAT client's section, never Vistamar's.
+
+## Organizations (use these exact slugs for organizationId; keep this order)
+- unio — Unio (client)
+- vistamar — Vistamar (Vistamar, internal)
+
+## Your job — produce BOTH the next agenda AND the board changes it implies, in ONE pass
+You generate the next meeting agenda AND the Project Board updates that follow from it, together, so every new task lands under the agenda topic it belongs to.
+
+## Agenda output
+- topics: an array of { ref, name, bodyHtml, categories, tags, organizationId } — each a topic title plus a few tight HTML bullets of what is on the table now. Keep the count and length small. Set organizationId on EVERY topic; group topics by org in the listed order.
+- openFloorHtml: HTML for any open-floor items, or "".
+
+HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Exception: if a body already contains a <table>, keep it as a table (<table>, <tbody>, <tr>, <th>, <td>, each cell's text in a <p>) with the same columns and header row; update cell text in place, add a row only for a new item and remove a row only for a dropped item; never create a new table. Be concise — never a long document.
+
+PRESERVE HYPERLINKS: the current agenda and the inputs may contain <a href="…"> links (docs, sheets, dashboards, GBP listings, etc.). Carry every existing link forward into the new agenda VERBATIM — keep the exact href and link text on the topic it belongs to. Never strip a link or turn it into plain text. If a transcript or note surfaces a relevant URL, include it as a link too.
+
+TOPIC IDENTITY — DO NOT RENAME EXISTING TOPICS: the current agenda's topics are listed below, each tagged [ref: <id>]. For every topic you carry forward from the current agenda, set its "ref" to that exact id and keep its title unchanged — the title is fixed by the system and you may not reword it. Only a genuinely NEW topic may have a new title; set its "ref" to an empty string "". You may reorder topics and you may omit a topic whose work is fully complete.
+
+## Board changes output (boardChanges)
+Propose three kinds of Project Board updates a human will review, derived from the SAME record. You are given the existing board tasks each with an itemId.
+
+## SCOPE — what belongs on the Vistamar board
+Vistamar's board covers ONLY Vistamar's own work: (1) platform/product development of Vistamar's own apps and internal tooling, and (2) business development — promoting Vistamar's company & services AND outreach to PROSPECTIVE clients for new-business acquisition. Work that delivers services to an EXISTING client org (Unio, Bryn Mawr, Golden Vision, ID Care) does NOT belong here — it lives on that client's board, so do NOT propose it as a Vistamar create. Outreach to a PROSPECTIVE (not-yet) client IS Vistamar business development → include it.
+
+### boardChanges.creates — NEW tasks
+- Propose ONLY work that genuinely surfaced in the record and is NOT already on the board (don't duplicate existing tasks).
+- Each create: a concrete action-oriented title; a one-line note citing the source (meeting/date) + naming the owner/contact (use the SOPs — e.g. Bill = website, Cedric = technical).
+- CRITICAL: For each new task in boardChanges.creates, set \`topicIndex\` to the 0-based index (in the \`topics\` array) of the topic it belongs under. The task will INHERIT that topic's category and tags — do NOT assign categories/tags to tasks yourself. Every create must reference a real topic index.
+- OPTIONAL: set \`parentRef\` when this task is a subitem.
+  - Nest under an **existing** board item: set \`parentRef\` to that item's \`itemId\` (from the task list below).
+  - Nest under a **newly proposed** task in this run: set \`parentRef\` to \`"new:N"\` where N is the 0-based index of the parent create in this \`creates\` array (e.g. \`"new:0"\` nests under the first proposed task).
+  - One level deep only — never set \`parentRef\` on a task whose intended parent itself has a \`parentRef\`.
+  - Leave \`parentRef\` empty or omit for top-level tasks.
+
+### boardChanges.moves — STATUS MOVES on EXISTING tasks
+- When the record clearly indicates an existing task progressed, propose a move. Set itemId (exact, from the existing list), title (copy the existing title), toStatus (one of: Assigned, In Progress, Blocked, Review, Done), and a one-line reason citing the source.
+- Examples: transcript says something shipped/aired/published → toStatus "Done"; work actively underway → "In Progress"; awaiting sign-off → "Review"; blocked/waiting → "Blocked". Only move when the record is clear — when unsure, omit.
+
+### boardChanges.notes — context on EXISTING tasks
+- When the record adds useful context to an existing task without changing its status, propose a note: itemId, title (copy existing), and the note text (cite the source).
+
+Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.
+
+## Categorization (REQUIRED for every topic)
+For each topic, also set:
+- categories: 1–3 category SLUGS from this list — the most relevant kinds of work the topic covers. Use the slug exactly.
+- website — Website: Site work
+- tags: relevant tags from this vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur (e.g. a specific initiative name).
+Tags: hipaa
+
+Use the SOPs below to assign categories accurately and to reference the right owner/contact in the agenda content (e.g. who executes website vs. technical work).
+
+## Category SOPs (how each kind of work gets done + who to contact)
+### Website (website)
+Bill executes."
+`;
