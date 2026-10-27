@@ -191,7 +191,7 @@ const tr = (id, title, org, daysAgo) => ({
 const opts = (extra = {}) => ({
   orgSlugs: ["unio", "id-care", "vistamar"],
   masterTitles: new Set(["vm weekly touch base"]),
-  vistamarTitles: new Set(["platform dev"]),
+  titleOrgs: new Map([["platform dev", "vistamar"], ["id care sync", "id-care"]]),
   resolveOrg,
   sinceMs: NOW - 30 * DAY,
   ...extra,
@@ -225,6 +225,21 @@ describe("bucketTranscripts — spec table 3.2 scopes", () => {
     const { buckets } = bucketTranscripts([tr("v", "Platform dev", null, 3)], opts());
     expect(buckets.vistamar[0].scope).toBe("this-org");
     expect(buckets.unio[0].scope).toBe("vistamar-internal");
+  });
+  it("an explicit title→org mapping wins over the attendee classification", () => {
+    const { buckets } = bucketTranscripts([tr("t", "ID Care Sync", "unio", 2)], opts());
+    expect(buckets["id-care"].map((t) => [t.id, t.scope])).toEqual([["t", "this-org"]]);
+    expect(buckets.unio).toEqual([]);
+  });
+  it("normalizes master/title keys so callers cannot mis-case them", () => {
+    const { buckets } = bucketTranscripts([tr("m", "VM Weekly Touch Base", null, 1), tr("p", "Platform Dev", null, 1)], opts({
+      masterTitles: new Set([" VM Weekly Touch Base "]), titleOrgs: new Map([["  Platform Dev", "vistamar"]]),
+    }));
+    expect(buckets.unio.map((t) => t.scope)).toEqual(["cross-org", "vistamar-internal"]);
+  });
+  it("counts undated rows as unclassified", () => {
+    const { unclassified } = bucketTranscripts([{ id: "u", title: "Unio weekly", date: null, meeting_attendees: [{ org: "unio" }] }], opts());
+    expect(unclassified).toBe(1);
   });
   it("drops out-of-window and counts unclassified", () => {
     const { buckets, unclassified } = bucketTranscripts(
@@ -285,6 +300,14 @@ describe("splitBucket — ledger + backfill", () => {
     });
     expect(s.fresh.map((t) => t.id)).toEqual(["a"]);
   });
+  it("context cap keeps already-synced rows ahead of newer vistamar-internal rows", () => {
+    const vi = Array.from({ length: 12 }, (_, i) => tr(`v${i}`, "Platform dev", null, i + 1));
+    const old = Array.from({ length: 3 }, (_, i) => tr(`s${i}`, "Unio weekly", "unio", 20 + i));
+    const ledger = new Map(old.map((t) => [t.id, { orgs: { unio: { by: "agenda" } } }]));
+    const s = splitBucket(bucketOf([...vi, ...old], "unio"), "unio", { ...ctxBase, ledger }, { maxContext: 10 });
+    expect(s.context).toHaveLength(10);
+    expect(s.context.filter((t) => t.scope === "already-synced")).toHaveLength(3);
+  });
   it("caps new at maxNew and reports the overflow", () => {
     const list = Array.from({ length: 4 }, (_, i) => tr(`t${i}`, "Unio weekly", "unio", i + 1));
     const s = splitBucket(bucketOf(list, "unio"), "unio", ctxBase, { maxNew: 3 });
@@ -334,6 +357,11 @@ describe("fetchTranscriptsSince", () => {
     expect(rows).toHaveLength(6);
     expect(q).toHaveBeenCalledTimes(3);
   });
+  it("dedupes rows that shift between pages", async () => {
+    const q = vi.fn().mockResolvedValueOnce(page(0, 2)).mockResolvedValueOnce({ transcripts: [{ id: "1", date: page(1, 1).transcripts[0].date }, ...page(40, 1).transcripts] });
+    const rows = await fetchTranscriptsSince(q, "Q", NOW - 30 * DAY, { pageSize: 2 });
+    expect(rows.map((r) => r.id)).toEqual(["0", "1", "40"]);
+  });
   it("throws if it never reaches the cutoff", async () => {
     const q = vi.fn().mockResolvedValue(page(0, 2));
     await expect(fetchTranscriptsSince(q, "Q", NOW - 30 * DAY, { pageSize: 2, maxPages: 2 })).rejects.toThrow(/did not reach/);
@@ -359,6 +387,10 @@ describe("initPromotion", () => {
   it("first resolvable category; known tags resolved; unknown tags kept as new", () => {
     const p = initPromotion({ categories: ["nope", "SEO", "website"], tags: ["GBP", "laser launch", "hipaa"], note: "" }, { categories, tags, users: [] });
     expect(p).toEqual({ statusId: 8, categoryId: "seo", tagIds: ["gbp", "hipaa"], newTags: ["laser launch"] });
+  });
+  it("dedupes new tags by slug and skips empty slugs", () => {
+    const p = initPromotion({ categories: [], tags: ["Laser Launch", "laser launch", "!!!"], note: "" }, { categories, tags, users: [] });
+    expect(p.newTags).toEqual(["Laser Launch"]);
   });
   it("no category → null; infers assignee from the note", () => {
     const p = initPromotion({ categories: [], tags: [], note: "Owner: Bill" }, { categories, tags, users: [{ id: "u2", displayName: "Bill Jones" }] });
@@ -419,20 +451,30 @@ export function tagSlug(name) {
 //   master-mapped title      → cross-org in EVERY bucket
 //   Vistamar meeting         → this-org for vistamar, vistamar-internal for clients
 //   client meeting           → this-org for that client only
-// Rows no rule claims are counted, not silently dropped.
-export function bucketTranscripts(list, { orgSlugs, masterTitles, vistamarTitles, resolveOrg, sinceMs }) {
+// Org resolution order: master title, then titleOrgs (explicit title→org agenda
+// mapping, any non-master agenda), then attendee classification. Keys of
+// masterTitles/titleOrgs are normalized here. Rows that are undated or that no
+// rule claims are counted as unclassified, not silently dropped; out-of-window
+// rows are dropped silently.
+export function bucketTranscripts(list, { orgSlugs, masterTitles, titleOrgs, resolveOrg, sinceMs }) {
   const buckets = Object.fromEntries(orgSlugs.map((o) => [o, []]));
+  const masters = new Set([...masterTitles].map(norm));
+  const mapped = new Map([...titleOrgs].map(([k, v]) => [norm(k), v]));
   let unclassified = 0;
   for (const t of list || []) {
     const ms = toMs(t.date);
-    if (!ms || ms < sinceMs) continue;
+    if (!ms) {
+      unclassified += 1;
+      continue;
+    }
+    if (ms < sinceMs) continue;
     const title = norm(t.title);
     const row = { ...t, _ms: ms };
-    if (masterTitles.has(title)) {
+    if (masters.has(title)) {
       orgSlugs.forEach((o) => buckets[o].push({ ...row, scope: "cross-org" }));
       continue;
     }
-    const org = resolveOrg(t.meeting_attendees) || (vistamarTitles.has(title) ? "vistamar" : null);
+    const org = mapped.get(title) || resolveOrg(t.meeting_attendees) || null;
     if (org === "vistamar") {
       orgSlugs.forEach((o) => buckets[o].push({ ...row, scope: o === "vistamar" ? "this-org" : "vistamar-internal" }));
     } else if (org && buckets[org]) {
@@ -464,15 +506,17 @@ function isSyncedFor(t, org, { ledger, thresholds, masterThreshold, epochMs = LE
 export function splitBucket(bucket, org, ctx, { maxNew = MAX_NEW_TRANSCRIPTS, maxContext = MAX_CONTEXT_TRANSCRIPTS } = {}) {
   const sorted = [...(bucket || [])].sort((a, b) => b._ms - a._ms);
   const fresh = [];
-  const context = [];
+  const synced = [];
+  const internal = [];
   for (const t of sorted) {
-    if (!NEW_SCOPES.has(t.scope)) context.push(t);
-    else if (isSyncedFor(t, org, ctx)) context.push({ ...t, scope: "already-synced" });
+    if (!NEW_SCOPES.has(t.scope)) internal.push(t);
+    else if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced" });
     else fresh.push(t);
   }
+  // already-synced is the do-not-duplicate signal, so it survives the cap first.
   return {
     fresh: fresh.slice(0, maxNew),
-    context: context.slice(0, maxContext),
+    context: [...synced, ...internal].slice(0, maxContext),
     droppedNew: Math.max(0, fresh.length - maxNew),
   };
 }
@@ -507,10 +551,12 @@ export function groupStamps(stamps) {
 // rather than returning a silently truncated window.
 export async function fetchTranscriptsSince(queryFn, listQuery, sinceMs, { pageSize = 50, maxPages = 10 } = {}) {
   const all = [];
+  const seen = new Set();
   for (let page = 0; page < maxPages; page++) {
     const data = await queryFn(listQuery, { limit: pageSize, skip: page * pageSize });
     const rows = data?.transcripts || [];
-    all.push(...rows);
+    // Offset paging can shift when a transcript lands mid-run; keep each id once.
+    for (const row of rows) if (!seen.has(row.id)) { seen.add(row.id); all.push(row); }
     if (rows.length < pageSize) return all;
     const dates = rows.map((r) => toMs(r.date)).filter(Boolean);
     if (dates.length && Math.min(...dates) < sinceMs) return all;
@@ -566,7 +612,7 @@ export function initPromotion(create, { categories, tags, users }) {
     const id = resolveTagId(raw, tags || []);
     if (id) {
       if (!tagIds.includes(id)) tagIds.push(id);
-    } else if (norm(raw) && !newTags.includes(String(raw).trim())) {
+    } else if (tagSlug(raw) && !newTags.some((n) => tagSlug(n) === tagSlug(raw))) {
       newTags.push(String(raw).trim());
     }
   }
@@ -1277,7 +1323,7 @@ export async function gatherBoardSyncInputs({ now = Date.now() } = {}) {
     };
   });
   const masterTitles = new Set(agendas.filter((a) => a.master).flatMap((a) => a.firefliesTitles));
-  const vistamarTitles = new Set(agendas.filter((a) => !a.master && a.org === "vistamar").flatMap((a) => a.firefliesTitles));
+  const titleOrgs = new Map(agendas.filter((a) => !a.master && a.org).flatMap((a) => a.firefliesTitles.map((t) => [t, a.org])));
   // Backfill thresholds (spec 3.4): latest Sync Meeting per org, master separately.
   const thresholds = {};
   let masterThreshold = 0;
@@ -1288,7 +1334,7 @@ export async function gatherBoardSyncInputs({ now = Date.now() } = {}) {
 
   const list = await fetchTranscriptsSince(firefliesQuery, GQL_MEETING_LIST, sinceMs);
   const { buckets, unclassified } = bucketTranscripts(list, {
-    orgSlugs, masterTitles, vistamarTitles, resolveOrg: resolveOrgFromAttendees, sinceMs,
+    orgSlugs, masterTitles, titleOrgs, resolveOrg: resolveOrgFromAttendees, sinceMs,
   });
 
   // Ledger docs for every in-window transcript (documentId "in" caps at 30).

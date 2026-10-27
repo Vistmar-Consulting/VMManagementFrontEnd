@@ -44,20 +44,30 @@ export function tagSlug(name) {
 //   master-mapped title      → cross-org in EVERY bucket
 //   Vistamar meeting         → this-org for vistamar, vistamar-internal for clients
 //   client meeting           → this-org for that client only
-// Rows no rule claims are counted, not silently dropped.
-export function bucketTranscripts(list, { orgSlugs, masterTitles, vistamarTitles, resolveOrg, sinceMs }) {
+// Org resolution order: master title, then titleOrgs (explicit title→org agenda
+// mapping, any non-master agenda), then attendee classification. Keys of
+// masterTitles/titleOrgs are normalized here. Rows that are undated or that no
+// rule claims are counted as unclassified, not silently dropped; out-of-window
+// rows are dropped silently.
+export function bucketTranscripts(list, { orgSlugs, masterTitles, titleOrgs, resolveOrg, sinceMs }) {
   const buckets = Object.fromEntries(orgSlugs.map((o) => [o, []]));
+  const masters = new Set([...masterTitles].map(norm));
+  const mapped = new Map([...titleOrgs].map(([k, v]) => [norm(k), v]));
   let unclassified = 0;
   for (const t of list || []) {
     const ms = toMs(t.date);
-    if (!ms || ms < sinceMs) continue;
+    if (!ms) {
+      unclassified += 1;
+      continue;
+    }
+    if (ms < sinceMs) continue;
     const title = norm(t.title);
     const row = { ...t, _ms: ms };
-    if (masterTitles.has(title)) {
+    if (masters.has(title)) {
       orgSlugs.forEach((o) => buckets[o].push({ ...row, scope: "cross-org" }));
       continue;
     }
-    const org = resolveOrg(t.meeting_attendees) || (vistamarTitles.has(title) ? "vistamar" : null);
+    const org = mapped.get(title) || resolveOrg(t.meeting_attendees) || null;
     if (org === "vistamar") {
       orgSlugs.forEach((o) => buckets[o].push({ ...row, scope: o === "vistamar" ? "this-org" : "vistamar-internal" }));
     } else if (org && buckets[org]) {
@@ -89,15 +99,17 @@ function isSyncedFor(t, org, { ledger, thresholds, masterThreshold, epochMs = LE
 export function splitBucket(bucket, org, ctx, { maxNew = MAX_NEW_TRANSCRIPTS, maxContext = MAX_CONTEXT_TRANSCRIPTS } = {}) {
   const sorted = [...(bucket || [])].sort((a, b) => b._ms - a._ms);
   const fresh = [];
-  const context = [];
+  const synced = [];
+  const internal = [];
   for (const t of sorted) {
-    if (!NEW_SCOPES.has(t.scope)) context.push(t);
-    else if (isSyncedFor(t, org, ctx)) context.push({ ...t, scope: "already-synced" });
+    if (!NEW_SCOPES.has(t.scope)) internal.push(t);
+    else if (isSyncedFor(t, org, ctx)) synced.push({ ...t, scope: "already-synced" });
     else fresh.push(t);
   }
+  // already-synced is the do-not-duplicate signal, so it survives the cap first.
   return {
     fresh: fresh.slice(0, maxNew),
-    context: context.slice(0, maxContext),
+    context: [...synced, ...internal].slice(0, maxContext),
     droppedNew: Math.max(0, fresh.length - maxNew),
   };
 }
@@ -132,10 +144,12 @@ export function groupStamps(stamps) {
 // rather than returning a silently truncated window.
 export async function fetchTranscriptsSince(queryFn, listQuery, sinceMs, { pageSize = 50, maxPages = 10 } = {}) {
   const all = [];
+  const seen = new Set();
   for (let page = 0; page < maxPages; page++) {
     const data = await queryFn(listQuery, { limit: pageSize, skip: page * pageSize });
     const rows = data?.transcripts || [];
-    all.push(...rows);
+    // Offset paging can shift when a transcript lands mid-run; keep each id once.
+    for (const row of rows) if (!seen.has(row.id)) { seen.add(row.id); all.push(row); }
     if (rows.length < pageSize) return all;
     const dates = rows.map((r) => toMs(r.date)).filter(Boolean);
     if (dates.length && Math.min(...dates) < sinceMs) return all;
@@ -191,7 +205,7 @@ export function initPromotion(create, { categories, tags, users }) {
     const id = resolveTagId(raw, tags || []);
     if (id) {
       if (!tagIds.includes(id)) tagIds.push(id);
-    } else if (norm(raw) && !newTags.includes(String(raw).trim())) {
+    } else if (tagSlug(raw) && !newTags.some((n) => tagSlug(n) === tagSlug(raw))) {
       newTags.push(String(raw).trim());
     }
   }

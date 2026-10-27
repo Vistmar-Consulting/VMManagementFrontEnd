@@ -71,7 +71,7 @@ Lives in a new `src/lib/boardSync.js`, reusing helpers from `src/lib/aiAgenda.js
 1. **List** — page `GQL_MEETING_LIST` (50 per page) until the oldest result is older than 30 days. (Today's single 50-row fetch is insufficient across all orgs.)
 2. **Classify** each transcript:
    - **Cross-org** if its title matches a `firefliesTitles` entry of any agenda whose series/agenda has `masterAgenda == true`. Fans into **every** org bucket.
-   - Otherwise org via `resolveOrgFromAttendees`, else `vistamar` if the title maps to a Vistamar agenda, else unclassified (dropped; listed in pre-flight as "unclassified: N").
+   - Otherwise org via the title: a title mapped to any non-master agenda's `firefliesTitles` classifies to that agenda's org (explicit mapping wins, matching Sync Meeting's per-org rule); else via `resolveOrgFromAttendees`; else unclassified (dropped; listed in pre-flight as "unclassified: N", which also counts undated transcripts).
    - Vistamar-internal transcripts also go to each client's bucket as `vistamar-internal` context, matching Sync Meeting's per-org behavior.
 3. **Filter** each bucket by the scope rule (3.2) + ledger + backfill → `newTranscripts[org]` (only `this-org` / `cross-org` unstamped). D5's include default keys off this count. Already-stamped in-window transcripts are passed as `already-synced` context, capped, so the model can mark work done without re-creating tasks.
 4. **Per-org payload** — new + context transcripts (detail-fetched in parallel, `allSettled`; a failed detail fetch drops that transcript and is reported), that org's board items + `existingTasks`, that org's agendas' current topic content (read-only), org meta, categories + tag vocab, org-type-aware prompt (`resolvePrompt(org)`), shared extra context.
