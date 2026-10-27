@@ -1870,7 +1870,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
   }); };
 
   // Spec 7: failed or still-running orgs block nothing — Apply takes the done
-  // orgs as of the click; a run that lands afterwards is discarded.
+  // orgs as of the click; a run that lands afterwards is not in that apply.
   const runEntries = Object.entries(runs);
   const runningCount = runEntries.filter(([, r]) => r.status === "running").length;
   const doneSlugs = runEntries.filter(([, r]) => r.status === "done").map(([s]) => s);
@@ -2084,7 +2084,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
           <>
             {(step === "review" || step === "applying") && runningCount > 0 && (
               <Typography variant="caption" color="text.secondary" sx={{ flex: 1, pl: 1 }}>
-                {runningCount} still running — not included in this apply; their results will be discarded.
+                {runningCount} still running — not included in this apply.
               </Typography>
             )}
             <Button onClick={discard} disabled={step === "applying"} color={confirmDiscard ? "error" : "primary"}>
@@ -2109,16 +2109,16 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
 ```
 
 Notes:
-- Spec 7 ("failed or still-running orgs block nothing") wins over the earlier draft: Apply is enabled whenever ≥1 org is done, takes the done orgs as of the click, and a caption says how many are still running and that their results will be discarded. A failed org's transcripts are never stamped, because `applyBoardSync` only receives done runs.
+- Spec 7 ("failed or still-running orgs block nothing") wins over the earlier draft: Apply is enabled whenever ≥1 org is done, takes the done orgs as of the click, and a caption says how many are still running and are not included in this apply (an org that finishes mid-apply is left out of it; if the apply fails, it is included in the next one). A failed org's transcripts are never stamped, because `applyBoardSync` only receives done runs.
 - Discard after a run needs a second click ("Discard paid proposals?", inline — no `window.confirm`); any other action disarms it. Cancel in pre-flight closes at once. Retry is hidden while applying.
 - `runAll` marks every ticked org running in one `setRuns` before switching to review; `renderOrg` tolerates a missing entry.
 - Coined tags (`promotion.newTags`, seeded by `initPromotion` for every valid create) are shown and removed only via the "New tags to add" chip row — `ProposedBoardRow`'s tag picker edits `tagIds` only. An `applyBoardSync` throw (incl. the 500-write limit) lands in the error Alert and returns to review.
 
-- [ ] **Step 2: Tests** — mock `boardSync.js` and `AuthContext.jsx`. Pre-flight: both orgs listed, the 0-new org unticked, ambiguous-title caption, "Run (1 org)", `runOrgSync` not called before Run. Review: Retry on a failed org; Apply sends only the done org with its checked indices; an apply rejection returns to review with selections intact; Apply enabled while another org still runs, with the "still running" caption; Discard after a run takes two clicks and any other action disarms it; Cancel in pre-flight closes at once.
+- [ ] **Step 2: Tests** — mock `boardSync.js` and `AuthContext.jsx`. Pre-flight: both orgs listed, the 0-new org unticked, ambiguous-title caption, "Run (1 org)", `runOrgSync` not called before Run. Review: Retry on a failed org; Apply sends only the done org with its checked indices; an apply rejection returns to review with selections intact; Apply enabled while another org still runs, with the "still running" caption; an org finishing after Apply is clicked is not sent and not on the done screen; Discard after a run takes two clicks and any other action disarms it; Cancel in pre-flight closes at once.
 
 ```jsx
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 
 const GATHERED = {
@@ -2252,8 +2252,26 @@ describe("SyncBoardDialog review + apply", () => {
 
   it("enables Apply while another org is still running and says it is excluded", async () => {
     await runBoth(() => new Promise(() => {}));
-    expect(screen.getByText(/1 still running — not included in this apply; their results will be discarded/)).toBeInTheDocument();
+    expect(screen.getByText(/1 still running — not included in this apply\./)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply 1 org" })).toBeEnabled();
+  });
+
+  it("leaves out an org that finishes after Apply was clicked", async () => {
+    let finishBeta;
+    let finishApply;
+    await runBoth(() => new Promise((resolve) => { finishBeta = resolve; }));
+    applyBoardSync.mockImplementation(() => new Promise((resolve) => { finishApply = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply 1 org" }));
+
+    await act(async () => { finishBeta({ ...ACME_RESULT, transcriptIds: ["t3"] }); });
+    await act(async () => { finishApply({ counts: { acme: { created: 2, moved: 0, noted: 0 } }, dropped: [] }); });
+
+    await screen.findByText("Board Sync applied.");
+    expect(applyBoardSync).toHaveBeenCalledTimes(1);
+    expect(Object.keys(applyBoardSync.mock.calls[0][0])).toEqual(["acme"]);
+    expect(Object.keys(applyBoardSync.mock.calls[0][1])).toEqual(["acme"]);
+    expect(screen.getByText("Acme Dental")).toBeInTheDocument();
+    expect(screen.queryByText("Beta Vision")).not.toBeInTheDocument();
   });
 
   it("asks twice before discarding paid proposals; another action disarms it", async () => {

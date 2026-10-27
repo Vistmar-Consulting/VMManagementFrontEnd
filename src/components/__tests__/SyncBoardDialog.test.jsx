@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 
 const GATHERED = {
@@ -133,8 +133,26 @@ describe("SyncBoardDialog review + apply", () => {
 
   it("enables Apply while another org is still running and says it is excluded", async () => {
     await runBoth(() => new Promise(() => {}));
-    expect(screen.getByText(/1 still running — not included in this apply; their results will be discarded/)).toBeInTheDocument();
+    expect(screen.getByText(/1 still running — not included in this apply\./)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply 1 org" })).toBeEnabled();
+  });
+
+  it("leaves out an org that finishes after Apply was clicked", async () => {
+    let finishBeta;
+    let finishApply;
+    await runBoth(() => new Promise((resolve) => { finishBeta = resolve; }));
+    applyBoardSync.mockImplementation(() => new Promise((resolve) => { finishApply = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply 1 org" }));
+
+    await act(async () => { finishBeta({ ...ACME_RESULT, transcriptIds: ["t3"] }); });
+    await act(async () => { finishApply({ counts: { acme: { created: 2, moved: 0, noted: 0 } }, dropped: [] }); });
+
+    await screen.findByText("Board Sync applied.");
+    expect(applyBoardSync).toHaveBeenCalledTimes(1);
+    expect(Object.keys(applyBoardSync.mock.calls[0][0])).toEqual(["acme"]);
+    expect(Object.keys(applyBoardSync.mock.calls[0][1])).toEqual(["acme"]);
+    expect(screen.getByText("Acme Dental")).toBeInTheDocument();
+    expect(screen.queryByText("Beta Vision")).not.toBeInTheDocument();
   });
 
   it("asks twice before discarding paid proposals; another action disarms it", async () => {

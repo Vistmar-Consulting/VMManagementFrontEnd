@@ -124,7 +124,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
   }); };
 
   // Spec 7: failed or still-running orgs block nothing — Apply takes the done
-  // orgs as of the click; a run that lands afterwards is discarded.
+  // orgs as of the click; a run that lands afterwards is not in that apply.
   const runEntries = Object.entries(runs);
   const runningCount = runEntries.filter(([, r]) => r.status === "running").length;
   const doneSlugs = runEntries.filter(([, r]) => r.status === "done").map(([s]) => s);
@@ -338,7 +338,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
           <>
             {(step === "review" || step === "applying") && runningCount > 0 && (
               <Typography variant="caption" color="text.secondary" sx={{ flex: 1, pl: 1 }}>
-                {runningCount} still running — not included in this apply; their results will be discarded.
+                {runningCount} still running — not included in this apply.
               </Typography>
             )}
             <Button onClick={discard} disabled={step === "applying"} color={confirmDiscard ? "error" : "primary"}>
