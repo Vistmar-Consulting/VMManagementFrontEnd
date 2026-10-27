@@ -16,7 +16,10 @@ A chat panel on the Task Board where the user talks to Claude (Anthropic API) ab
 
 ## State
 
-- Spec approved 2026-10-21 (name Board Chat; audit = createdVia on creates only). Next: implementation plan.
+- Spec approved 2026-10-21 (name Board Chat; audit = createdVia on creates only). Plan: `docs/plans/2026-10-21-board-chat.md`.
+- 2026-10-27: plan Tasks 1–10 built test-first, each with spec + quality review. Final whole-branch review: no Critical, Important items fixed. Rebased onto origin/dev (Meeting Sync session's Opus changes) and pushed to `origin/dev`. Build passes; Board Chat test files 138/138 (one modal test hit the 5s default timeout once under load, passed alone).
+- Amendments to the plan made during the build (code is the source of truth): writer-level field allowlist + conflict guards in `applyChangeSet`; the proposal layer rejects conflicting ops, double deletes, tempId clashes and bad values; at the 10-call cap pending tool calls are answered "not run"; `set_board_filter` validates every column value (`src/lib/boardChat/boardFilter.js`) and rejects an empty AI filter; `/api/ai/chat` validates message roles and caps size (413).
+- **Next — Task 11 (needs Andy signed in; paid, ~$0.05–$0.25, approved 2026-10-26):** on the deployed dev site, open Board Chat, ask one question, then one proposed change → confirm in the modal. The first real call also settles the strict-schema risk (spec §4); if it 400s on schema size, drop `strict` from `set_board_filter` and `propose_changes`. Then check the drawer layout, the AI chip, Enter/Shift+Enter, cost display.
 
 ## Deferred
 
