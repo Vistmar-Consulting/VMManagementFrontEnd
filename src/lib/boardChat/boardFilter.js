@@ -3,7 +3,9 @@
 // Board Chat's set_board_filter → the Task Board state to set. Pure. Every id
 // is checked against what the board has loaded, so a bad call errors back to
 // the model instead of silently showing nothing; on any error nothing changes.
-// Returned fields that are undefined keep their current value.
+// resolveBoardFilter returns only the fields the call sets; planBoardFilter
+// merges them over the current filters and decides between a new view and a
+// plain clear (see boardViews.js).
 import { STATUS_OPTIONS } from "../../constants/itemStatuses.js";
 import { PRIORITY_LIST } from "../../constants/itemPriorities.js";
 
@@ -50,7 +52,7 @@ export function resolveBoardFilter(input, { orgs, items, users, categories, tags
     const itemIds = new Set(items.map((i) => i.id));
     const bad = aiFilter.itemIds.filter((id) => !itemIds.has(id));
     if (bad.length) throw new Error(`Unknown item ids ${bad.join(", ")}`);
-    ai = { label: aiFilter.label, ids: new Set(aiFilter.itemIds) };
+    ai = { itemIds: [...new Set(aiFilter.itemIds)] };
   }
 
   const base = clear
@@ -65,13 +67,12 @@ export function resolveBoardFilter(input, { orgs, items, users, categories, tags
   };
 }
 
-// Resolve first, then set: an unknown id throws before any setter runs.
-export function applyBoardFilter(input, ctx, set) {
+// A call that only clears turns the active view off; anything else becomes a
+// new view holding the full merged filter state.
+export function planBoardFilter(input, ctx, current) {
   const next = resolveBoardFilter(input, ctx);
-  if (next.orgFilter !== undefined) set.setOrgFilter(next.orgFilter);
-  if (next.titleSearch !== undefined) set.setTitleSearch(next.titleSearch);
-  if (next.columnFilters !== undefined) set.setColumnFilters(next.columnFilters);
-  if (next.scorecardFilter !== undefined) set.setScorecardFilter(next.scorecardFilter);
-  if (next.aiFilter !== undefined) set.setAiFilter(next.aiFilter);
-  return { applied: true, aiFilterCount: next.aiFilter ? next.aiFilter.ids.size : null };
+  const filters = { ...current, ...next };
+  const setsSomething = ["orgId", "titleSearch", "columnFilters", "aiFilter"].some((k) => input[k] !== undefined);
+  if (input.clear && !setsSomething) return { kind: "clear", filters };
+  return { kind: "view", label: input.label || "Board filter", filters };
 }

@@ -1,6 +1,6 @@
 // src/lib/boardChat/__tests__/boardFilter.test.js
-import { describe, it, expect, vi } from "vitest";
-import { applyBoardFilter, resolveBoardFilter } from "../boardFilter.js";
+import { describe, it, expect } from "vitest";
+import { planBoardFilter, resolveBoardFilter } from "../boardFilter.js";
 
 const ctx = {
   orgs: [{ id: "unio" }, { id: "vistamar" }],
@@ -16,13 +16,13 @@ describe("resolveBoardFilter", () => {
       orgId: "unio",
       titleSearch: "appt",
       columnFilters: { statusId: [2, 9], assigneeIds: ["u1"], priorityId: [1], categoryId: ["c1"], tagIds: ["t1"] },
-      aiFilter: { label: "Appt data", itemIds: ["p1", "s1"] },
+      aiFilter: { itemIds: ["p1", "s1"] },
     }, ctx);
     expect(out).toEqual({
       orgFilter: "unio",
       titleSearch: "appt",
       columnFilters: { statusId: [2, 9], assigneeIds: ["u1"], priorityId: [1], categoryId: ["c1"], tagIds: ["t1"] },
-      aiFilter: { label: "Appt data", ids: new Set(["p1", "s1"]) },
+      aiFilter: { itemIds: ["p1", "s1"] },
     });
     expect(resolveBoardFilter({ titleSearch: "x" }, ctx)).toEqual({ titleSearch: "x" });
   });
@@ -51,11 +51,11 @@ describe("resolveBoardFilter", () => {
   });
 
   it("rejects unknown aiFilter item ids", () => {
-    expect(() => resolveBoardFilter({ aiFilter: { label: "x", itemIds: ["p1", "nope"] } }, ctx)).toThrow("Unknown item ids nope");
+    expect(() => resolveBoardFilter({ aiFilter: { itemIds: ["p1", "nope"] } }, ctx)).toThrow("Unknown item ids nope");
   });
 
   it("rejects an aiFilter with no item ids", () => {
-    expect(() => resolveBoardFilter({ aiFilter: { label: "x", itemIds: [] } }, ctx))
+    expect(() => resolveBoardFilter({ aiFilter: { itemIds: [] } }, ctx))
       .toThrow("aiFilter.itemIds is empty — omit aiFilter or use clear");
   });
 
@@ -72,25 +72,36 @@ describe("resolveBoardFilter", () => {
   });
 });
 
-describe("applyBoardFilter", () => {
-  const makeSetters = () => ({
-    setOrgFilter: vi.fn(), setTitleSearch: vi.fn(), setColumnFilters: vi.fn(), setScorecardFilter: vi.fn(), setAiFilter: vi.fn(),
+describe("planBoardFilter", () => {
+  const current = { orgFilter: "vistamar", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: null };
+
+  it("makes a view of the merged filters, named by the call's label", () => {
+    expect(planBoardFilter({ label: "Appt work", aiFilter: { itemIds: ["p1"] } }, ctx, current)).toEqual({
+      kind: "view",
+      label: "Appt work",
+      filters: { ...current, aiFilter: { itemIds: ["p1"] } },
+    });
   });
 
-  it("calls only the setters for the fields the call sets", () => {
-    const set = makeSetters();
-    const out = applyBoardFilter({ titleSearch: "x", aiFilter: { label: "A", itemIds: ["p1"] } }, ctx, set);
-    expect(set.setTitleSearch).toHaveBeenCalledWith("x");
-    expect(set.setAiFilter).toHaveBeenCalledWith({ label: "A", ids: new Set(["p1"]) });
-    expect(set.setOrgFilter).not.toHaveBeenCalled();
-    expect(set.setColumnFilters).not.toHaveBeenCalled();
-    expect(set.setScorecardFilter).not.toHaveBeenCalled();
-    expect(out).toEqual({ applied: true, aiFilterCount: 1 });
+  it("names an unlabelled view \"Board filter\"", () => {
+    expect(planBoardFilter({ titleSearch: "x" }, ctx, current).label).toBe("Board filter");
   });
 
-  it("calls no setter when a value is unknown", () => {
-    const set = makeSetters();
-    expect(() => applyBoardFilter({ clear: true, columnFilters: { statusId: [3] } }, ctx, set)).toThrow("Unknown status 3");
-    Object.values(set).forEach((fn) => expect(fn).not.toHaveBeenCalled());
+  it("a clear that sets nothing else is a plain clear", () => {
+    expect(planBoardFilter({ clear: true }, ctx, { ...current, titleSearch: "x" })).toEqual({
+      kind: "clear",
+      filters: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: null },
+    });
+  });
+
+  it("a clear that also sets a filter is a view", () => {
+    const out = planBoardFilter({ clear: true, label: "Done", columnFilters: { statusId: [5] } }, ctx, current);
+    expect(out.kind).toBe("view");
+    expect(out.filters.columnFilters).toEqual({ statusId: [5] });
+    expect(out.filters.orgFilter).toBe("all");
+  });
+
+  it("throws on an unknown value", () => {
+    expect(() => planBoardFilter({ columnFilters: { statusId: [3] } }, ctx, current)).toThrow("Unknown status 3");
   });
 });

@@ -10,7 +10,7 @@ vi.mock("../../lib/boardChat/tools.js", () => ({ runReadTool: (...a) => runReadT
 vi.mock("../../lib/itemWrites.js", () => ({ applyChangeSet: (...a) => applyChangeSet(...a) }));
 
 const { default: BoardChatPanel } = await import("../BoardChatPanel.jsx");
-const { applyBoardFilter } = await import("../../lib/boardChat/boardFilter.js");
+const { planBoardFilter } = await import("../../lib/boardChat/boardFilter.js");
 
 const items = [
   { id: "p1", itemNumber: 4, title: "Appt data", organizationId: "unio", parentId: null, statusId: 2, updatedAt: new Date(1000) },
@@ -55,6 +55,13 @@ beforeEach(() => {
 });
 
 describe("BoardChatPanel", { timeout: 60000 }, () => {
+  it("the ? button opens the hints", async () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "How to use Board Chat" }));
+    expect(await screen.findByText("Filter views")).toBeTruthy();
+    expect(screen.getByText(/does not read Fireflies/)).toBeTruthy();
+  });
+
   it("a read tool's null updatedAt does not replace the snapshot baseline", async () => {
     runReadTool.mockResolvedValue({ result: {}, seen: { p1: null } });
     postChat.mockResolvedValueOnce(toolUse("a", "get_item", { itemId: "p1" })).mockResolvedValueOnce(propose("b"));
@@ -140,10 +147,9 @@ describe("BoardChatPanel", { timeout: 60000 }, () => {
   });
 
   it("an unknown status in set_board_filter is an is_error result and sets nothing", async () => {
-    const setters = {
-      setOrgFilter: vi.fn(), setTitleSearch: vi.fn(), setColumnFilters: vi.fn(), setScorecardFilter: vi.fn(), setAiFilter: vi.fn(),
-    };
-    const onApplyFilter = (input) => applyBoardFilter(input, { orgs, items, users, categories: [], tags: [] }, setters);
+    const applyPlan = vi.fn();
+    const current = { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: null };
+    const onApplyFilter = (input) => applyPlan(planBoardFilter(input, { orgs, items, users, categories: [], tags: [] }, current));
     postChat
       .mockResolvedValueOnce(toolUse("a", "set_board_filter", { columnFilters: { statusId: [3] } }))
       .mockResolvedValueOnce(reply("no such status"));
@@ -151,6 +157,6 @@ describe("BoardChatPanel", { timeout: 60000 }, () => {
     ask("show on hold");
     expect(await screen.findByText("no such status")).toBeTruthy();
     expect(toolResultIn(1)).toMatchObject({ is_error: true, content: "Unknown status 3 in columnFilters.statusId" });
-    Object.values(setters).forEach((fn) => expect(fn).not.toHaveBeenCalled());
+    expect(applyPlan).not.toHaveBeenCalled();
   });
 });

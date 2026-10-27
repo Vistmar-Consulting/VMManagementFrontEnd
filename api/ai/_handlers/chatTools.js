@@ -18,7 +18,7 @@ Reading:
 - If the data does not answer the question, say what is missing. Never guess a status, owner or date.
 
 Filtering:
-- When the user asks to see, show, list or filter items on the board, call set_board_filter. Use columnFilters when a column filter expresses the request exactly. Otherwise pass aiFilter with the exact ids of the tasks and subtasks in question and a 2-4 word label. Use clear: true to reset.
+- When the user asks to see, show, list or filter items on the board, call set_board_filter. Use columnFilters when a column filter expresses the request exactly. Otherwise pass aiFilter with the exact ids of the tasks and subtasks in question. Always pass a 2-4 word label. Each call is saved as a view chip the user can switch back to; earlier views stay. Use clear: true alone to reset.
 
 Changing the board:
 - Every create, update or delete goes through ONE propose_changes call per request, listing every op. The user reviews it in a modal and may untick ops. Nothing is changed until its result says "applied".
@@ -83,11 +83,12 @@ export const TOOLS = [
   },
   {
     name: "set_board_filter",
-    description: "Change what the Task Board shows. Fields you omit keep their current value. clear: true first resets every filter.",
+    description: "Change what the Task Board shows and save it as a view chip. Fields you omit keep their current value. clear: true first resets every filter; clear alone turns views off.",
     input_schema: {
       type: "object", additionalProperties: false,
       properties: {
         clear: { type: "boolean" },
+        label: { type: "string", description: "2-4 words naming this view's chip." },
         orgId: { type: "string", description: "An organization id, or \"all\"." },
         titleSearch: { type: "string" },
         columnFilters: {
@@ -103,10 +104,9 @@ export const TOOLS = [
         aiFilter: {
           type: "object", additionalProperties: false,
           properties: {
-            label: { type: "string" },
             itemIds: { type: "array", items: { type: "string" } },
           },
-          required: ["label", "itemIds"],
+          required: ["itemIds"],
         },
       },
       required: ["clear"],

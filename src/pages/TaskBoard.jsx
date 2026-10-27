@@ -59,6 +59,7 @@ import {
   ChevronRight as ChevronRightIcon,
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
+  RestartAlt as RestartAltIcon,
   Search as SearchIcon,
   Sync as SyncIcon,
 } from "@mui/icons-material";
@@ -81,7 +82,8 @@ import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
-import { applyBoardFilter } from "../lib/boardChat/boardFilter.js";
+import { planBoardFilter } from "../lib/boardChat/boardFilter.js";
+import { EMPTY_VIEWS, activeView, addView, aiFilterOfView, removeView, resetViews, toggleView } from "../lib/boardChat/boardViews.js";
 import { canBoardSync } from "../lib/boardSyncCore.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
@@ -134,16 +136,24 @@ export default function TaskBoard() {
   const [syncBoardOpen, setSyncBoardOpen] = useState(false);
   const [orgPickerCreating, setOrgPickerCreating] = useState(false);
 
+  // Board Chat filter views (see lib/boardChat/boardViews.js). An active view
+  // re-applies its filters on load.
+  const [viewStore, setViewStore] = useLocalStorage("vm-board-chat-views", EMPTY_VIEWS);
+  const [initialView] = useState(() => activeView(viewStore));
+
   // Column sort + filter state.
   const [sorts, setSorts] = useState([]);
-  const [columnFilters, setColumnFilters] = useState({});
-  const [titleSearch, setTitleSearch] = useState("");
+  const [columnFilters, setColumnFilters] = useState(() => initialView?.filters.columnFilters ?? {});
+  const [titleSearch, setTitleSearch] = useState(() => initialView?.filters.titleSearch ?? "");
 
   // Scorecard single-select filter.
-  const [scorecardFilter, setScorecardFilter] = useState(null);
+  const [scorecardFilter, setScorecardFilter] = useState(() => initialView?.filters.scorecardFilter ?? null);
 
-  // Board Chat AI filter: { label, ids: Set } — the exact items Claude picked.
-  const [aiFilter, setAiFilter] = useState(null);
+  // The active view's AI item list: { label, ids: Set }. useLocalStorage
+  // returns a fresh object every render, so this is keyed on the view's JSON
+  // to keep a stable identity for the memos below.
+  const activeViewJson = JSON.stringify(activeView(viewStore));
+  const aiFilter = useMemo(() => aiFilterOfView(JSON.parse(activeViewJson)), [activeViewJson]);
   const [chatOpen, setChatOpen] = useState(false);
 
   // Group expanded state.
@@ -322,13 +332,41 @@ export default function TaskBoard() {
     });
   };
 
+  const ownFilters = { orgFilter, titleSearch, columnFilters, scorecardFilter };
+  const applyFilters = (f) => {
+    setOrgFilter(f.orgFilter);
+    setTitleSearch(f.titleSearch);
+    setColumnFilters(f.columnFilters);
+    setScorecardFilter(f.scorecardFilter);
+  };
+  const runViewChange = ({ store, apply }) => {
+    setViewStore(store);
+    if (apply) applyFilters(apply);
+  };
+
   // Board Chat's set_board_filter. Throws on any unknown id, so a bad call
   // errors back to the model and the board is unchanged.
-  const handleBoardChatFilter = (input) => applyBoardFilter(
-    input,
-    { orgs, items: allItems, users, categories, tags },
-    { setOrgFilter, setTitleSearch, setColumnFilters, setScorecardFilter, setAiFilter },
-  );
+  const handleBoardChatFilter = (input) => {
+    const current = { ...ownFilters, aiFilter: activeView(viewStore)?.filters.aiFilter ?? null };
+    const plan = planBoardFilter(input, { orgs, items: allItems, users, categories, tags }, current);
+    if (plan.kind === "clear") {
+      setViewStore(resetViews(viewStore));
+      applyFilters(plan.filters);
+      return { applied: true, view: null };
+    }
+    runViewChange(addView(viewStore, { id: crypto.randomUUID(), label: plan.label, filters: plan.filters }, ownFilters));
+    return { applied: true, view: plan.label, itemCount: plan.filters.aiFilter?.itemIds.length ?? null };
+  };
+
+  // Reset: every view off (none deleted), search / column / scorecard
+  // filters cleared. The org pill is left alone.
+  const canReset = hasAnyFilter || Boolean(viewStore.activeId);
+  const handleReset = () => {
+    setViewStore(resetViews(viewStore));
+    setTitleSearch("");
+    setColumnFilters({});
+    setScorecardFilter(null);
+  };
 
   // Firestore writes
   const handleUpdate = (itemId, patch) => updateItem(itemId, patch);
@@ -788,33 +826,55 @@ export default function TaskBoard() {
       {/* Search bar — matches title + description across items AND subtasks.
           Cascades the same way other filters do: if a subtask's text matches
           but the parent's doesn't, the parent surfaces and auto-expands. */}
-      <TextField
-        size="small"
-        placeholder="Search items and subtasks…"
-        value={titleSearch}
-        onChange={(e) => setTitleSearch(e.target.value)}
-        fullWidth
-        sx={{ maxWidth: 480 }}
-        InputProps={{
-          startAdornment: (
-            <SearchIcon sx={{ fontSize: 18, color: "text.disabled", mr: 1, flexShrink: 0 }} />
-          ),
-          endAdornment: titleSearch ? (
-            <IconButton size="small" onClick={() => setTitleSearch("")} aria-label="Clear search">
-              <CloseIcon sx={{ fontSize: 16 }} />
-            </IconButton>
-          ) : null,
-        }}
-      />
+      <Stack direction="row" spacing={1} alignItems="center">
+        <TextField
+          size="small"
+          placeholder="Search items and subtasks…"
+          value={titleSearch}
+          onChange={(e) => setTitleSearch(e.target.value)}
+          fullWidth
+          sx={{ maxWidth: 480 }}
+          InputProps={{
+            startAdornment: (
+              <SearchIcon sx={{ fontSize: 18, color: "text.disabled", mr: 1, flexShrink: 0 }} />
+            ),
+            endAdornment: titleSearch ? (
+              <IconButton size="small" onClick={() => setTitleSearch("")} aria-label="Clear search">
+                <CloseIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            ) : null,
+          }}
+        />
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<RestartAltIcon />}
+          onClick={handleReset}
+          disabled={!canReset}
+        >
+          Reset
+        </Button>
+      </Stack>
 
-      {aiFilter && (
-        <Box>
-          <Chip
-            color="secondary"
-            label={`AI: ${aiFilter.label} (${allItems.filter((i) => aiFilter.ids.has(i.id)).length})`}
-            onDelete={() => setAiFilter(null)}
-          />
-        </Box>
+      {viewStore.views.length > 0 && (
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+          {viewStore.views.map((view) => {
+            const ids = view.filters.aiFilter && new Set(view.filters.aiFilter.itemIds);
+            const count = ids ? ` (${allItems.filter((i) => ids.has(i.id)).length})` : "";
+            const active = view.id === viewStore.activeId;
+            return (
+              <Chip
+                key={view.id}
+                color="secondary"
+                variant={active ? "filled" : "outlined"}
+                label={`AI: ${view.label}${count}`}
+                aria-pressed={active}
+                onClick={() => runViewChange(toggleView(viewStore, view.id, ownFilters))}
+                onDelete={() => runViewChange(removeView(viewStore, view.id))}
+              />
+            );
+          })}
+        </Stack>
       )}
 
       {itemsLoading && (

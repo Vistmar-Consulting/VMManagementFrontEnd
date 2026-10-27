@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import { Close as CloseIcon, Send as SendIcon } from "@mui/icons-material";
 import BoardChatChangesModal from "./BoardChatChangesModal.jsx";
+import BoardChatHints from "./BoardChatHints.jsx";
 import { applyChangeSet } from "../lib/itemWrites.js";
 import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
@@ -161,7 +162,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
     const live = latest.current;
     if (name === "set_board_filter") {
       const result = live.onApplyFilter(toolInput);
-      return { result, step: toolInput.aiFilter ? `Filtered board: ${toolInput.aiFilter.label} (${toolInput.aiFilter.itemIds.length})` : "Filtered board" };
+      return { result, step: result.view ? `Filtered board: ${result.view}` : "Cleared board filters" };
     }
     const out = await runReadTool(name, toolInput, { items: live.items, lookups: live.lookups });
     // A null updatedAt is a write still waiting on its server timestamp; it
@@ -231,7 +232,8 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
       PaperProps={{ sx: { width: PANEL_WIDTH, top: TOP, height: `calc(100% - ${TOP}px)` } }}
     >
       <Stack direction="row" alignItems="center" sx={{ px: 2, py: 1, borderBottom: 1, borderColor: "divider" }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>Board Chat</Typography>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Board Chat</Typography>
+        <Box sx={{ flexGrow: 1 }}><BoardChatHints /></Box>
         <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }} aria-label="Conversation cost">
           {formatUsd(total)}{anyUnpriced ? " + unpriced" : ""}
         </Typography>
