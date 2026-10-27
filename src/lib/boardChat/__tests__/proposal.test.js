@@ -143,6 +143,94 @@ describe("buildReviewRows: conflicts with a delete", () => {
   });
 });
 
+describe("buildReviewRows: parent and child deletes", () => {
+  it("rejects the child delete when the parent delete comes first", () => {
+    const rows = buildReviewRows([
+      { op: "delete", itemId: "p1", reason: "r" },
+      { op: "delete", itemId: "s1", reason: "r" },
+    ], ctx);
+    expect(rows.map((r) => r.ok)).toEqual([true, false]);
+    expect(rows[1].error).toMatch(/already deleted by op 1/);
+  });
+
+  it("rejects the child delete when the parent delete comes second", () => {
+    const rows = buildReviewRows([
+      { op: "delete", itemId: "s1", reason: "r" },
+      { op: "delete", itemId: "p1", reason: "r" },
+    ], ctx);
+    expect(rows.map((r) => r.ok)).toEqual([false, true]);
+    expect(rows[0].error).toMatch(/already deleted by op 2/);
+    const { ops } = toChangeSet(rows, new Set([0, 1]));
+    expect(ops).toEqual([{ kind: "delete", itemId: "p1", cascadeIds: ["s1", "s2"] }]);
+  });
+});
+
+describe("buildReviewRows: delete staleness", () => {
+  it("is stale when a cascade child changed since the model saw it", () => {
+    const [row] = buildReviewRows([{ op: "delete", itemId: "p1", reason: "r" }], ctx);
+    expect(row.ok).toBe(true);
+    expect(row.stale).toBe(true);
+  });
+
+  it("is stale when a cascade child was never seen", () => {
+    const [row] = buildReviewRows([{ op: "delete", itemId: "p1", reason: "r" }], { ...ctx, seen: { p1: 1000, s1: 2000 }, items: items.slice(0, 2).concat({ ...items[2], updatedAt: new Date(1) }) });
+    expect(row.stale).toBe(true);
+  });
+
+  it("is fresh when the parent and every child match what the model saw", () => {
+    const [row] = buildReviewRows([{ op: "delete", itemId: "p1", reason: "r" }], { ...ctx, seen: { p1: 1000, s1: 2000, s2: 9000 } });
+    expect(row.stale).toBe(false);
+  });
+});
+
+describe("buildReviewRows: tempIds", () => {
+  it("rejects a tempId that equals an existing item id", () => {
+    const [row] = buildReviewRows([{ op: "create", tempId: "p1", orgId: "unio", reason: "r", fields: { title: "Clash" } }], ctx);
+    expect(row.ok).toBe(false);
+    expect(row.error).toMatch(/existing item/);
+  });
+
+  it("rejects a repeated tempId even when the first create failed validation", () => {
+    const rows = buildReviewRows([
+      { op: "create", tempId: "a", reason: "r", fields: { title: "No org" } },
+      { op: "create", tempId: "a", orgId: "unio", reason: "r", fields: { title: "Valid" } },
+    ], ctx);
+    expect(rows.map((r) => r.ok)).toEqual([false, false]);
+    expect(rows[1].error).toMatch(/Duplicate tempId a/);
+  });
+});
+
+describe("buildReviewRows: value types", () => {
+  const upd = (fields) => ({ op: "update", itemId: "p1", reason: "r", fields });
+  it("rejects wrong types with a clear message", () => {
+    const rows = buildReviewRows([
+      upd({ title: 5 }),
+      upd({ description: ["x"] }),
+      upd({ assigneeIds: "u1" }),
+      upd({ assigneeIds: [1] }),
+      upd({ tagIds: "t1" }),
+      upd({ statusId: "5" }),
+      upd({ priorityId: "1" }),
+      upd({ categoryId: 1 }),
+    ], ctx);
+    expect(rows.map((r) => r.ok)).toEqual(Array(8).fill(false));
+    expect(rows[0].error).toBe("title must be a string");
+    expect(rows[1].error).toBe("description must be a string");
+    expect(rows[2].error).toBe("assigneeIds must be an array of strings");
+    expect(rows[3].error).toBe("assigneeIds must be an array of strings");
+    expect(rows[4].error).toBe("tagIds must be an array of strings");
+    expect(rows[5].error).toMatch(/Status 5 is not allowed/);
+    expect(rows[6].error).toMatch(/Priority 1 is not allowed/);
+    expect(rows[7].error).toMatch(/Unknown category 1/);
+  });
+
+  it("rejects a due date that rolls over", () => {
+    const rows = buildReviewRows([upd({ dueDate: "2026-02-31" }), upd({ dueDate: "2026-13-01" }), upd({ dueDate: "2028-02-29" })], ctx);
+    expect(rows.map((r) => r.ok)).toEqual([false, false, true]);
+    expect(rows[0].error).toMatch(/Bad dueDate "2026-02-31"/);
+  });
+});
+
 describe("buildReviewRows: fallback tempIds", () => {
   it("never collide with a tempId the model supplied", () => {
     const rows = buildReviewRows([

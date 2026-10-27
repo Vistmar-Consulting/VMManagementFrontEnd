@@ -110,7 +110,13 @@ function assertSupportedFields(ops) {
 function assertNoConflicts(ops) {
   const creates = ops.filter((o) => o.kind === "create");
   const tempIds = new Set(creates.map((c) => c.tempId));
-  const removed = new Set(ops.filter((o) => o.kind === "delete").flatMap((o) => [o.itemId, ...(o.cascadeIds || [])]));
+  const removed = new Set();
+  for (const o of ops.filter((d) => d.kind === "delete")) {
+    for (const id of [o.itemId, ...(o.cascadeIds || [])]) {
+      if (removed.has(id)) throw new Error(`Item ${id} is deleted twice in the same change set`);
+      removed.add(id);
+    }
+  }
   for (const o of ops) {
     if (o.kind === "update" && removed.has(o.itemId)) {
       throw new Error(`Item ${o.itemId} is updated and deleted in the same change set`);

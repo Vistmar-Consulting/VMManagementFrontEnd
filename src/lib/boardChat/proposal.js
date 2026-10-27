@@ -18,10 +18,23 @@ const PRIORITY_IDS = [1, 2, 3, 4];
 const FIELD_KEYS = ["title", "description", "statusId", "assigneeIds", "dueDate", "priorityId", "categoryId", "tagIds"];
 const CLEARABLE = ["dueDate", "priorityId", "categoryId"];
 
+// The y/m/d must round-trip, so "2026-02-31" is rejected rather than rolling
+// over to March 3.
 export function parseDueDate(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || "");
-  if (!m) throw new Error(`Bad dueDate "${s}" (want YYYY-MM-DD)`);
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const m = typeof s === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(s) : null;
+  const d = m && new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (!d || d.getFullYear() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) {
+    throw new Error(`Bad dueDate "${s}" (want a real YYYY-MM-DD date)`);
+  }
+  return d;
+}
+
+function assertString(value, name) {
+  if (typeof value !== "string") throw new Error(`${name} must be a string`);
+}
+
+function assertStringArray(value, name) {
+  if (!Array.isArray(value) || !value.every((v) => typeof v === "string")) throw new Error(`${name} must be an array of strings`);
 }
 
 function normalizeFields(fields = {}, ctx) {
@@ -29,15 +42,20 @@ function normalizeFields(fields = {}, ctx) {
   if (unknown.length) throw new Error(`Unknown field ${unknown.join(", ")}`);
   const out = {};
   if (fields.title !== undefined) {
+    assertString(fields.title, "title");
     if (!fields.title.trim()) throw new Error("Title cannot be empty");
     out.title = fields.title.trim();
   }
-  if (fields.description !== undefined) out.description = fields.description;
+  if (fields.description !== undefined) {
+    assertString(fields.description, "description");
+    out.description = fields.description;
+  }
   if (fields.statusId !== undefined) {
     if (!ALLOWED_STATUS_IDS.includes(fields.statusId)) throw new Error(`Status ${fields.statusId} is not allowed`);
     out.statusId = fields.statusId;
   }
   if (fields.assigneeIds !== undefined) {
+    assertStringArray(fields.assigneeIds, "assigneeIds");
     const bad = fields.assigneeIds.filter((id) => !ctx.memberIds.has(id));
     if (bad.length) throw new Error(`Unknown member ${bad.join(", ")}`);
     out.assigneeIds = fields.assigneeIds;
@@ -52,6 +70,7 @@ function normalizeFields(fields = {}, ctx) {
     out.categoryId = fields.categoryId;
   }
   if (fields.tagIds !== undefined) {
+    assertStringArray(fields.tagIds, "tagIds");
     const bad = fields.tagIds.filter((id) => !ctx.tagIds.has(id));
     if (bad.length) throw new Error(`Unknown tag ${bad.join(", ")}`);
     out.tagIds = fields.tagIds;
@@ -62,27 +81,42 @@ function normalizeFields(fields = {}, ctx) {
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
   || (a instanceof Date || b instanceof Date ? toMillis(a) === toMillis(b) : false);
 
-// A create with no tempId gets `op<index>`, suffixed until it matches no
-// tempId the model supplied and no earlier fallback.
-function makeFallbackTempId(ops) {
-  const taken = new Set(ops.filter((o) => o.op === "create" && o.tempId).map((o) => o.tempId));
-  return (index) => {
+// firstIndex: where each model-supplied tempId first appears, so a repeat is
+// rejected even when the first create failed validation. A create with no
+// tempId gets `op<index>`, suffixed until it matches no supplied tempId, no
+// item id and no earlier fallback.
+function makeTempIds(ops, itemsById) {
+  const firstIndex = new Map();
+  ops.forEach((o, i) => {
+    if (o.op === "create" && o.tempId && !firstIndex.has(o.tempId)) firstIndex.set(o.tempId, i);
+  });
+  const taken = new Set([...firstIndex.keys(), ...itemsById.keys()]);
+  const fallback = (index) => {
     let id = `op${index}`;
     for (let n = 1; taken.has(id); n += 1) id = `op${index}_${n}`;
     taken.add(id);
     return id;
   };
+  return { firstIndex, fallback };
 }
 
-function buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, fallbackTempId) {
+// Same rule for an item and each cascade child: stale when the model never
+// saw it or its live updatedAt is newer than what the model saw.
+function isStale(item, ctx) {
+  const seen = ctx.seen[item.id];
+  return seen == null || (toMillis(item.updatedAt) ?? 0) > seen;
+}
+
+function buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, tempIds) {
   const base = { index, op: op.op, reason: op.reason, ok: true, error: null, stale: false };
 
   if (op.op === "create") {
+    if (op.tempId && itemsById.has(op.tempId)) throw new Error(`tempId ${op.tempId} is the id of an existing item`);
+    if (op.tempId && tempIds.firstIndex.get(op.tempId) !== index) throw new Error(`Duplicate tempId ${op.tempId}`);
     const fields = { ...normalizeFields(op.fields, ctx), createdVia: "board-chat" };
     if (!fields.title) throw new Error("A new item needs a title");
     if (fields.statusId === STATUS.DONE) fields.completedAt = ctx.now;
-    if (op.tempId && tempCreates.has(op.tempId)) throw new Error(`Duplicate tempId ${op.tempId}`);
-    const tempId = op.tempId || fallbackTempId(index);
+    const tempId = op.tempId || tempIds.fallback(index);
     let row;
     if (op.parentRef) {
       const parentItem = itemsById.get(op.parentRef);
@@ -106,11 +140,11 @@ function buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, fallbackTe
 
   const item = itemsById.get(op.itemId);
   if (!item) throw new Error(`Item ${op.itemId} not found`);
-  const seen = ctx.seen[item.id];
-  const stale = seen == null || (toMillis(item.updatedAt) ?? 0) > seen;
+  const stale = isStale(item, ctx);
 
   if (op.op === "delete") {
-    return { ...base, stale, itemId: item.id, cascadeIds: (childrenOf.get(item.id) || []).map((c) => c.id) };
+    const children = childrenOf.get(item.id) || [];
+    return { ...base, stale: stale || children.some((c) => isStale(c, ctx)), itemId: item.id, cascadeIds: children.map((c) => c.id) };
   }
 
   const clear = op.clear || [];
@@ -136,10 +170,16 @@ function buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, fallbackTe
 // order of ops in the proposal does not matter.
 function rejectConflicts(rows) {
   const reject = (row, error) => ({ ...row, ok: false, error });
+  const cascadedBy = new Map();
+  for (const row of rows) {
+    if (!row.ok || row.op !== "delete") continue;
+    for (const id of row.cascadeIds) if (!cascadedBy.has(id)) cascadedBy.set(id, row.index);
+  }
   const removedBy = new Map();
   const deleted = new Set();
   const out = rows.map((row) => {
     if (!row.ok || row.op !== "delete") return row;
+    if (cascadedBy.has(row.itemId)) return reject(row, `${row.itemId} is already deleted by op ${cascadedBy.get(row.itemId) + 1} in this proposal`);
     if (deleted.has(row.itemId)) return reject(row, `${row.itemId} already has a change in this proposal`);
     deleted.add(row.itemId);
     for (const id of [row.itemId, ...row.cascadeIds]) if (!removedBy.has(id)) removedBy.set(id, row.index);
@@ -167,10 +207,10 @@ export function buildReviewRows(ops, ctx) {
     if (i.parentId) childrenOf.set(i.parentId, [...(childrenOf.get(i.parentId) || []), i]);
   }
   const tempCreates = new Map();
-  const fallbackTempId = makeFallbackTempId(ops);
+  const tempIds = makeTempIds(ops, itemsById);
   const rows = ops.map((op, index) => {
     try {
-      return buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, fallbackTempId);
+      return buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, tempIds);
     } catch (err) {
       return { index, op: op.op, reason: op.reason, itemId: op.itemId, ok: false, error: err.message, stale: false };
     }

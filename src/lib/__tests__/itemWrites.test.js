@@ -187,6 +187,14 @@ describe("applyChangeSet", () => {
     expect(writes).toEqual([]);
   });
 
+  it("rejects deleting an item that another delete in the set already removes", async () => {
+    await expect(W.applyChangeSet([
+      { kind: "delete", itemId: "s1", cascadeIds: [] },
+      { kind: "delete", itemId: "p1", cascadeIds: ["s1"] },
+    ], { uid: "u1", allItems })).rejects.toThrow("Item s1 is deleted twice in the same change set");
+    expect(writes).toEqual([]);
+  });
+
   it("rejects a parentTempId with no matching create", async () => {
     await expect(W.applyChangeSet([
       { kind: "create", tempId: "t2", orgId: "unio", parentId: null, parentTempId: "nope", fields: { title: "x" } },
