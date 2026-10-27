@@ -1,6 +1,6 @@
 # Session v0.4.19 — Board Chat
 
-**Date:** 2026-10-21 · **Developer:** Andrew · **Status:** active
+**Date:** 2026-10-21 · **Closed:** 2026-10-27 · **Developer:** Andrew · **Status:** complete
 **Branch:** worktree `.claude/worktrees/task-board-ai-chat` on `worktree-task-board-ai-chat`, cut from local `main` at `c923daf`
 
 ## Ask
@@ -31,7 +31,12 @@ A chat panel on the Task Board where the user talks to Claude (Anthropic API) ab
 
 ## Deferred
 
-- **Sync Task Board** — Fireflies → board changes from the Task Board (today only Sync Meeting does this). Own session; reuse Board Chat's `itemWrites.js` write layer.
+- **Sync Task Board** — superseded: session v0.4.19 BOARD_SYNC built this as "Board Sync". Closed here.
 - Carried from v0.4.18: dev-server blank page (`createTheme_default is not a function`) needs root-causing; table column resizing off; AI Sync Meeting table preservation not exercised; two-person table editing untested; stale-bundle gate SHA / Skew Protection caveat.
-- Board Chat, open (minor): views are not capped (x deletes; no observed harm); if another tab deletes this tab's active view, its filters stay applied and the pre-view filters are lost.
+- Board Chat, open (minor): views are not capped (x deletes; no observed harm); if another tab deletes this tab's active view, its filters stay applied and the pre-view filters are lost. Why deferred: no observed harm. Pick up if the chip row gets crowded or Andy reports lost filters.
 - Noticed 2026-10-21, not fixed: manual status changes on the board (`TaskBoard.jsx` `handleUpdate`) don't set `completedAt` on Done; only Sync Meeting does.
+
+## Close summary (2026-10-27)
+
+Board Chat shipped to `origin/dev` and verified live on production. It answers questions from board items, comments and the meeting calendar (not Fireflies); filters the board on request, saving each filter as a view chip (click toggles, x deletes, "· edited" when changed by hand); and proposes creates/updates/deletes that write only after Apply in a review modal showing every field. Reset turns views off and clears search/column/scorecard filters. Active view and org pill are per browser tab; the views list is shared. Cost shows per reply and per chat; latest Sonnet resolved at runtime. Live testing across the session cost about $0.70 in Board Chat calls; the only board writes were test task I-100, created and deleted. Worktree `task-board-ai-chat` and its branch removed at close; all commits are on `origin/dev`.
+

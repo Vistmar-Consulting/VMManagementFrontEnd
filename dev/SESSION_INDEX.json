@@ -481,10 +481,12 @@
       "session_id": "SES-20261021-Andrew-v0.4.19-board-chat",
       "developer": "Andrew",
       "date": "2026-10-21",
+      "date_closed": "2026-10-27",
       "commit_start": "c923daf",
-      "summary": "Board Chat: Claude chat panel on the Task Board — Q&A over tasks/meetings, AI board filter, confirmed task/subtask writes, cost tracker.",
+      "commit_end": "c1ffe95",
+      "summary": "Board Chat: Claude chat panel on the Task Board — Q&A over tasks/meetings, AI board filter, confirmed task/subtask writes, cost tracker. Then hints popover, switchable filter views (per-tab active view + org), Reset, edited-view marker, full create preview in the Apply modal. All verified live on production; pushed to origin/dev.",
       "folder": "dev/sessions/v0_4_19_Andrew_BOARD_CHAT/",
-      "status": "active"
+      "status": "complete"
     },
     {
       "session_id": "SES-20261026-Andrew-v0.4.19-board-sync",
