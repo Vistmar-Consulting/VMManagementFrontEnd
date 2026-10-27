@@ -1,9 +1,11 @@
 // Task Board search + column-filter predicate. Values within one column are
-// ORed; every active column and the title search are ANDed together.
-export function buildItemMatcher({ titleSearch = "", columnFilters = {} }) {
+// ORed; every active column, the title search and the AI filter (idSet: the
+// exact items Board Chat picked) are ANDed together.
+export function buildItemMatcher({ titleSearch = "", columnFilters = {}, idSet = null }) {
   const q = titleSearch.trim().toLowerCase();
   const activeCols = Object.entries(columnFilters).filter(([, v]) => v && v.length > 0);
   return (item) => {
+    if (idSet && !idSet.has(item.id)) return false;
     if (q) {
       const title = (item.title || "").toLowerCase();
       const desc = (item.description || "").toLowerCase();

@@ -35,3 +35,22 @@ describe("buildItemMatcher", () => {
     expect(matching({ titleSearch: "ta", columnFilters: { statusId: [2] } })).toEqual(["4"]);
   });
 });
+
+describe("buildItemMatcher idSet (AI filter)", () => {
+  const items = [
+    { id: "a", title: "Appointment import", statusId: 1 },
+    { id: "b", title: "Appointment schema", statusId: 5 },
+    { id: "c", title: "Unrelated", statusId: 1 },
+  ];
+  it("keeps only ids in the set", () => {
+    const m = buildItemMatcher({ idSet: new Set(["a", "b"]) });
+    expect(items.filter(m).map((i) => i.id)).toEqual(["a", "b"]);
+  });
+  it("ANDs with column filters", () => {
+    const m = buildItemMatcher({ idSet: new Set(["a", "b"]), columnFilters: { statusId: [1] } });
+    expect(items.filter(m).map((i) => i.id)).toEqual(["a"]);
+  });
+  it("no idSet means no id restriction", () => {
+    expect(items.filter(buildItemMatcher({})).length).toBe(3);
+  });
+});
