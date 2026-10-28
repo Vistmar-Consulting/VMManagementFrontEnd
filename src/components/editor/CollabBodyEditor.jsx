@@ -158,7 +158,7 @@ export default function CollabBodyEditor({
       }),
     ],
 
-    // Plain click (or cmd/ctrl+click) on a link opens it in a new tab.
+    // Plain click or cmd+click on a link opens it in a new tab (linkHelper.js).
     editorProps: { handleClick: openLinkOnClick },
 
     // In shared mode, report this editor as the active one when focused so the

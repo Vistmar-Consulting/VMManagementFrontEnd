@@ -17,8 +17,12 @@ export function promptLink(editor) {
 // in a new tab. A contenteditable surface never follows links on its own, so
 // without this the only way out was the context menu. Read-only bodies are
 // left to the native <a target="_blank"> so the link isn't opened twice.
+// Shift/alt clicks still extend the selection, and macOS ctrl+click is the
+// context menu, so those fall through.
 export function openLinkOnClick(view, _pos, event) {
   if (event.button !== 0 || !view.editable) return false;
+  if (event.shiftKey || event.altKey) return false;
+  if (event.ctrlKey && /Mac/.test(navigator.platform)) return false;
   const link = event.target?.closest?.("a[href]");
   if (!link || !view.dom.contains(link)) return false;
   event.preventDefault();
