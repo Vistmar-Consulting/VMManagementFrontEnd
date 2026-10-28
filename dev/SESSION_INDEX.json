@@ -497,6 +497,16 @@
       "folder": "dev/sessions/v0_4_19_Andrew_BOARD_SYNC/",
       "status": "completed",
       "date_closed": "2026-10-27"
+    },
+    {
+      "session_id": "SES-20261027-Andrew-v0.4.19-add-subtask-filter",
+      "developer": "Andrew",
+      "date": "2026-10-27",
+      "commit_start": "3773d77",
+      "summary": "Task Board + Add subtask under an active filter wrote untitled subtasks that were filtered out of view and never auto-discarded. Items created under a filter now stay in view until the filters change (Mini Project Board keptIds rule).",
+      "folder": "dev/sessions/v0_4_19_Andrew_ADD_SUBTASK_FILTER/",
+      "status": "complete",
+      "date_closed": "2026-10-27"
     }
   ]
 }

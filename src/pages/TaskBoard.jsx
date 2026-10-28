@@ -202,9 +202,16 @@ export default function TaskBoard() {
 
   const selectedCard = scorecardFilter ? SCORECARDS.find((c) => c.key === scorecardFilter) : null;
 
+  // Items created while the current filters are on. A new item starts untitled
+  // and Not Started, so it would match almost no filter and never render; keep
+  // it in view until the filters change (same rule as the Mini Project Board).
+  const [keptIds, setKeptIds] = useState(() => new Set());
+  const keepInView = (id) => setKeptIds((s) => (s.has(id) ? s : new Set(s).add(id)));
+
   const matchesNonOrgFilters = useMemo(
-    () => (item) => (!selectedCard || selectedCard.match(item)) && matchesSearchAndColumns(item),
-    [selectedCard, matchesSearchAndColumns],
+    () => (item) => keptIds.has(item.id)
+      || ((!selectedCard || selectedCard.match(item)) && matchesSearchAndColumns(item)),
+    [keptIds, selectedCard, matchesSearchAndColumns],
   );
 
   // Subitems map: parentId → subitems array. Built first because the
@@ -302,6 +309,7 @@ export default function TaskBoard() {
       filters: [scorecardFilter, titleSearch, columnFilters, aiFilter],
       closed: new Set(),
     }));
+    setKeptIds(new Set());
   }
   const closedRowKeys = filtersChanged ? new Set() : expansion.closed;
 
@@ -541,6 +549,7 @@ export default function TaskBoard() {
   const handleAddItem = async (orgId) => {
     const ref = newItemRef();
     setNewItemId(ref.id);
+    keepInView(ref.id);
     await createTopLevelItem({ ref, orgId, uid: user.uid, order: nextTopLevelOrder(allItems) });
   };
 
@@ -567,6 +576,7 @@ export default function TaskBoard() {
       setRowsExpanded([rowKey("active", parentItem.id, groupKeyOf(parentItem.statusId) !== "active")], true);
       const ref = newItemRef();
       setNewItemId(ref.id);
+      keepInView(ref.id);
       await createSubitem({ ref, parent: parentItem, uid: user.uid, order: nextSubitemOrder(allItems, parentItem.id) });
     } finally {
       addingSubitemRef.current = false;
