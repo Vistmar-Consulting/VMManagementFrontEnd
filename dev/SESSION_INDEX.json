@@ -515,7 +515,8 @@
       "commit_start": "3773d77",
       "summary": "Sync Meeting review: editable proposed agenda + tracked-changes redline (pre-sync to proposed).",
       "folder": "dev/sessions/v0_4_20_Andrew_SYNC_TRACKED_EDITS/",
-      "status": "active"
+      "status": "complete",
+      "date_closed": "2026-10-28"
     }
   ]
 }

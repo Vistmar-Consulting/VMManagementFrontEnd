@@ -1,5 +1,9 @@
 # Session v0.4.20 — Sync Meeting: tracked changes + editable proposal
 
+## Close-out (2026-10-28) — complete
+
+Sync Meeting redline + editable proposal shipped to origin/dev and verified live on production (see Morning). Local `main` fast-forwarded to origin/dev. Nothing in flight; working tree clean. Open items are under Deferred. The worktree `.claude/worktrees/sync-meeting-tracked-edits` and its branch `worktree-sync-meeting-tracked-edits` are merged into dev; remove them from the main checkout once this terminal exits (`git worktree remove .claude/worktrees/sync-meeting-tracked-edits && git branch -d worktree-sync-meeting-tracked-edits`).
+
 ## Morning
 
 **Shipped:** Sync Meeting redline + editable proposal (plan Tasks 1–9) pushed to `origin/dev` at **`90e2065`** (rebased onto `f7b1a54`). Whole-branch code review: "ready to push". Before the rebase: `npx vitest run --testTimeout=15000 --maxWorkers=3` **540/540**, `npm run build` OK. After the rebase (incoming commits touched only `TaskBoard.jsx` + its test): `src/pages/__tests__` TaskBoard files 15/15 serially and `npm run build` OK; the full suite was not re-run after the rebase.
@@ -32,7 +36,7 @@
 **Housekeeping:** this worktree has its own `node_modules` (`npm ci`, not the symlink). Dev server stopped, browser closed.
 
 
-**Date:** 2026-10-27 · **Developer:** Andrew · **Status:** active
+**Date:** 2026-10-27 · **Developer:** Andrew · **Status:** complete (closed 2026-10-28)
 **Branch:** worktree `.claude/worktrees/sync-meeting-tracked-edits` on `worktree-sync-meeting-tracked-edits`, cut from `main` at `3773d77`
 
 ## Ask
@@ -43,7 +47,7 @@ In the Sync Meeting review: (A) full text editing of the proposed agenda; (B) a 
 
 - Design approved 2026-10-27 → `docs/superpowers/specs/2026-10-27-sync-meeting-tracked-edits-design.md` (commits 1cf5420, 5370062).
 - Plan approved 2026-10-27 → `docs/plans/2026-10-27-sync-meeting-tracked-edits.md` (commit 99cf881).
-- Implementation complete 2026-10-28 (unattended, subagent-driven: implementer + spec review + quality review per task). Pushed `90e2065` to origin/dev. Live Apply unverified — see Morning.
+- Implementation complete 2026-10-28 (unattended, subagent-driven: implementer + spec review + quality review per task). Pushed `90e2065` to origin/dev. Live Apply verified on production 2026-10-28 — see Morning.
 
 ## Task log
 
@@ -98,3 +102,7 @@ Agenda: Vistamar internal "Vistamar Platform Development updates" (`agendas/m4b1
 
 - Claude comments on the proposed agenda (separate API call, not in `/api/ai/prepare`).
 - Per-change accept/reject.
+- **Apply compares against Firestore at Apply time, not the pre-sync text.** Why deferred: low impact, presence confirm warns. Pick up when: a colleague's in-room edit is reported lost after a Sync Meeting, or when Claude comments work touches `applyUnified`. Fix: compare topics and Open Floor against the dialog's pre-sync snapshot.
+- **`applyUnified` reads topic bodies outside the transaction.** Why deferred: outcome differs only when the proposal equals a concurrent edit. Pick up with the item above.
+- **Redline display limits** (see Risks). Pick up if the team finds the redline misleading in practice.
+- **Remove this worktree + branch** from the main checkout (command in Close-out). Pick up: next session in this repo.
