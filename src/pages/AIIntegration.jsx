@@ -99,7 +99,8 @@ const HOW_IT_WORKS = [
     group: "Safe to run",
     items: [
       ["Review before apply", "Nothing changes until you click Apply on the proposal. Applying saves the current agenda to version history first, so it's always revertible."],
-      ["Topics are never deleted by a sync", "Apply updates continuing topics in place and writes their new text straight into the live editor, so everyone sees it at once. A topic the AI leaves out is listed as a suggested removal and kept unless you tick its Delete box. Apply refuses if the live editor isn't connected."],
+      ["Edit before you apply", "The review shows the proposed agenda as a redline against the agenda before the sync: struck-through text is removed, highlighted text is added. The Edit tab lets you change any topic's text, Open Floor and new topics' titles before Apply; continuing topics keep their titles, and a new topic needs a title. Refine works on your edited version, and editing pauses while Refine runs. Discard asks before throwing away your edits. The redline and editing never call the AI."],
+      ["Topics are never deleted by a sync", "Apply updates continuing topics and Open Floor in place and writes their new text straight into the live editor, so everyone sees it at once. A topic the AI leaves out is listed as a suggested removal and kept unless you tick its Delete box. Apply refuses if the live editor isn't connected."],
       ["Admin-only", "The AI Gen button appears only for admins."],
     ],
   },
