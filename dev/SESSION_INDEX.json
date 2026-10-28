@@ -507,6 +507,15 @@
       "folder": "dev/sessions/v0_4_19_Andrew_ADD_SUBTASK_FILTER/",
       "status": "complete",
       "date_closed": "2026-10-27"
+    },
+    {
+      "session_id": "SES-20261027-Andrew-v0.4.20-sync-tracked-edits",
+      "developer": "Andrew",
+      "date": "2026-10-27",
+      "commit_start": "3773d77",
+      "summary": "Sync Meeting review: editable proposed agenda + tracked-changes redline (pre-sync to proposed).",
+      "folder": "dev/sessions/v0_4_20_Andrew_SYNC_TRACKED_EDITS/",
+      "status": "active"
     }
   ]
 }
