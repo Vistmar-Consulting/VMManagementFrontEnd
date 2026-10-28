@@ -7,7 +7,7 @@ import DOMPurify from "dompurify";
 const ALLOWED_TAGS = [
   "p", "br", "ul", "ol", "li", "strong", "em", "u", "a", "span",
   // Tables, in the shape TipTap's Table extension emits.
-  "table", "colgroup", "col", "tbody", "tr", "th", "td",
+  "table", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "th", "td",
 ];
 const ALLOWED_ATTR = ["href", "target", "rel", "style", "colspan", "rowspan", "colwidth"];
 

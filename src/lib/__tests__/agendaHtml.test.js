@@ -144,3 +144,10 @@ describe("escapeText", () => {
     expect(escapeText("a & <b>")).toBe("a &amp; &lt;b&gt;");
   });
 });
+
+describe("sanitizeHtml and table sections", () => {
+  it("keeps a thead header row instead of dropping it", () => {
+    const html = "<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>B</td></tr></tbody></table>";
+    expect(sanitizeHtml(html)).toBe(html);
+  });
+});
