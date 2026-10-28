@@ -206,4 +206,22 @@ describe("buildAgendaRedline", () => {
     const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "<p>Any other business</p>", topics: prevTopics, proposal });
     expect(rows[rows.length - 1]).toMatchObject({ kind: "openFloor", html: "<p>Any other business</p>" });
   });
+
+  it("marks a changed Open Floor against the pre-sync Open Floor", () => {
+    const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "<p>Old aside</p>", topics: prevTopics, proposal });
+    const of = rows[rows.length - 1];
+    expect(marks(of.html, "del").join(" ")).toMatch(/Old aside/);
+    expect(marks(of.html, "ins").join(" ")).toMatch(/Any other business/);
+  });
+
+  it("gives an empty Open Floor row when both sides are empty", () => {
+    const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "", topics: prevTopics, proposal: { ...proposal, openFloorHtml: "" } });
+    expect(rows[rows.length - 1]).toMatchObject({ kind: "openFloor", html: "" });
+  });
+
+  it("treats a second proposal topic with the same ref as new, as Apply does", () => {
+    const dup = { topics: [proposal.topics[0], { ...proposal.topics[0], topicId: "t2", name: "Copy" }], openFloorHtml: "" };
+    const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "", topics: prevTopics, proposal: dup });
+    expect(rows.map((r) => r.kind)).toEqual(["retained", "new", "dropped", "openFloor"]);
+  });
 });
