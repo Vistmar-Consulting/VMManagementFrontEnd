@@ -92,7 +92,7 @@ export default function ProposalReview({
           {(proposal.topics || []).map((tp, i) => {
             const blank = !String(tp.name || "").trim();
             const retained = statuses[i] === "retained";
-            const title = retained ? liveName.get(tp.ref) || "(untitled)" : blank ? "New topic" : tp.name.trim();
+            const title = retained ? liveName.get(tp.ref) || "(untitled)" : blank ? "New topic" : String(tp.name).trim();
             return (
               <Box key={`${rev}-${i}`} sx={{ mb: 2 }}>
                 {retained ? (

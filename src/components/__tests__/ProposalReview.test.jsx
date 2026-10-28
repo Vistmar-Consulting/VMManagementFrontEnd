@@ -110,6 +110,13 @@ describe("ProposalReview", () => {
     expect(texts(container, "ins")).toContain("Zebra phrase added");
   });
 
+  it("names a new topic whose AI title is not a string without crashing", () => {
+    const numeric = { ...proposal, topics: [proposal.topics[0], { ...proposal.topics[1], name: 2026 }] };
+    setup({ proposal: numeric });
+    fireEvent.click(screen.getByRole("tab", { name: "Edit" }));
+    expect(screen.getByLabelText("2026 body")).toBeInTheDocument();
+  });
+
   it("flags a blank new-topic title", () => {
     const blank = { ...proposal, topics: [proposal.topics[0], { ...proposal.topics[1], name: "  " }] };
     setup({ proposal: blank });
