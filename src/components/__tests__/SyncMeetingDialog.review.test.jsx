@@ -150,6 +150,20 @@ describe("SyncMeetingDialog review", { timeout: 20000 }, () => {
     confirm.mockRestore();
   });
 
+  it("Discard does not ask once the edits are saved (live-editor write failed after commit)", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    writeTopicBodies.mockImplementation(() => { throw new Error("offline"); });
+    const onClose = await openReview();
+    fireEvent.click(screen.getByRole("tab", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Google Ads body"), { target: { value: "<p>Edited by hand</p>" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await screen.findByText(/Applied and saved, but the live editor update failed/);
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
+  });
+
   it("a blank new-topic title disables Apply with a caption", async () => {
     await openReview(proposalWith("   "));
     expect(screen.getByText("A new topic needs a title (Edit tab)")).toBeInTheDocument();

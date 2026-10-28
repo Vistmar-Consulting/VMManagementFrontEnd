@@ -163,8 +163,9 @@ export default function SyncMeetingDialog({
     setEdited(true);
     setProposal((prev) => ({ ...prev, openFloorHtml: html }));
   };
+  // Once applied, the edits are saved — nothing left to discard.
   const discard = () => {
-    if (edited && !window.confirm("Discard your edits to the proposed agenda?")) return;
+    if (edited && !applied && !window.confirm("Discard your edits to the proposed agenda?")) return;
     onClose();
   };
 
