@@ -49,6 +49,8 @@ const proseBase = {
  *   onChangeHtml — called with editor.getHTML() after debounce
  *   placeholder  — placeholder text when empty
  *   debounceMs   — debounce delay in ms (default 1500)
+ *   editable     — false locks the body: no typing, toolbar disabled (default true)
+ *   ariaLabel    — accessible name for the editable region (omitted when not given)
  *   mode         — "inline" (default): own bordered box + own toolbar (Working view).
  *                  "shared": chromeless (no border/toolbar); registers its editor
  *                  with EditorFocusContext on focus so the Overview card's single
@@ -66,6 +68,8 @@ export default function RichBodyEditor({
   placeholder = "Type here…",
   debounceMs = 1500,
   mode = "inline",
+  editable = true,
+  ariaLabel,
 }) {
   const shared = mode === "shared";
   const debounceRef = useRef(null);
@@ -120,6 +124,8 @@ export default function RichBodyEditor({
     ],
 
     content: sanitizeHtml(valueHtml) || "",
+    editable,
+    ...(ariaLabel ? { editorProps: { attributes: { "aria-label": ariaLabel } } } : {}),
 
     // In shared mode, report this editor as the active one when focused so the
     // Overview card's single sticky toolbar operates on it.
@@ -155,6 +161,12 @@ export default function RichBodyEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
+  // Follow the prop after mount. emitUpdate=false: setEditable otherwise emits
+  // "update", which onUpdate would turn into a spurious onChangeHtml write.
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.setEditable(editable, false);
+  }, [editor, editable]);
+
   // cmd/ctrl+K link handler — shared by the toolbar button and keydown listener
   const handleLink = useCallback(() => promptLink(editor), [editor]);
 
@@ -163,7 +175,7 @@ export default function RichBodyEditor({
     if (!editor) return undefined;
     const dom = editor.view.dom;
     const onKeydown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k" && editor.isEditable) {
         e.preventDefault();
         handleLink();
       }
@@ -193,7 +205,9 @@ export default function RichBodyEditor({
         "& .ProseMirror": { ...proseBase, minHeight: 40, padding: "8px 12px" },
       }}
     >
-      <EditorToolbar editor={editor} onLink={handleLink} />
+      {/* Toolbar commands dispatch even on a non-editable editor, so a locked
+          body gets the toolbar's disabled (no-editor) state. */}
+      <EditorToolbar editor={editable ? editor : null} onLink={handleLink} />
       <EditorContent editor={editor} />
     </Box>
   );

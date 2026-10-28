@@ -3,6 +3,8 @@
 // editable (topic bodies, Open Floor, new-topic titles — retained titles stay
 // locked, as Apply keeps them). Edits go up through onTopicChange /
 // onOpenFloorChange into the dialog's proposal, so Refine and Apply see them.
+// readOnly locks every field while Refine/Apply is in flight: edits typed then
+// would be overwritten by the refined proposal (or flush onto it stale).
 import { useMemo, useState } from "react";
 import { Box, Tab, Tabs, TextField, Typography } from "@mui/material";
 import RichBodyEditor from "./editor/RichBodyEditor.jsx";
@@ -48,6 +50,7 @@ export default function ProposalReview({
   rev,
   onTopicChange,
   onOpenFloorChange,
+  readOnly = false,
 }) {
   const [tab, setTab] = useState("changes");
   const redline = useMemo(
@@ -59,12 +62,17 @@ export default function ProposalReview({
   return (
     <Box>
       <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ minHeight: 36, mb: 1 }}>
-        <Tab value="changes" label="Changes" sx={{ minHeight: 36 }} />
-        <Tab value="edit" label="Edit" sx={{ minHeight: 36 }} />
+        <Tab value="changes" label="Changes" id="proposal-tab-changes" aria-controls="proposal-panel-changes" sx={{ minHeight: 36 }} />
+        <Tab value="edit" label="Edit" id="proposal-tab-edit" aria-controls="proposal-panel-edit" sx={{ minHeight: 36 }} />
       </Tabs>
 
       {tab === "changes" ? (
-        <Box sx={{ ...BOX_SX, ...REDLINE_SX, maxHeight: 360 }}>
+        <Box
+          role="tabpanel"
+          id="proposal-panel-changes"
+          aria-labelledby="proposal-tab-changes"
+          sx={{ ...BOX_SX, ...REDLINE_SX, maxHeight: 360 }}
+        >
           {redline
             .filter((row) => row.kind !== "openFloor" || row.html)
             .map((row, i) => (
@@ -80,14 +88,16 @@ export default function ProposalReview({
             ))}
         </Box>
       ) : (
-        <Box sx={{ ...BOX_SX, maxHeight: 520 }}>
+        <Box role="tabpanel" id="proposal-panel-edit" aria-labelledby="proposal-tab-edit" sx={{ ...BOX_SX, maxHeight: 520 }}>
           {(proposal.topics || []).map((tp, i) => {
             const blank = !String(tp.name || "").trim();
+            const retained = statuses[i] === "retained";
+            const title = retained ? liveName.get(tp.ref) || "(untitled)" : blank ? "New topic" : tp.name.trim();
             return (
               <Box key={`${rev}-${i}`} sx={{ mb: 2 }}>
-                {statuses[i] === "retained" ? (
+                {retained ? (
                   <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                    {liveName.get(tp.ref) || "(untitled)"}
+                    {title}
                   </Typography>
                 ) : (
                   <TextField
@@ -96,6 +106,7 @@ export default function ProposalReview({
                     label="New topic title"
                     value={tp.name || ""}
                     onChange={(e) => onTopicChange(i, { name: e.target.value })}
+                    disabled={readOnly}
                     error={blank}
                     helperText={blank ? "A new topic needs a title" : " "}
                     sx={{ mb: 0.5 }}
@@ -105,6 +116,8 @@ export default function ProposalReview({
                   valueHtml={tp.bodyHtml || ""}
                   onChangeHtml={(html) => onTopicChange(i, { bodyHtml: html })}
                   debounceMs={0}
+                  editable={!readOnly}
+                  ariaLabel={`${title} body`}
                 />
               </Box>
             );
@@ -115,6 +128,8 @@ export default function ProposalReview({
             valueHtml={proposal.openFloorHtml || ""}
             onChangeHtml={onOpenFloorChange}
             debounceMs={0}
+            editable={!readOnly}
+            ariaLabel="Open Floor body"
           />
         </Box>
       )}
