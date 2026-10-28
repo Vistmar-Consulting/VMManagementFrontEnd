@@ -45,7 +45,7 @@ VMStudio's client-review editor (`tiptap-track-changes`) records a person's keys
 
 The output only feeds the read-only Changes view and is never saved. `sanitizeHtml` (`src/lib/agendaHtml.js`) stays as it is: it guards saved bodies, which must never carry `del`/`ins`. Add a separate `sanitizeRedlineHtml` export beside it: the same `ALLOWED_TAGS` plus `del` and `ins`, used only by the Changes view.
 
-`diff` becomes a direct dependency in `package.json`. It is already in the lockfile as a transitive dependency.
+`diff` becomes a direct dependency in `package.json`. The lockfile only has `diff@4.0.4`, pulled in through `ts-node`. Install the current major with an exact version pinned, and check the `diffWords` import shape for that version.
 
 ### 2. Building the redline for the whole agenda
 
@@ -72,9 +72,15 @@ The "Proposed agenda — review before applying" box (today a `dangerouslySetInn
 
 then Open Floor with its own body editor.
 
-The body editor is a new small component, `src/components/editor/ProposalBodyEditor.jsx`: a plain, non-collab TipTap editor built from `bodyContentExtensions()` (`src/components/editor/editorExtensions.js`), the same set `CollabBodyEditor` uses, so tables and lists survive a round trip. Do not use `RichBodyEditor`: it has no table extension and would strip tables from AI bodies. Props: `valueHtml`, `onChangeHtml`. It reuses `EditorToolbar` if that works without the collab context. If it doesn't, the plan says what is left out.
+The body editor is a new small component, `src/components/editor/ProposalBodyEditor.jsx`: a plain, non-collab TipTap editor built from `bodyContentExtensions()` (`src/components/editor/editorExtensions.js`), the same set `CollabBodyEditor` uses, so tables and lists survive a round trip. Do not use `RichBodyEditor`: it has no table extension and would strip tables from AI bodies. `bodyContentExtensions()` sets `undoRedo: false` because Collaboration owns history there, so `ProposalBodyEditor` must add the `UndoRedo` extension itself or Cmd+Z will not work. Props: `valueHtml`, `onChangeHtml`. It reuses `EditorToolbar` (`{ editor, onLink }`, no collab dependency; `RichBodyEditor` already uses it), with `promptLink` as the link handler.
 
-Each editor owns its content while mounted and reports changes up (debounced, plus a flush on unmount and on tab switch), so switching to Changes always diffs the latest text. A Refine response replaces the proposal; the editors must then reset to the new content (key them by proposal revision).
+Each editor owns its content while mounted and reports changes up, debounced. It also flushes on unmount, on tab switch, **and before Refine and Apply run**, so the last keystrokes are never lost and Changes always diffs the latest text. A Refine response replaces the proposal, and the editors must then reset to the new content. Add a `proposalRev` counter to the dialog, incremented on every prepare and refine result, and key the editors by it.
+
+**Baselines.** Two sources, each used for one purpose:
+- The **redline** diffs against the mount-time snapshot (`prevTopicsSnapshot`, `prevOpenFloorHtml`): "what the agenda looked like before this sync".
+- The **chips, the title-lock in the Edit tab, and Apply** use the live `topics` prop through `classifyTopicChanges`, as today. That is what Apply will actually write against.
+
+These differ only if someone changes the agenda's topics during review. If they do, the chips and the title-lock follow Apply.
 
 ### 4. Data flow
 
@@ -87,7 +93,9 @@ Each editor owns its content while mounted and reports changes up (debounced, pl
 What follows needs no change:
 
 - **Refine** sends the current `proposal`, so the AI sees the edits. Refine's output replaces the proposal; edits it drops are lost, and the redline shows the result against the pre-sync baseline.
-- **Apply** (`applyUnified`, `src/lib/aiAgenda.js`) already sanitizes and writes `bodyHtml` to Firestore and the live Yjs fragments, and writes `openFloorHtml`. Retained titles stay locked; new topics are created with their (possibly edited) `name`.
+- **Apply** (`applyUnified`, `src/lib/aiAgenda.js`) already sanitizes and writes topic `bodyHtml` to Firestore and, through `updatedBodies` → `writeTopicBodies`, to the live Yjs fragments. Retained titles stay locked; new topics are created with their (possibly edited) `name`.
+
+**One change to Apply: Open Floor must reach the live editor.** Today `applyUnified` writes `openFloorHtml` to the agenda doc only (`aiAgenda.js:596`). `updatedBodies` holds topic ids only, so the `"openFloor"` Yjs fragment (`AgendaDetail.jsx:581`, `fragmentKey="openFloor"`) is never written. The live fragment wins over Firestore once it has content (`topicBodyYjs.js`), so the old Open Floor stays on screen and can be saved back over the new text. This bug already affects AI-rewritten Open Floor today. It becomes a headline bug once Open Floor is editable. Fix: when the sanitized Open Floor differs from the current one, `applyUnified` adds it to `updatedBodies` under the key `"openFloor"`, This follows the same "write only if changed" rule as topics. `writeTopicBodies` needs no change: it calls `ydoc.get(key, Y.XmlFragment)` with each key as given, which is how `CollabBodyEditor` binds `fragmentKey="openFloor"`, and it skips a blank fragment, as it does for topics. Topic ids are Firestore auto-ids, so they cannot clash with `"openFloor"`.
 - Board-change validation (`applyValidation`) runs on topic ids, not text, so edits do not affect it. A new topic whose title is cleared to empty still has its `topicId`. The plan decides whether an empty new-topic title blocks Apply (recommended: yes, with an inline error).
 
 ### 5. AI Integration page
@@ -98,8 +106,10 @@ Add a row to `HOW_IT_WORKS` in `src/pages/AIIntegration.jsx` (CLAUDE.md rule 4):
 
 - **Unit** (`src/lib/__tests__/agendaDiff.test.js`): `diffAgendaHtml` — equal input, word insert, word delete, replace, block insert, block delete, reordered blocks, nested list, same-shape table cell change, different-shape table, empty before, empty after. `buildAgendaRedline` — retained, new, dropped-shown, dropped-not-shown (topic added during review), Open Floor.
 - **Component**: editing a topic body in the Edit tab updates `proposal`, and Apply is called with the edited `bodyHtml`. Editing a retained topic's title is not possible. Switching to Changes after an edit shows the edit as an insertion.
+- **Apply**: `applyUnified` returns the Open Floor body under `"openFloor"` in `updatedBodies` only when it changed. `writeTopicBodies` writes it into the `"openFloor"` fragment.
+- **Editor flush**: an edit typed immediately before Apply or Refine (inside the debounce window) reaches the payload.
 - **Sanitizer**: `del`/`ins` survive `sanitizeRedlineHtml` and are still stripped by `sanitizeHtml`.
-- **Browser** (CLAUDE.md rule 3, drive it yourself): open Sync Meeting on a real agenda, check both tabs, edit, Refine, Apply, reload, confirm the edited text is in the live editor. A fresh proposal needs a live `/api/ai/prepare` call (~$0.54 on Opus 5.5 fast). That call needs Andy's go-ahead with the price named first (global rule 14).
+- **Browser** (CLAUDE.md rule 3, drive it yourself): open Sync Meeting on a real agenda, check both tabs, edit, Refine, Apply, reload, confirm the edited text is in the live editor, for a topic body **and** Open Floor. A fresh proposal needs a live `/api/ai/prepare` call (~$0.54 on Opus 5.5 fast). That call needs Andy's go-ahead with the price named first (global rule 14).
 
 ## Risks
 
