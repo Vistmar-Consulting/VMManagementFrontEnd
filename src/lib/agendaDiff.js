@@ -11,19 +11,33 @@ const MIN_SIMILARITY = 0.3;
 
 const norm = (s) => String(s || "").replace(/\s+/g, " ").trim();
 const isList = (el) => el.tagName === "UL" || el.tagName === "OL";
+const nonSpace = (s) => s.replace(/\s/g, "").length;
+
+// Elements whose content is its own line: their text is set off by spaces so
+// words never glue across boundaries ("<p>one</p><p>two</p>" → "one two").
+const BLOCK_TAGS = new Set(["P", "LI", "UL", "OL", "TABLE", "TBODY", "THEAD", "TFOOT", "TR", "TD", "TH"]);
+
+// Raw text of a node, with a space at each <br> and around block children.
+function rawText(node) {
+  if (node.nodeType === 3) return node.data;
+  if (node.nodeType !== 1) return "";
+  if (node.tagName === "BR") return " ";
+  const inner = [...node.childNodes].map(rawText).join("");
+  return BLOCK_TAGS.has(node.tagName) ? ` ${inner} ` : inner;
+}
+const extractText = (node) => norm(rawText(node));
 
 // An <li>'s own content: everything except its nested lists.
 function liOwn(li) {
   const clone = li.cloneNode(true);
   [...clone.children].filter(isList).forEach((c) => c.remove());
-  return { html: clone.innerHTML, text: norm(clone.textContent) };
+  return { html: clone.innerHTML, text: extractText(clone) };
 }
 
 function tableCells(table) {
-  return [...table.querySelectorAll("tr")].map((tr) =>
-    [...tr.children]
-      .filter((c) => c.tagName === "TD" || c.tagName === "TH")
-      .map((c) => ({ tag: c.tagName.toLowerCase(), text: norm(c.textContent) })),
+  // table.rows / tr.cells: this table's own rows only, never a nested table's.
+  return [...table.rows].map((tr) =>
+    [...tr.cells].map((c) => ({ tag: c.tagName.toLowerCase(), text: extractText(c) })),
   );
 }
 
@@ -41,22 +55,32 @@ function parseBlocks(html) {
       [...li.children].filter(isList).forEach((c) => walkList(c, path));
     });
   };
+  // Consecutive top-level text and inline nodes form one paragraph block.
+  let inline = [];
+  const flushInline = () => {
+    const text = norm(inline.map(rawText).join(""));
+    const html = inline.map((n) => (n.nodeType === 3 ? escapeText(n.data) : n.outerHTML)).join("");
+    if (text) blocks.push({ kind: "p", lists: [], html, text });
+    inline = [];
+  };
   root.childNodes.forEach((node) => {
-    if (node.nodeType === 3) {
-      const text = norm(node.textContent);
-      if (text) blocks.push({ kind: "p", lists: [], html: escapeText(node.textContent), text });
+    if (node.nodeType !== 1 && node.nodeType !== 3) return;
+    const isBlock = node.nodeType === 1 && (node.tagName === "P" || node.tagName === "TABLE" || isList(node));
+    if (!isBlock) {
+      inline.push(node);
       return;
     }
-    if (node.nodeType !== 1) return;
+    flushInline();
     if (isList(node)) return walkList(node, []);
     if (node.tagName === "TABLE") {
       const cells = tableCells(node);
       blocks.push({ kind: "table", lists: [], html: node.outerHTML, cells, text: cells.map((r) => r.map((c) => c.text).join("\t")).join("\n") });
       return;
     }
-    const text = norm(node.textContent);
-    if (text) blocks.push({ kind: "p", lists: [], html: node.tagName === "P" ? node.innerHTML : node.outerHTML, text });
+    const text = extractText(node);
+    if (text) blocks.push({ kind: "p", lists: [], html: node.innerHTML, text });
   });
+  flushInline();
   return blocks;
 }
 
@@ -84,7 +108,7 @@ function lcsPairs(a, b) {
 
 function wordDiff(before, after) {
   const parts = diffWords(before, after);
-  const kept = parts.filter((p) => !p.added && !p.removed).reduce((n, p) => n + p.value.trim().length, 0);
+  const kept = parts.filter((p) => !p.added && !p.removed).reduce((n, p) => n + nonSpace(p.value), 0);
   const html = parts
     .map((p) => {
       const v = escapeText(p.value);
@@ -93,7 +117,7 @@ function wordDiff(before, after) {
       return v;
     })
     .join("");
-  return { html, similarity: kept / Math.max(before.length, after.length, 1) };
+  return { html, similarity: kept / Math.max(nonSpace(before), nonSpace(after), 1) };
 }
 
 const tableHtml = (rows) =>
@@ -156,6 +180,12 @@ function render(items) {
     while (keep < Math.min(depth, stack.length) && stack[keep].tag === it.lists[keep]) keep++;
     closeTo(keep);
     while (stack.length < depth) {
+      // Lists only nest inside an <li>: an empty parent bullet gets a bare one.
+      const parent = stack[stack.length - 1];
+      if (parent && !parent.liOpen) {
+        out += "<li>";
+        parent.liOpen = true;
+      }
       const tag = it.lists[stack.length];
       out += `<${tag}>`;
       stack.push({ tag, liOpen: false });

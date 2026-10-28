@@ -110,4 +110,52 @@ describe("diffAgendaHtml", () => {
     expect(body(out).querySelectorAll("ol")).toHaveLength(1);
     expect(body(out).querySelector("ol li").textContent).toContain("Beta");
   });
+
+  it("separates words across paragraphs inside a bullet", () => {
+    const out = diffAgendaHtml(
+      "<ul><li><p>Line one</p><p>Two here</p></li></ul>",
+      "<ul><li><p>Line one</p><p>Three here</p></li></ul>",
+    );
+    expect(marks(out, "del")).toEqual(["Two"]);
+    expect(marks(out, "ins")).toEqual(["Three"]);
+  });
+
+  it("separates words at a <br>", () => {
+    const out = diffAgendaHtml("<p>Alpha<br>beta</p>", "<p>Alpha<br>gamma</p>");
+    expect(marks(out, "del")).toEqual(["beta"]);
+    expect(marks(out, "ins")).toEqual(["gamma"]);
+  });
+
+  it("reads only a table's own rows, not a nested table's", () => {
+    const t = (x) => `<table><tbody><tr><td><p>Outer</p><table><tbody><tr><td><p>${x}</p></td><td><p>y1</p></td></tr></tbody></table></td></tr></tbody></table>`;
+    const out = diffAgendaHtml(t("x1"), t("x2"));
+    const tables = body(out).querySelectorAll("table");
+    expect(tables).toHaveLength(1);
+    expect(tables[0].rows).toHaveLength(1);
+    expect(marks(out, "del")).toEqual(["x1"]);
+    expect(marks(out, "ins")).toEqual(["x2"]);
+  });
+
+  it("measures similarity in non-space characters on both sides", () => {
+    const out = diffAgendaHtml("<p>a b c d e f g h i j</p>", "<p>a b c x y z q r s t</p>");
+    const del = marks(out, "del").join(" ");
+    expect(del).toMatch(/d/);
+    expect(del).not.toMatch(/\b[abc]\b/);
+    expect(marks(out, "ins").join(" ")).not.toMatch(/\b[abc]\b/);
+  });
+
+  it("groups top-level inline content into one paragraph block", () => {
+    const out = diffAgendaHtml("Hello <strong>world</strong> today", "Hello <strong>world</strong> tomorrow");
+    expect(body(out).querySelectorAll("p")).toHaveLength(1);
+    expect(marks(out, "del")).toEqual(["today"]);
+    expect(marks(out, "ins")).toEqual(["tomorrow"]);
+    expect(marks(out, "del").join(" ")).not.toMatch(/Hello/);
+  });
+
+  it("nests a list under an empty parent bullet inside an <li>", () => {
+    const html = (c) => `<ul><li><p></p><ul><li><p>${c}</p></li></ul></li></ul>`;
+    const out = diffAgendaHtml(html("Child one"), html("Child two"));
+    expect(body(out).querySelector("ul > ul")).toBeNull();
+    expect(body(out).querySelector("ul li ul li")).not.toBeNull();
+  });
 });
