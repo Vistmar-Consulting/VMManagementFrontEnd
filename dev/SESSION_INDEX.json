@@ -517,6 +517,15 @@
       "folder": "dev/sessions/v0_4_20_Andrew_SYNC_TRACKED_EDITS/",
       "status": "complete",
       "date_closed": "2026-10-28"
+    },
+    {
+      "session_id": "SES-20261028-Andrew-v0.4.21-test-timeouts",
+      "developer": "Andrew",
+      "date": "2026-10-28",
+      "commit_start": "c03529a",
+      "summary": "Root-caused recurring vitest timeouts: role queries hit slow jsdom getComputedStyle (expandAll 96s -> 28.6s); MUI icon barrel imports cost 14.6s per file (19 files moved to path imports).",
+      "folder": "dev/sessions/v0_4_21_Andrew_TEST_TIMEOUTS/",
+      "status": "active"
     }
   ]
 }
