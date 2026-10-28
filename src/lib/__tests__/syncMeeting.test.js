@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mintTopicIds, validateProposal, inheritKeysForCreate, normalizeTopicRefs, classifyTopicChanges, planTopicWrites, inferAssigneeIds } from "../syncMeeting.js";
+import { mintTopicIds, validateProposal, inheritKeysForCreate, normalizeTopicRefs, classifyTopicChanges, planTopicWrites, inferAssigneeIds, changedOpenFloor } from "../syncMeeting.js";
 
 const topics = [
   { name: "Website", categoryIds: ["website"], tagIds: ["t-hours"] },
@@ -356,5 +356,24 @@ describe("inferAssigneeIds", () => {
   });
   it("returns [] when no name", () => {
     expect(inferAssigneeIds("No owner here", users)).toEqual([]);
+  });
+});
+
+describe("changedOpenFloor", () => {
+  it("returns null when Open Floor is unchanged", () => {
+    expect(changedOpenFloor("<p>Same</p>", "<p>Same</p>")).toBeNull();
+  });
+
+  it("returns null when the only difference is something the sanitizer strips", () => {
+    expect(changedOpenFloor("<p>Same</p>", "<p>Same</p><script>x</script>")).toBeNull();
+  });
+
+  it("returns the sanitized proposal text when it changed", () => {
+    expect(changedOpenFloor("<p>Old</p>", "<p>New</p><script>x</script>")).toBe("<p>New</p>");
+  });
+
+  it("treats missing values as empty", () => {
+    expect(changedOpenFloor(undefined, "")).toBeNull();
+    expect(changedOpenFloor(undefined, "<p>New</p>")).toBe("<p>New</p>");
   });
 });

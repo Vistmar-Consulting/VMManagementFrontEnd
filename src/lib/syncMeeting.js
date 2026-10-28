@@ -2,6 +2,7 @@
 // __tests__/syncMeeting.test.js and shared by the dialog (on receipt) and
 // applyUnified (at apply). See spec section 5.1 / 5.2.
 import { MOVE_STATUSES } from "./itemStatusMap.js";
+import { sanitizeHtml } from "./agendaHtml.js";
 
 // Assign stable, session-local topic ids (t0..tN) preserving array order.
 export function mintTopicIds(topics) {
@@ -182,4 +183,12 @@ export function inferAssigneeIds(note, users) {
     return dn === lower || firstName === lower;
   });
   return matched ? [matched.id] : [];
+}
+
+// Open Floor body for the live-fragment write at apply: the sanitized proposal
+// text when it differs from the agenda's current Open Floor, else null (an
+// unchanged Open Floor is left alone, so edits made in the room survive).
+export function changedOpenFloor(currentHtml, proposedHtml) {
+  const next = sanitizeHtml(proposedHtml || "");
+  return next === sanitizeHtml(currentHtml || "") ? null : next;
 }

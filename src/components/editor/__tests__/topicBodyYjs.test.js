@@ -66,4 +66,10 @@ describe("writeTopicBodies", () => {
     editor.destroy();
     viaSetContent.destroy();
   });
+
+  it("writes Open Floor into the openFloor fragment, as CollabBodyEditor binds it", () => {
+    const ydoc = withBodies(["openFloor"]);
+    writeTopicBodies(ydoc, { openFloor: "<p>Any other business</p>" });
+    expect(xml(ydoc, "openFloor")).toBe("<paragraph>Any other business</paragraph>");
+  });
 });

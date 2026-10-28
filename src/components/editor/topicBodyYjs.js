@@ -8,7 +8,8 @@ let schema = null;
 const bodySchema = () => (schema ||= getSchema(bodyContentExtensions()));
 
 // Write topic bodies straight into the agenda room's Yjs doc, replacing each
-// fragment's content (fragment key = topic id, as CollabBodyEditor binds it).
+// fragment's content (fragment key = topic id or "openFloor", as
+// CollabBodyEditor binds it).
 // The live fragment wins over Firestore bodyHtml once it has content, so a
 // Sync Meeting apply that updates a topic in place must write here too. HTML is
 // parsed with the editor's own schema, the same way setContent parses it, and

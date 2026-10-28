@@ -28,7 +28,7 @@ import { sanitizeHtml } from "./agendaHtml.js";
 import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
-import { validateProposal, inheritKeysForCreate, planTopicWrites } from "./syncMeeting.js";
+import { validateProposal, inheritKeysForCreate, planTopicWrites, changedOpenFloor } from "./syncMeeting.js";
 import { tagSlug, syncMeetingStamps, groupStamps } from "./boardSyncCore.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -485,8 +485,9 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     .sort((a, b) => a.sortOrder - b.sortOrder);
   const topicPlan = planTopicWrites(currentTopics, proposal.topics || [], sel.deleteTopicIds || []);
   const curBodyById = new Map(curTopics.docs.map((d) => [d.id, sanitizeHtml(d.data().bodyHtml || "")]));
-  // Retained topic id → the body written to Firestore; returned so the caller
-  // can write the same body into each topic's live Yjs fragment.
+  // Fragment key → the body written to Firestore: retained topic ids, plus
+  // "openFloor" when it changed. Returned so the caller can write the same
+  // bodies into the live Yjs fragments.
   let updatedBodies = {};
 
   const resolveCat = (c) => {
@@ -564,6 +565,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
 
   await runTransaction(db, async (tx) => {
     // ---- READS PHASE (all tx.get before any write) ----
+    const agendaSnap = await tx.get(doc(db, "agendas", agendaId));
     const orgRefs = new Map(distinctOrgs.map((o) => [o, doc(db, "organizations", o)]));
     const orgSnaps = new Map();
     for (const [o, ref] of orgRefs) {
@@ -592,7 +594,11 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       return id;
     };
 
-    // Agenda doc: open floor + the anchor (advances only here).
+    // Agenda doc: open floor + the anchor (advances only here). A changed Open
+    // Floor also goes to its live fragment, which wins over Firestore once it
+    // has content.
+    const nextOpenFloor = changedOpenFloor(agendaSnap.data()?.openFloorHtml, proposal.openFloorHtml);
+    if (nextOpenFloor !== null) updatedBodies.openFloor = nextOpenFloor;
     tx.update(doc(db, "agendas", agendaId), {
       openFloorHtml: sanitizeHtml(proposal.openFloorHtml || ""),
       updatedAt: serverTimestamp(),
