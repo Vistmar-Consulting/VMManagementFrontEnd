@@ -10,7 +10,7 @@ import { t } from "../../theme/tokens.js";
 import { sanitizeHtml } from "../../lib/agendaHtml.js";
 import EditorToolbar from "./EditorToolbar.jsx";
 import { useEditorFocus } from "./editorFocus.jsx";
-import { promptLink } from "./linkHelper.js";
+import { promptLink, openLinkOnClick } from "./linkHelper.js";
 
 // Shared ProseMirror content styles (padding/minHeight added per mode below).
 const proseBase = {
@@ -133,7 +133,11 @@ export default function RichBodyEditor({
 
     content: sanitizeHtml(valueHtml) || "",
     editable,
-    ...(ariaLabel ? { editorProps: { attributes: { "aria-label": ariaLabel } } } : {}),
+    // Plain click or cmd+click on a link opens it in a new tab (linkHelper.js).
+    editorProps: {
+      handleClick: openLinkOnClick,
+      ...(ariaLabel ? { attributes: { "aria-label": ariaLabel } } : {}),
+    },
 
     // In shared mode, report this editor as the active one when focused so the
     // Overview card's single sticky toolbar operates on it.

@@ -13,7 +13,7 @@ export function promptLink(editor) {
   }
 }
 
-// ProseMirror handleClick for the topic body: a left click on a link opens it
+// ProseMirror handleClick for the rich-body editors: a left click on a link opens it
 // in a new tab. A contenteditable surface never follows links on its own, so
 // without this the only way out was the context menu. Read-only bodies are
 // left to the native <a target="_blank"> so the link isn't opened twice.
