@@ -19,6 +19,14 @@ editor. Strikethrough was considered and dropped (not needed).
 - Stored form: `<span style="color: …; background-color: …">`. `sanitizeHtml`
   (`src/lib/agendaHtml.js`) already allows `span` + `style`; no sanitizer change.
 
+## 1b. Paste
+
+Text pasted from outside the editor (Google Docs, Gmail, web pages) has its inline `color` /
+`background-color` / `background` stripped, so only colors set from the toolbar stick. A paste
+from another agenda editor (ProseMirror clipboard HTML carries `data-pm-slice`) keeps its colors.
+Implemented as a TipTap extension (`transformPastedHTML`) registered next to the color marks in
+both editors. Approved by Andy 2026-10-28.
+
 ## 2. Toolbar
 
 - `src/components/editor/EditorToolbar.jsx`: two buttons after Underline —
@@ -52,6 +60,7 @@ editor. Strikethrough was considered and dropped (not needed).
 
 - `ColorMenu` unit tests: swatch applies color; valid hex applies; invalid hex ignored; Clear unsets;
   disabled when no editor.
+- Paste: external HTML loses colors; `data-pm-slice` HTML keeps them; other styles untouched.
 - `sanitizeHtml` keeps `<span style="color:…;background-color:…">`.
 - Schema round-trip: HTML with color spans → editor built from `bodyContentExtensions()` →
   `getHTML()` keeps them.

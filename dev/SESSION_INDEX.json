@@ -526,6 +526,15 @@
       "summary": "Root-caused recurring vitest timeouts: role queries hit slow jsdom getComputedStyle (expandAll 96s -> 28.6s); MUI icon barrel imports cost 14.6s per file (19 files moved to path imports).",
       "folder": "dev/sessions/v0_4_21_Andrew_TEST_TIMEOUTS/",
       "status": "active"
+    },
+    {
+      "session_id": "SES-20261028-Andrew-v0.4.21-agenda-text-color",
+      "developer": "Andrew",
+      "date": "2026-10-28",
+      "commit_start": "c03529a",
+      "summary": "Meeting Agenda editor: text color + highlight color; AI keeps existing colors; external pastes lose colors.",
+      "folder": "dev/sessions/v0_4_21_Andrew_AGENDA_TEXT_COLOR/",
+      "status": "active"
     }
   ]
 }
