@@ -1,5 +1,6 @@
 import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
+import { TextStyle, Color, BackgroundColor } from "@tiptap/extension-text-style";
 
 // The content extensions of the topic body editor — the ones that define its
 // schema. Shared by CollabBodyEditor and topicBodyYjs so content written
@@ -33,5 +34,10 @@ export function bodyContentExtensions() {
 
     // Table, TableRow, TableHeader, TableCell. No column resizing.
     TableKit.configure({ table: { resizable: false } }),
+
+    // Text color + highlight: <span style="color / background-color">.
+    TextStyle,
+    Color,
+    BackgroundColor,
   ];
 }

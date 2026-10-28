@@ -151,3 +151,10 @@ describe("sanitizeHtml and table sections", () => {
     expect(sanitizeHtml(html)).toBe(html);
   });
 });
+
+describe("sanitizeHtml — color spans", () => {
+  it("keeps text color and highlight styles", () => {
+    const html = '<p><span style="color: #c62828; background-color: #fff3a3">hot</span></p>';
+    expect(sanitizeHtml(html)).toBe(html);
+  });
+});

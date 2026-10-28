@@ -43,4 +43,14 @@ describe("RichBodyEditor", () => {
     const other = await mount();
     expect(prose(other.container)).not.toHaveAttribute("aria-label");
   });
+
+  it("keeps text color and highlight from valueHtml", async () => {
+    const { container } = await mount({ valueHtml: '<p><span style="color: #c62828; background-color: #fff3a3">hot</span></p>' });
+    const span = prose(container).querySelector("span[style]");
+    expect(span).not.toBeNull();
+    expect(span.textContent).toBe("hot");
+    // jsdom normalizes hex to rgb when the style is applied to the DOM.
+    expect(span.getAttribute("style")).toContain("color: rgb(198, 40, 40)");
+    expect(span.getAttribute("style")).toContain("background-color: rgb(255, 243, 163)");
+  });
 });

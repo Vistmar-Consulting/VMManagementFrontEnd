@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
+import { TextStyle, Color, BackgroundColor } from "@tiptap/extension-text-style";
 import { Placeholder } from "@tiptap/extensions";
 import Box from "@mui/material/Box";
 import { t } from "../../theme/tokens.js";
@@ -121,6 +122,11 @@ export default function RichBodyEditor({
 
       // Table, TableRow, TableHeader, TableCell. No column resizing.
       TableKit.configure({ table: { resizable: false } }),
+
+      // Text color + highlight: <span style="color / background-color">.
+      TextStyle,
+      Color,
+      BackgroundColor,
     ],
 
     content: sanitizeHtml(valueHtml) || "",

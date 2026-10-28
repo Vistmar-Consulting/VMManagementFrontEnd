@@ -51,7 +51,7 @@ describe("writeTopicBodies", () => {
   });
 
   it("renders in a bound editor exactly as the editor's own setContent would", () => {
-    const html = '<p>Hi <a href="https://x.test">link</a></p><ul><li><p>One</p></li></ul><table><tbody><tr><td><p>c</p></td></tr></tbody></table>';
+    const html = '<p>Hi <a href="https://x.test">link</a></p><ul><li><p>One</p></li></ul><table><tbody><tr><td><p>c</p></td></tr></tbody></table><p><span style="color: #c62828; background-color: #fff3a3">hot</span></p>';
     const bind = (ydoc, field) => new Editor({
       extensions: [...bodyContentExtensions(), Collaboration.configure({ document: ydoc, field })],
     });
@@ -65,6 +65,16 @@ describe("writeTopicBodies", () => {
     expect(editor.getHTML()).toContain('href="https://x.test"');
     editor.destroy();
     viaSetContent.destroy();
+  });
+
+  it("keeps text color and highlight through the Yjs write", () => {
+    const ydoc = withBodies(["topicA"]);
+    writeTopicBodies(ydoc, { topicA: '<p><span style="color: #c62828; background-color: #fff3a3">hot</span></p>' });
+    const out = xml(ydoc, "topicA");
+    expect(out).toContain("hot");
+    expect(out).toMatch(/textstyle|textStyle/);
+    expect(out).toContain('color="#c62828"');
+    expect(out).toContain('backgroundColor="#fff3a3"');
   });
 
   it("writes Open Floor into the openFloor fragment, as CollabBodyEditor binds it", () => {
