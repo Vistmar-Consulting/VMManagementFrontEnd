@@ -430,13 +430,12 @@ export default function SyncMeetingDialog({
       }}
       maxWidth="md"
       fullWidth
-      // Floats over the agenda instead of blocking it: no backdrop, no scroll
-      // lock, and pointer events pass through everywhere except the panel so
-      // the page underneath stays scrollable while the review is open.
+      // Floats over the agenda: no backdrop and no scroll lock, so the page
+      // underneath stays wheel-scrollable while the review is open. Clicks
+      // still don't reach the page — navigating away would drop the proposal.
       hideBackdrop
       disableScrollLock
-      disableEnforceFocus
-      sx={{ pointerEvents: "none", "& .MuiDialog-paper": { pointerEvents: "auto", boxShadow: 24 } }}
+      sx={{ "& .MuiDialog-paper": { boxShadow: 24 } }}
     >
       <DialogTitle sx={{ pb: 1 }}>Sync meeting with AI</DialogTitle>
       <DialogContent dividers>
