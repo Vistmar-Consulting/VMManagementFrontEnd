@@ -313,6 +313,21 @@ describe("planTopicWrites", () => {
     expect(plan.updates).toEqual([]);
     expect(plan.keeps.map((k) => k.id)).toEqual(["docA", "docB", "docC"]);
   });
+
+  it("trims a new topic's name", () => {
+    const plan = planTopicWrites(current, [{ ref: "", name: "  Website  ", bodyHtml: "<p>x</p>" }]);
+    expect(plan.creates).toEqual([{ topic: { ref: "", name: "Website", bodyHtml: "<p>x</p>" }, sortOrder: 1 }]);
+  });
+
+  it("refuses a new topic with a blank or whitespace name", () => {
+    expect(() => planTopicWrites(current, [{ ref: "", name: "   " }])).toThrow("A new topic needs a title");
+    expect(() => planTopicWrites(current, [{ ref: "" }])).toThrow("A new topic needs a title");
+  });
+
+  it("leaves a retained topic's name untouched", () => {
+    const plan = planTopicWrites(current, [{ ref: "docA", name: "  " }, { ref: "docB", name: " Kept " }]);
+    expect(plan.updates.map((u) => u.topic.name)).toEqual(["  ", " Kept "]);
+  });
 });
 
 describe("validateProposal requireTopic:false (Board Sync)", () => {

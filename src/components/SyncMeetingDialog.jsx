@@ -128,6 +128,8 @@ export default function SyncMeetingDialog({
   // Bumped on every prepare/refine result so the Edit tab's editors remount
   // with the new proposal's content.
   const [proposalRev, setProposalRev] = useState(0);
+  // Hand edits since the last prepare/refine result — Discard confirms first.
+  const [edited, setEdited] = useState(false);
   const [prevOpen, setPrevOpen] = useState(false);
   const oldAgendaHtml = useMemo(
     () => composeAgendaHtml(agenda, prevTopicsSnapshot),
@@ -150,11 +152,21 @@ export default function SyncMeetingDialog({
   );
 
   // Review edits write straight into the proposal, so Refine and Apply carry them.
-  const setTopicField = (i, patch) => setProposal((prev) => ({
-    ...prev,
-    topics: (prev.topics || []).map((tp, j) => (j === i ? { ...tp, ...patch } : tp)),
-  }));
-  const setOpenFloorHtml = (html) => setProposal((prev) => ({ ...prev, openFloorHtml: html }));
+  const setTopicField = (i, patch) => {
+    setEdited(true);
+    setProposal((prev) => ({
+      ...prev,
+      topics: (prev.topics || []).map((tp, j) => (j === i ? { ...tp, ...patch } : tp)),
+    }));
+  };
+  const setOpenFloorHtml = (html) => {
+    setEdited(true);
+    setProposal((prev) => ({ ...prev, openFloorHtml: html }));
+  };
+  const discard = () => {
+    if (edited && !window.confirm("Discard your edits to the proposed agenda?")) return;
+    onClose();
+  };
 
   const lastGen = agenda?.lastUnifiedGenAt?.toDate ? agenda.lastUnifiedGenAt.toDate() : null;
 
@@ -270,6 +282,7 @@ export default function SyncMeetingDialog({
       const normalized = { ...result, topics: normalizeTopicRefs(result.topics, currentTopicIds) };
       setProposal(normalized);
       setProposalRev((r) => r + 1);
+      setEdited(false);
       applyValidation(normalized, tasks || []);
       setStep("review");
     } catch (err) {
@@ -305,6 +318,7 @@ export default function SyncMeetingDialog({
       };
       setProposal(merged);
       setProposalRev((r) => r + 1);
+      setEdited(false);
       setExistingTags(new Set((catCtx.tagVocab || []).map((t) => (t.name || "").toLowerCase())));
       // A refine can orphan a create whose owning topic was deleted → re-run
       // validation against the merged proposal so the banner + selectable set
@@ -842,7 +856,7 @@ export default function SyncMeetingDialog({
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={busy || refining}>
+        <Button onClick={step === "review" ? discard : onClose} disabled={busy || refining}>
           {step === "review" ? "Discard" : "Cancel"}
         </Button>
         {step === "review" ? (

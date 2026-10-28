@@ -48,14 +48,16 @@ function proposalWith(newTitle) {
 }
 
 async function openReview(prop = proposalWith("Website")) {
+  const onClose = vi.fn();
   prepareMeeting.mockResolvedValue(prop);
   render(
     <ThemeProvider theme={createTheme()}>
-      <SyncMeetingDialog agendaId="ag1" agenda={AGENDA} topics={TOPICS} items={[]} orgSlug="acme" users={[]} onClose={vi.fn()} />
+      <SyncMeetingDialog agendaId="ag1" agenda={AGENDA} topics={TOPICS} items={[]} orgSlug="acme" users={[]} onClose={onClose} />
     </ThemeProvider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Generate" }));
   await screen.findByRole("tab", { name: "Changes" });
+  return onClose;
 }
 
 // Full-dialog renders take seconds in jsdom under load (see SyncBoardDialog.test).
@@ -99,6 +101,53 @@ describe("SyncMeetingDialog review", { timeout: 20000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: "Refine" }));
     await waitFor(() => expect(screen.getByLabelText("New topic title")).toBeDisabled());
     screen.getAllByTestId("body-editor").forEach((ed) => expect(ed).toHaveAttribute("readonly"));
+  });
+
+  it("Refine receives a hand edit, and the Edit tab then shows the refined body", async () => {
+    let resolveRefine;
+    refineProposal.mockReturnValue(new Promise((r) => { resolveRefine = r; }));
+    await openReview();
+    fireEvent.click(screen.getByRole("tab", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Google Ads body"), { target: { value: "<p>Edited by hand</p>" } });
+    fireEvent.change(screen.getByPlaceholderText(/Tell the AI how to refine/), { target: { value: "Tighten it" } });
+    fireEvent.click(screen.getByRole("button", { name: "Refine" }));
+    expect(refineProposal.mock.calls[0][0].proposal.topics[0].bodyHtml).toBe("<p>Edited by hand</p>");
+    const refined = proposalWith("Website");
+    refined.topics[0].bodyHtml = "<p>Refined body</p>";
+    resolveRefine(refined);
+    await waitFor(() => expect(screen.getByLabelText("Google Ads body")).toHaveValue("<p>Refined body</p>"));
+  });
+
+  it("Apply carries an Open Floor edit", async () => {
+    await openReview();
+    fireEvent.click(screen.getByRole("tab", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Open Floor body"), { target: { value: "<p>New AOB</p>" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(applyUnified).toHaveBeenCalledTimes(1));
+    expect(applyUnified.mock.calls[0][2].openFloorHtml).toBe("<p>New AOB</p>");
+  });
+
+  it("Discard closes without asking when nothing was edited", async () => {
+    const confirm = vi.spyOn(window, "confirm");
+    const onClose = await openReview();
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
+  });
+
+  it("Discard asks after an edit, and Cancel in the confirm keeps the dialog open", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onClose = await openReview();
+    fireEvent.click(screen.getByRole("tab", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Google Ads body"), { target: { value: "<p>Edited by hand</p>" } });
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(confirm).toHaveBeenCalledWith("Discard your edits to the proposed agenda?");
+    expect(onClose).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
   });
 
   it("a blank new-topic title disables Apply with a caption", async () => {

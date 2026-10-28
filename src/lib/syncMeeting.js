@@ -144,7 +144,8 @@ export function classifyTopicChanges(currentTopics, proposalTopics) {
 // retained topics are updated in place (same doc id), ref-less topics are
 // created, and topics the proposal omits are kept, ordered after the proposal's
 // topics. Only ids in deleteTopicIds (omitted topics a person checked) are
-// deleted; any other id there throws. Pure. currentTopics in current order.
+// deleted; any other id there throws. A new topic's name is trimmed and must
+// not be blank (throws). Pure. currentTopics in current order.
 // Returns { updates: [{ id, topic, sortOrder }], creates: [{ topic, sortOrder }],
 //           keeps: [{ id, sortOrder }], deletes: [id] }.
 export function planTopicWrites(currentTopics, proposalTopics, deleteTopicIds = []) {
@@ -159,7 +160,12 @@ export function planTopicWrites(currentTopics, proposalTopics, deleteTopicIds = 
   const creates = [];
   (proposalTopics || []).forEach((topic, i) => {
     if (statuses[i] === "retained") updates.push({ id: topic.ref, topic, sortOrder: i + 1 });
-    else creates.push({ topic, sortOrder: i + 1 });
+    else {
+      // A created topic carries its title as given; a retained one keeps its live title.
+      const name = String(topic.name ?? "").trim();
+      if (!name) throw new Error("A new topic needs a title");
+      creates.push({ topic: { ...topic, name }, sortOrder: i + 1 });
+    }
   });
   let next = (proposalTopics || []).length;
   const keeps = dropped
