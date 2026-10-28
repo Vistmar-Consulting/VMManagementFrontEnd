@@ -52,6 +52,15 @@ describe("ColorMenu", () => {
     expect(attrs().color).toBe("#123456");
   });
 
+  it("accepts a hex without the leading #", () => {
+    mount();
+    fireEvent.click(screen.getByTitle("Text color"));
+    const hex = screen.getByLabelText("Hex color");
+    fireEvent.change(hex, { target: { value: "c62828" } });
+    fireEvent.keyDown(hex, { key: "Enter" });
+    expect(attrs().color).toBe("#c62828");
+  });
+
   it("dragging the native picker only updates the hex field; commit applies", () => {
     mount();
     fireEvent.click(screen.getByTitle("Text color"));

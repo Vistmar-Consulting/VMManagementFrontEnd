@@ -65,7 +65,9 @@ export default function ColorMenu({ editor, mode, sx }) {
     setAnchorEl(e.currentTarget);
   };
 
-  const apply = (hex) => {
+  const apply = (value) => {
+    // Accept "c62828" as well as "#c62828".
+    const hex = value.startsWith("#") ? value : `#${value}`;
     if (!HEX.test(hex)) return;
     m.set(editor.chain().focus(), hex).run();
     close();
@@ -117,7 +119,7 @@ export default function ColorMenu({ editor, mode, sx }) {
                   cursor: "pointer",
                   borderRadius: "4px",
                   backgroundColor: hex,
-                  border: `1px solid ${current === hex ? t.copper : t.cream3}`,
+                  border: `1px solid ${current?.toLowerCase() === hex.toLowerCase() ? t.copper : t.cream3}`,
                 }}
               />
             ))}
