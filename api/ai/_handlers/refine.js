@@ -9,6 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { applyCors } from "../../meetings/_lib/cors.js";
 import { requireAuth } from "../../meetings/_lib/auth.js";
 import { streamMessage } from "./claude.js";
+import { BODY_HTML_RULES } from "../_lib/htmlRules.js";
 
 export const config = { maxDuration: 300 };
 
@@ -59,7 +60,7 @@ function orgListBlock(orgMeta) {
     .join("\n") || "(none)";
 }
 
-function buildSystem(categories, tagVocab, master, orgMeta) {
+export function buildSystem(categories, tagVocab, master, orgMeta) {
   const bulletFormatBlock = !master ? `\n\n## Bullet format within topic bodies
 Write each bullet as:  item text — Person, Status (M/D)
 Rules:
@@ -85,7 +86,7 @@ PRESERVE TOPIC IDS: each input topic carries a topicId (e.g. "t0", "t2"). For ev
 
 PRESERVE TOPIC REFS: each input topic may carry a ref (e.g. "docABC123"). Copy each topic's ref into the output EXACTLY. Never invent or change a ref. A topic you restore from the Previous agenda takes the [ref: id] listed there, and keeps that topic's title. A brand-new topic you add has ref "".
 
-HTML rules: use ONLY these tags — <p>, <br>, <ul>, <ol>, <li>, <strong>, <em>, <u>, <a href>. No headings, no inline styles, no other tags. Exception: if a body already contains a <table>, keep it as a table (<table>, <tbody>, <tr>, <th>, <td>, each cell's text in a <p>) with the same columns and header row; update cell text in place, add a row only for a new item and remove a row only for a dropped item; never create a new table. Be concise.${bulletFormatBlock}
+${BODY_HTML_RULES} Be concise.${bulletFormatBlock}
 ${master ? `\nThis is the MASTER Touch Base agenda — organized org by org. EVERY topic must keep/set its organizationId (slug from the list). Place any new topic under the right org and keep org grouping intact.\n\n## Organizations (use these slugs for organizationId)\n${orgListBlock(orgMeta)}\n` : ""}
 ## Output
 Return the FULL refined agenda (not a diff) as JSON matching the schema: topics[{ ref, name, bodyHtml, categories, tags${master ? ", organizationId" : ""} }], openFloorHtml.${categorizationBlock(categories, tagVocab)}`;

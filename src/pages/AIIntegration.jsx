@@ -82,6 +82,7 @@ const HOW_IT_WORKS = [
       ["Topic titles are frozen", "Existing topic titles are never renamed. The AI may only set a title on a brand-new topic; continuing topics keep their current title exactly."],
       ["Concise output", "A short, tight agenda — never a multi-page document."],
       ["Tables kept", "A table already in a topic body or Open Floor stays a table with the same columns — the AI updates cell text in place, adds a row only for a new item and removes one only for a dropped item. It never creates a new table."],
+      ["Colors kept", "Text color and highlight already in a topic body or Open Floor stay on the words they mark. The AI never adds a color of its own."],
       ["Status moves", "Proposed moves on existing tasks only target Assigned, In Progress, Blocked, Review or Done. Work that is blocked or waiting on someone moves to Blocked."],
       ["Sync ledger", "Each Sync Meeting apply records which meetings it used, per org, so Board Sync never re-creates tasks from them."],
     ],
