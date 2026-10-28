@@ -1,6 +1,6 @@
 # Session v0.4.19 — Board Sync
 
-**Date:** 2026-10-26 · **Developer:** Andrew · **Status:** active
+**Date:** 2026-10-26 · **Developer:** Andrew · **Status:** complete (closed 2026-10-27)
 **Branch:** worktree `.claude/worktrees/board-sync` on `worktree-board-sync`, cut from `main` at `c923daf`
 
 ## Ask
@@ -86,3 +86,9 @@ A Sync feature on the Task Board that updates every client's and Vistamar's task
 - **`applyUnified` order keys (Board Sync mirrors it):** order keys start from null, so AI-created items can sort ahead of existing ones. AI-created subitems are numbered from the org counter, not the parent's `nextSubitemNumber`.
 - **Classification mismatch (rare):** a transcript whose title maps to org Y but whose attendees resolve to X. Sync Meeting stamps it for X, while Board Sync files it under Y, so the same work can land on both boards.
 - **`syncedTranscripts` rule** allows any active user to update with no field checks, as spec §8 states.
+
+## Close summary (2026-10-27)
+
+Board Sync is live on `origin/dev` and local `main`: Firestore rules deployed, one priced live run applied for all 5 orgs (≈ $0.84), ledger round-trip verified. After the run, internal Vistamar meetings became task sources for clients (Andy's decision), and a pre-push review fix made the master Sync Meeting stamp internal meetings for every org (`e7362bb`). No paid call is pending.
+
+Open items are the Deferred list above. Next real signal: the next Board Sync run is the first with internal meetings as client sources — watch the review screen for duplicates of existing tasks, especially sub-items (the model only sees top-level tasks).
