@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diffAgendaHtml } from "../agendaDiff.js";
+import { diffAgendaHtml, buildAgendaRedline } from "../agendaDiff.js";
 
 const body = (html) => new DOMParser().parseFromString(html, "text/html").body;
 const marks = (html, tag) => [...body(html).querySelectorAll(tag)].map((n) => n.textContent.trim());
@@ -157,5 +157,53 @@ describe("diffAgendaHtml", () => {
     const out = diffAgendaHtml(html("Child one"), html("Child two"));
     expect(body(out).querySelector("ul > ul")).toBeNull();
     expect(body(out).querySelector("ul li ul li")).not.toBeNull();
+  });
+});
+
+describe("buildAgendaRedline", () => {
+  const prevTopics = [
+    { id: "A", name: "Google Ads", bodyHtml: "<ul><li>Budget raised to 2k</li></ul>" },
+    { id: "B", name: "GBP", bodyHtml: "<p>Posts weekly</p>" },
+  ];
+  const proposal = {
+    topics: [
+      { topicId: "t0", ref: "A", name: "Ignored AI title", bodyHtml: "<ul><li>Budget raised to 3k</li></ul>" },
+      { topicId: "t1", ref: "", name: "Website", bodyHtml: "<p>Homepage hero copy</p>" },
+    ],
+    openFloorHtml: "<p>Any other business</p>",
+  };
+
+  it("builds retained, new, dropped and Open Floor rows in order", () => {
+    const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "", topics: prevTopics, proposal });
+    expect(rows.map((r) => r.kind)).toEqual(["retained", "new", "dropped", "openFloor"]);
+  });
+
+  it("names a retained topic by its live (locked) name and diffs its body", () => {
+    const [retained] = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "", topics: prevTopics, proposal });
+    expect(retained).toMatchObject({ topicId: "A", name: "Google Ads" });
+    expect(marks(retained.html, "ins").join(" ")).toMatch(/3k/);
+  });
+
+  it("shows a new topic fully inserted", () => {
+    const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "", topics: prevTopics, proposal });
+    expect(rows[1]).toMatchObject({ kind: "new", name: "Website" });
+    expect(marks(rows[1].html, "ins")).toEqual(["Homepage hero copy"]);
+  });
+
+  it("shows a dropped pre-sync topic fully deleted", () => {
+    const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "", topics: prevTopics, proposal });
+    expect(rows[2]).toMatchObject({ kind: "dropped", topicId: "B", name: "GBP" });
+    expect(marks(rows[2].html, "del")).toEqual(["Posts weekly"]);
+  });
+
+  it("does not list a topic added during review as dropped", () => {
+    const live = [...prevTopics, { id: "C", name: "Added later", bodyHtml: "<p>x</p>" }];
+    const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "", topics: live, proposal });
+    expect(rows.filter((r) => r.kind === "dropped").map((r) => r.topicId)).toEqual(["B"]);
+  });
+
+  it("diffs Open Floor against the pre-sync Open Floor", () => {
+    const rows = buildAgendaRedline({ prevTopics, prevOpenFloorHtml: "<p>Any other business</p>", topics: prevTopics, proposal });
+    expect(rows[rows.length - 1]).toMatchObject({ kind: "openFloor", html: "<p>Any other business</p>" });
   });
 });

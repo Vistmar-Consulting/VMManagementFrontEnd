@@ -4,6 +4,7 @@
 // Spec: docs/superpowers/specs/2026-10-27-sync-meeting-tracked-edits-design.md
 import { diffWords } from "diff";
 import { sanitizeHtml, escapeText } from "./agendaHtml.js";
+import { classifyTopicChanges } from "./syncMeeting.js";
 
 // A paired text block is word-diffed only if this share of the longer text is
 // unchanged; below it, a whole delete + insert reads better than confetti.
@@ -216,4 +217,26 @@ export function diffAgendaHtml(beforeHtml, afterHtml) {
     pj = j + 1;
   });
   return render(out);
+}
+
+// Rows for the Changes tab, in display order: each proposal topic (retained →
+// diffed against its pre-sync body; new → fully inserted), then pre-sync topics
+// the proposal omits (fully deleted), then Open Floor. Statuses come from the
+// LIVE topics, as Apply's do; bodies diff against the mount-time snapshot.
+// A topic added during review is not in prevTopics, so it is never "dropped".
+export function buildAgendaRedline({ prevTopics, prevOpenFloorHtml, topics, proposal }) {
+  const prevById = new Map((prevTopics || []).map((t) => [t.id, t]));
+  const liveById = new Map((topics || []).map((t) => [t.id, t]));
+  const proposed = proposal?.topics || [];
+  const { statuses, dropped } = classifyTopicChanges(topics, proposed);
+  const rows = proposed.map((t, i) =>
+    statuses[i] === "retained"
+      ? { kind: "retained", topicId: t.ref, name: liveById.get(t.ref)?.name || "", html: diffAgendaHtml(prevById.get(t.ref)?.bodyHtml || "", t.bodyHtml) }
+      : { kind: "new", name: t.name || "", html: diffAgendaHtml("", t.bodyHtml) },
+  );
+  dropped
+    .filter((d) => prevById.has(d.id))
+    .forEach((d) => rows.push({ kind: "dropped", topicId: d.id, name: d.name, html: diffAgendaHtml(prevById.get(d.id).bodyHtml, "") }));
+  rows.push({ kind: "openFloor", name: "Open Floor", html: diffAgendaHtml(prevOpenFloorHtml, proposal?.openFloorHtml) });
+  return rows;
 }
