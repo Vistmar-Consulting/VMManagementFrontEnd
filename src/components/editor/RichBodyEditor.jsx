@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
 import { TextStyle, Color, BackgroundColor } from "@tiptap/extension-text-style";
+import { PasteColorStrip } from "./pasteColors.js";
 import { Placeholder } from "@tiptap/extensions";
 import Box from "@mui/material/Box";
 import { t } from "../../theme/tokens.js";
@@ -127,6 +128,7 @@ export default function RichBodyEditor({
       TextStyle,
       Color,
       BackgroundColor,
+      PasteColorStrip,
     ],
 
     content: sanitizeHtml(valueHtml) || "",

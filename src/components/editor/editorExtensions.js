@@ -1,6 +1,7 @@
 import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
 import { TextStyle, Color, BackgroundColor } from "@tiptap/extension-text-style";
+import { PasteColorStrip } from "./pasteColors.js";
 
 // The content extensions of the topic body editor — the ones that define its
 // schema. Shared by CollabBodyEditor and topicBodyYjs so content written
@@ -39,5 +40,6 @@ export function bodyContentExtensions() {
     TextStyle,
     Color,
     BackgroundColor,
+    PasteColorStrip,
   ];
 }
