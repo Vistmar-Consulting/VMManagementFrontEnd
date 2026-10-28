@@ -31,6 +31,19 @@ Board render itself is not the problem: 4.7s cold, 1.1s warm, 2–3 `getComputed
 
 - `configure({ defaultHidden: true })` in `src/setupTests.js`: barely sped up expandAll (name computation still calls `getComputedStyle`) and broke `TableMenu.test.jsx:74` (a closing menu became queryable). Reverted.
 
+## Also shipped: link click in rich-body editors (2026-10-28)
+
+Separate worktree (`agenda-link-click`), recorded here because it had no session of its own.
+
+| Commit | Change |
+|---|---|
+| `d8405c7` | `linkHelper.openLinkOnClick`: a left click on a link in the agenda topic body (`CollabBodyEditor`) opens it in a new tab with `noopener,noreferrer`. Read-only bodies keep the native anchor. |
+| `c5b67b0` | Shift/alt clicks and macOS ctrl+click fall through (selection extend / context menu). |
+| `224e796` | Same handler wired into `RichBodyEditor` (AI review screen). |
+
+Verified on production: clicking a topic-body link opened a new tab, agenda stayed put, `window.opener` null. `RichBodyEditor` covered by unit tests only.
+Tradeoff: clicking a link no longer places the cursor in it; edit links by arrowing into the text, then Cmd+K or the toolbar Link button.
+
 ## Deferred
 
 - The 6 dialog test files run 0.1–4s per test at low load; no query rewrite needed. `BoardChatPanel` "shows the model-call cap notice" is 6.2s, over vitest's 5s default.
