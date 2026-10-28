@@ -22,7 +22,7 @@ const isBlankHtml = (html) =>
     .trim().length === 0;
 import EditorToolbar from "./EditorToolbar.jsx";
 import { useEditorFocus } from "./editorFocus.jsx";
-import { promptLink } from "./linkHelper.js";
+import { promptLink, openLinkOnClick } from "./linkHelper.js";
 import { useRoom } from "../../lib/liveblocks.js";
 import { isLocalEditTransaction, fragmentHasRealContent, decideSeedAction, isElectedSeeder, SEED_SETTLE_MS } from "./collabSync.js";
 import { useCollabFlushRegistry } from "./CollabFlushRegistry.jsx";
@@ -157,6 +157,9 @@ export default function CollabBodyEditor({
         },
       }),
     ],
+
+    // Plain click (or cmd/ctrl+click) on a link opens it in a new tab.
+    editorProps: { handleClick: openLinkOnClick },
 
     // In shared mode, report this editor as the active one when focused so the
     // Overview card's single sticky toolbar operates on it.
