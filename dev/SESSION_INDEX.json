@@ -473,9 +473,10 @@
       "developer": "Andrew",
       "date": "2026-10-21",
       "commit_start": "c923daf",
-      "summary": "Sync Meeting timeout (Sonnet 4.6 measured 270.6s vs Vercel's 300s cap on Unio Biweekly) fixed by moving prepare/refine to Opus 5.5 fast mode (35.6s). Topic-deletion root cause found in applyUnified (delete-all + recreate).",
+      "summary": "Sync Meeting timeout fixed (Opus 5.5 fast + fallback chain; Unio Biweekly ~1 min vs 270s on Sonnet 4.6). A sync never deletes a topic: in-place apply, human-ticked Delete for AI-suggested removals, bodies written into the live Yjs editor; verified live 2026-10-27. Collab mirror plugin-key bug fixed.",
       "folder": "dev/sessions/v0_4_19_Andrew_MEETING_SYNC/",
-      "status": "active"
+      "commit_end": "ee56846",
+      "status": "complete"
     },
     {
       "session_id": "SES-20261021-Andrew-v0.4.19-board-chat",

@@ -1,6 +1,6 @@
 # Session v0.4.19 — Meeting Sync: timeout + topic safety
 
-**Date:** 2026-10-21 · **Developer:** Andrew · **Status:** active
+**Date:** 2026-10-21 → 2026-10-27 · **Developer:** Andrew · **Status:** complete
 **Branch:** worktree `.claude/worktrees/meeting-sync-timeout` on `worktree-meeting-sync-timeout`, cut from `main` at `c923daf`
 
 ## Ask
@@ -44,3 +44,15 @@ The 12 failures from 2026-10-21 did not reproduce: serial run with a 15s timeout
 - Optional: server-side refusal fallback (`fallbacks: "default"`) on the Opus 5.5 calls — untested combination with fast mode.
 - `generate.js` still on Sonnet 4.6 — no FE caller found.
 - `y-prosemirror` is no longer imported by `src/`; it can be dropped from `package.json`.
+- Delete-checkbox path not yet exercised live — the first sync where the AI suggests a removal is its first live test (leave it unchecked; the topic should stay).
+
+## Session close — 2026-10-27
+
+**Status: complete.** All work is on `origin/dev` (latest `ee56846`) and in production (deploy `3t17mv8d2`). Not merged to `main` — repo push convention is `origin/dev` only.
+
+- Timeout fixed: prepare/refine on Opus 5.5 fast with a fallback chain (Opus 5.5 → Sonnet 5.5). Unio Biweekly syncs in ~1 min.
+- Sync never deletes a topic: in-place apply, unchecked Delete boxes for AI-suggested removals, bodies written into the live editor. Verified live on Unio Biweekly 2026-10-27.
+- Collab mirror guard fixed (wrong plugin key — every remote change had been mirrored to Firestore by each viewing client).
+- Worktree `meeting-sync-timeout` and its branch removed after push.
+
+Next session: start a fresh worktree off `main` (which lacks this session's commits until dev is promoted — branch from `origin/dev` if the work builds on it) and pick from Deferred above.
