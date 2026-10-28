@@ -46,6 +46,7 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 import ProposedBoardRow from "./ProposedBoardRow.jsx";
+import ProposalReview from "./ProposalReview.jsx";
 
 const STATUS_BY_ID   = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id,   s]));
 const STATUS_BY_NAME = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.name, s]));
@@ -122,6 +123,11 @@ export default function SyncMeetingDialog({
   const [promotions, setPromotions] = useState({});
   // Previous agenda — captured once at mount so refine can restore dropped topics.
   const [prevTopicsSnapshot] = useState(() => topics || []);
+  // Pre-sync Open Floor, captured with the topics — the redline's baseline.
+  const [prevOpenFloorHtml] = useState(() => agenda?.openFloorHtml || "");
+  // Bumped on every prepare/refine result so the Edit tab's editors remount
+  // with the new proposal's content.
+  const [proposalRev, setProposalRev] = useState(0);
   const [prevOpen, setPrevOpen] = useState(false);
   const oldAgendaHtml = useMemo(
     () => composeAgendaHtml(agenda, prevTopicsSnapshot),
@@ -129,10 +135,27 @@ export default function SyncMeetingDialog({
     [],
   );
 
-  const previewHtml = useMemo(
-    () => (proposal ? composeAgendaHtml(proposal, proposal.topics || []) : ""),
-    [proposal],
+  // Proposal topics vs the LIVE agenda — what Apply writes against. Drives the
+  // chips, the Delete boxes, the Edit tab's title-lock and the blank-title gate.
+  const topicChanges = useMemo(() => {
+    if (!proposal) return { statuses: [], droppedShown: [] };
+    const { statuses, dropped } = classifyTopicChanges(topics, proposal.topics || []);
+    // Only topics the AI was shown can be "suggested for removal"; one added
+    // after the sync started is simply kept.
+    const shownIds = new Set(prevTopicsSnapshot.map((tp) => tp.id));
+    return { statuses, droppedShown: dropped.filter((d) => shownIds.has(d.id)) };
+  }, [topics, proposal, prevTopicsSnapshot]);
+  const blankNewTitle = (proposal?.topics || []).some(
+    (tp, i) => topicChanges.statuses[i] === "new" && !String(tp.name || "").trim(),
   );
+
+  // Review edits write straight into the proposal, so Refine and Apply carry them.
+  const setTopicField = (i, patch) => setProposal((prev) => ({
+    ...prev,
+    topics: (prev.topics || []).map((tp, j) => (j === i ? { ...tp, ...patch } : tp)),
+  }));
+  const setOpenFloorHtml = (html) => setProposal((prev) => ({ ...prev, openFloorHtml: html }));
+
   const lastGen = agenda?.lastUnifiedGenAt?.toDate ? agenda.lastUnifiedGenAt.toDate() : null;
 
   const itemsById = useMemo(() => new Map((items || []).map((it) => [it.id, it])), [items]);
@@ -246,6 +269,7 @@ export default function SyncMeetingDialog({
       const currentTopicIds = (topics || []).map((t) => t.id);
       const normalized = { ...result, topics: normalizeTopicRefs(result.topics, currentTopicIds) };
       setProposal(normalized);
+      setProposalRev((r) => r + 1);
       applyValidation(normalized, tasks || []);
       setStep("review");
     } catch (err) {
@@ -280,6 +304,7 @@ export default function SyncMeetingDialog({
         boardChanges: proposal.boardChanges,
       };
       setProposal(merged);
+      setProposalRev((r) => r + 1);
       setExistingTags(new Set((catCtx.tagVocab || []).map((t) => (t.name || "").toLowerCase())));
       // A refine can orphan a create whose owning topic was deleted → re-run
       // validation against the merged proposal so the banner + selectable set
@@ -490,7 +515,7 @@ export default function SyncMeetingDialog({
             </Box>
 
             <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-              Proposed agenda — review before applying
+              Proposed agenda — review and edit before applying
             </Typography>
             {summary && (
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
@@ -498,11 +523,7 @@ export default function SyncMeetingDialog({
               </Typography>
             )}
             {(() => {
-              const { statuses, dropped: omitted } = classifyTopicChanges(topics, proposal.topics || []);
-              // Only topics the AI was shown can be "suggested for removal"; one
-              // added after the sync started is simply kept.
-              const shownIds = new Set(prevTopicsSnapshot.map((t) => t.id));
-              const dropped = omitted.filter((d) => shownIds.has(d.id));
+              const { statuses, droppedShown: dropped } = topicChanges;
               return (
                 <Box sx={{ mb: 1.5 }}>
                   <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mb: dropped.length ? 0.75 : 0 }}>
@@ -540,14 +561,16 @@ export default function SyncMeetingDialog({
                 </Box>
               );
             })()}
-            <Box
-              sx={{
-                border: "1px solid", borderColor: "divider", borderRadius: 1, p: 2,
-                maxHeight: 360, overflow: "auto", fontSize: 13, lineHeight: 1.4,
-                "& h2": { fontSize: 15, fontWeight: 700, mt: 2, mb: 0.5 },
-                "& ul, & ol": { pl: 3, m: 0 }, "& li": { mb: 0.3 }, "& li p": { m: 0 },
-              }}
-              dangerouslySetInnerHTML={{ __html: previewHtml || "<em>Empty proposal</em>" }}
+            <ProposalReview
+              prevTopics={prevTopicsSnapshot}
+              prevOpenFloorHtml={prevOpenFloorHtml}
+              topics={topics}
+              proposal={proposal}
+              statuses={topicChanges.statuses}
+              rev={proposalRev}
+              onTopicChange={setTopicField}
+              onOpenFloorChange={setOpenFloorHtml}
+              readOnly={refining || busy || applied}
             />
             {(proposal.topics || []).some((t) => (t.categories?.length || t.tags?.length)) && (
               <Box sx={{ mt: 2 }}>
@@ -823,9 +846,16 @@ export default function SyncMeetingDialog({
           {step === "review" ? "Discard" : "Cancel"}
         </Button>
         {step === "review" ? (
-          <Button variant="contained" onClick={apply} disabled={busy || refining || applied}>
-            {busy ? "Applying…" : "Apply"}
-          </Button>
+          <>
+            {blankNewTitle && (
+              <Typography variant="caption" color="error" sx={{ mr: 1 }}>
+                A new topic needs a title (Edit tab)
+              </Typography>
+            )}
+            <Button variant="contained" onClick={apply} disabled={busy || refining || applied || blankNewTitle}>
+              {busy ? "Applying…" : "Apply"}
+            </Button>
+          </>
         ) : (
           <Button variant="contained" onClick={generate} disabled={busy}>
             Generate
