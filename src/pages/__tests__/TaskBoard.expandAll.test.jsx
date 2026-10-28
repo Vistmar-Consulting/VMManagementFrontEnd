@@ -53,7 +53,7 @@ function renderBoard() {
 
 const activeGroup = () => screen.getByText("Parent One").closest("table");
 const toggleAll = () =>
-  within(activeGroup()).getByRole("button", { name: /expand all|collapse all/i });
+  within(activeGroup()).getByLabelText(/expand all|collapse all/i);
 
 describe("TaskBoard expand all / collapse all", () => {
   it("expands every parent, then collapses every parent", () => {
@@ -94,14 +94,14 @@ describe("TaskBoard expand all / collapse all", () => {
     const ghostRow = within(activeGroup()).getByText("Parent Three").closest("tr");
     expect(screen.queryByText("Sub Three")).toBeTruthy();
 
-    fireEvent.click(within(ghostRow).getAllByRole("button")[0]);
+    fireEvent.click(within(ghostRow).getAllByRole("button", { hidden: true })[0]);
     expect(screen.queryByText("Sub Three")).toBeNull();
 
     fireEvent.click(screen.getByText("Completed"));
     const realRow = screen.getAllByText("Parent Three")
       .map((el) => el.closest("tr"))
       .find((tr) => tr !== ghostRow);
-    fireEvent.click(within(realRow).getAllByRole("button")[0]);
+    fireEvent.click(within(realRow).getAllByRole("button", { hidden: true })[0]);
     expect(screen.queryByText("Sub Four")).toBeTruthy();
     expect(screen.queryByText("Sub Three")).toBeNull();
   }, 60000);
