@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bulletsToHtml, sanitizeHtml, composeAgendaHtml, htmlToLines } from "../agendaHtml.js";
+import { bulletsToHtml, sanitizeHtml, sanitizeRedlineHtml, escapeText, composeAgendaHtml, htmlToLines } from "../agendaHtml.js";
 
 describe("bulletsToHtml", () => {
   it("renders ordered plain-text items as a <ul>", () => {
@@ -116,5 +116,31 @@ describe("mergeBodyHtml", () => {
   });
   it("returns empty string when both empty", () => {
     expect(mergeBodyHtml([], [])).toBe("");
+  });
+});
+
+describe("sanitizeRedlineHtml", () => {
+  it("keeps del and ins", () => {
+    expect(sanitizeRedlineHtml("<p>a <del>b</del> <ins>c</ins></p>")).toBe("<p>a <del>b</del> <ins>c</ins></p>");
+  });
+
+  it("still strips what sanitizeHtml strips", () => {
+    expect(sanitizeRedlineHtml('<p>x</p><script>alert(1)</script><h2>t</h2>')).toBe("<p>x</p>t");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(sanitizeRedlineHtml("")).toBe("");
+  });
+});
+
+describe("sanitizeHtml and redline marks", () => {
+  it("strips del and ins from saved bodies, keeping their text", () => {
+    expect(sanitizeHtml("<p>a <del>b</del> <ins>c</ins></p>")).toBe("<p>a b c</p>");
+  });
+});
+
+describe("escapeText", () => {
+  it("escapes &, < and >", () => {
+    expect(escapeText("a & <b>")).toBe("a &amp; &lt;b&gt;");
   });
 });

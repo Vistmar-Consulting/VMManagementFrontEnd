@@ -11,7 +11,7 @@ const ALLOWED_TAGS = [
 ];
 const ALLOWED_ATTR = ["href", "target", "rel", "style", "colspan", "rowspan", "colwidth"];
 
-function escapeText(s) {
+export function escapeText(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
@@ -23,6 +23,16 @@ export function bulletsToHtml(items) {
 export function sanitizeHtml(html) {
   if (!html) return "";
   return DOMPurify.sanitize(String(html), { ALLOWED_TAGS, ALLOWED_ATTR, ADD_ATTR: ["target"] });
+}
+
+// Display-only sanitizer for the Sync Meeting redline (agendaDiff.js output):
+// the body allow-list plus del/ins. Never use it on anything that is saved —
+// stored bodies go through sanitizeHtml, which strips the marks.
+const REDLINE_TAGS = [...ALLOWED_TAGS, "del", "ins"];
+
+export function sanitizeRedlineHtml(html) {
+  if (!html) return "";
+  return DOMPurify.sanitize(String(html), { ALLOWED_TAGS: REDLINE_TAGS, ALLOWED_ATTR, ADD_ATTR: ["target"] });
 }
 
 // Flatten an agenda rich-body HTML string (e.g. openFloorHtml) into an ordered
