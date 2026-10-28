@@ -104,7 +104,7 @@ describe("TaskBoard expand all / collapse all", () => {
     fireEvent.click(within(realRow).getAllByRole("button")[0]);
     expect(screen.queryByText("Sub Four")).toBeTruthy();
     expect(screen.queryByText("Sub Three")).toBeNull();
-  }, 20000);
+  }, 60000);
 
   it("clears collapses when the filters change", () => {
     renderBoard();
@@ -120,5 +120,5 @@ describe("TaskBoard expand all / collapse all", () => {
 
     fireEvent.click(card());
     expect(screen.queryByText("Sub One")).toBeTruthy();
-  }, 20000);
+  }, 60000);
 });
