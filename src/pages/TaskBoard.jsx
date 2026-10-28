@@ -547,6 +547,8 @@ export default function TaskBoard() {
   };
 
   const handleAddItem = async (orgId) => {
+    // New items start Active; open that group so the row can take its title.
+    setActiveExpanded(true);
     const ref = newItemRef();
     setNewItemId(ref.id);
     keepInView(ref.id);
@@ -571,8 +573,9 @@ export default function TaskBoard() {
     if (addingSubitemRef.current) return;
     addingSubitemRef.current = true;
     try {
-      // New subitems start Active, so open the parent's row in the Active group
-      // (its ghost copy there when the parent itself is Done / Archived).
+      // New subitems start Active, so open the Active group and the parent's row
+      // in it (its ghost copy there when the parent itself is Done / Archived).
+      setActiveExpanded(true);
       setRowsExpanded([rowKey("active", parentItem.id, groupKeyOf(parentItem.statusId) !== "active")], true);
       const ref = newItemRef();
       setNewItemId(ref.id);

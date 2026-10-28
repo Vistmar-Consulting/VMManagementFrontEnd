@@ -24,8 +24,14 @@ The board filters (scorecard, title search, column filters) were applied to the 
 - Browser (headed agent-browser, dev server on 5173, production data): In Progress card selected, + Add subtask under I-4 Cosmetic Treatment Matcher Tool → SI-9 appeared in title edit; Escape discarded it (row gone).
 - ESLint not run: the repo has no ESLint config. `vite build` not run.
 
+## Follow-up: + Add subtask with the Active group collapsed
+
+Root cause: a new subtask is always Active, and `handleAddSubitem` opened the parent's row in the Active group but not the Active group itself. With Active collapsed (e.g. adding from a Done parent in Completed), the new row sat in a hidden section: no title edit, never discarded. Fix: `handleAddSubitem` and `handleAddItem` (+ New item, also Active-status) call `setActiveExpanded(true)`. Two tests added to `TaskBoard.addSubtaskFiltered.test.jsx`; both fail with the fix removed. TaskBoard tests 9/9 (expandAll timed out once under load average ~13–19, passed 4/4 on re-run).
+
+Browser (production data): Active collapsed, Completed open, + Add subtask on a row in Completed → Active opened, Assigned count 143 → 144; Escape discarded it, back to 143.
+
+Leftover from the original bug: SI-5 (untitled) under I-4 Cosmetic Treatment Matcher Tool deleted via the row menu with Andy's approval; no untitled rows remain.
+
 ## Deferred
 
-- One leftover empty subtask from the bug: SI-5 under I-4 Cosmetic Treatment Matcher Tool (created 2026-10-27). Only one untitled row was found, not four. Delete pending Andy's confirmation.
-- Same class of bug, not filter-related (found in review, not changed): with the Active group collapsed, + Add subtask on a Done/Archived parent puts the new subtask in collapsed Active, so it never renders and is never discarded.
 - Mini Project Board also keeps items *edited* under a filter in view (status change out of the selected card); Task Board does not. Not changed — offered to Andy.

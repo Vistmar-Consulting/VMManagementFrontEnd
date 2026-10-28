@@ -60,8 +60,9 @@ vi.mock("../../contexts/AuthContext.jsx", () => ({ useAuth: () => ({ user: { uid
 vi.mock("../../hooks/useItems.js", () => ({
   useItems: () => ({ data: useSyncExternalStore(subscribe, () => items), loading: false, error: null }),
 }));
+const ORGS = [{ id: "unio", name: "Unio" }];
 vi.mock("../../hooks/useCollection.js", () => ({
-  useCollection: () => ({ data: [], loading: false, error: null }),
+  useCollection: (name) => ({ data: name === "organizations" ? ORGS : [], loading: false, error: null }),
 }));
 vi.mock("../../hooks/useCollectionGroup.js", () => ({
   useCollectionGroup: () => ({ data: [], loading: false, error: null }),
@@ -135,5 +136,45 @@ describe("TaskBoard + Add subtask under an active filter", () => {
     fireEvent.blur(input);
     await waitFor(() => expect(items.some((i) => i.id === "new1")).toBe(false), { timeout: 30000 });
     expect(screen.queryByText("SI-2")).toBeNull();
+  }, 120000);
+});
+
+describe("TaskBoard + Add subtask on a Done parent", () => {
+  beforeEach(() => {
+    items = [
+      { id: "p2", title: "Done Parent", itemNumber: 2, statusId: 5, order: "a0", organizationId: "unio", nextSubitemNumber: 2 },
+      { id: "s2", title: "Done Sub", itemNumber: 1, statusId: 5, order: "a0", parentId: "p2", organizationId: "unio" },
+    ];
+    nextId = 0;
+  });
+
+  const activeCollapse = () =>
+    screen.getByText("Active").closest(".MuiPaper-root").querySelector(".MuiCollapse-root");
+  const collapseActive = async () => {
+    fireEvent.click(screen.getByText("Active"));
+    await waitFor(() => expect(activeCollapse().classList.contains("MuiCollapse-hidden")).toBe(true), { timeout: 30000 });
+  };
+
+  it("opens the collapsed Active group, where the new subtask lands", async () => {
+    renderBoard();
+    await collapseActive();
+    fireEvent.click(screen.getByText("Completed"));
+    const parentRow = screen.getByText("Done Parent").closest("tr");
+    fireEvent.click(within(parentRow).getAllByRole("button")[0]);
+    fireEvent.click(screen.getByText("+ Add subtask"));
+
+    await waitFor(() => expect(screen.getByText("SI-2")).toBeTruthy(), { timeout: 30000 });
+    await waitFor(() => expect(activeCollapse().classList.contains("MuiCollapse-hidden")).toBe(false), { timeout: 30000 });
+    expect(within(screen.getByText("SI-2").closest("tr")).getAllByRole("textbox")[0]).toBeTruthy();
+  }, 120000);
+
+  it("opens the collapsed Active group for + New item", async () => {
+    renderBoard();
+    await collapseActive();
+    fireEvent.click(screen.getByRole("button", { name: /new item/i }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Unio" }));
+
+    await waitFor(() => expect(items.some((i) => i.id === "new1")).toBe(true), { timeout: 30000 });
+    await waitFor(() => expect(activeCollapse().classList.contains("MuiCollapse-hidden")).toBe(false), { timeout: 30000 });
   }, 120000);
 });
