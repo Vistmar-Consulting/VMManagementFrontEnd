@@ -26,15 +26,13 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import {
-  ArrowDropDown as ArrowDropDownIcon,
-  Check,
-  ChevronRight as ChevronRightIcon,
-  Description as DescriptionIcon,
-  ExpandMore as ExpandMoreIcon,
-  InsertDriveFileOutlined as FileIcon,
-  MoreVert as MoreVertIcon,
-} from "@mui/icons-material";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import Check from "@mui/icons-material/Check";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import DescriptionIcon from "@mui/icons-material/Description";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import FileIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 
 import MemberAvatar from "./MemberAvatar.jsx";

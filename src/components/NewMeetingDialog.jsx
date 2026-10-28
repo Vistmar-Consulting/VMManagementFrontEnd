@@ -38,7 +38,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close } from "@mui/icons-material";
+import Close from "@mui/icons-material/Close";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
 import { addDays, format, set } from "date-fns";

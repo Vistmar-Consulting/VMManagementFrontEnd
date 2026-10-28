@@ -15,7 +15,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close as CloseIcon, Send as SendIcon } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
+import SendIcon from "@mui/icons-material/Send";
 import BoardChatChangesModal from "./BoardChatChangesModal.jsx";
 import BoardChatHints from "./BoardChatHints.jsx";
 import { applyChangeSet } from "../lib/itemWrites.js";

@@ -22,7 +22,9 @@ import {
   Box, Button, CircularProgress, IconButton,
   TextField, Tooltip, Typography,
 } from "@mui/material";
-import { Close, Refresh, Search } from "@mui/icons-material";
+import Close from "@mui/icons-material/Close";
+import Refresh from "@mui/icons-material/Refresh";
+import Search from "@mui/icons-material/Search";
 import { format } from "date-fns";
 
 import { firefliesQuery, GQL_MEETING_DETAIL, GQL_MEETING_LIST } from "../lib/fireflies.js";

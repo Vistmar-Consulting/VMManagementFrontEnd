@@ -23,11 +23,9 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import {
-  Delete as DeleteIcon,
-  InsertDriveFileOutlined as FileIcon,
-  OpenInNew as OpenInNewIcon,
-} from "@mui/icons-material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import FileIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import {
   addDoc,
   collection,

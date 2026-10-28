@@ -54,16 +54,14 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import {
-  Add as AddIcon,
-  AutoAwesome as AutoAwesomeIcon,
-  ChevronRight as ChevronRightIcon,
-  Close as CloseIcon,
-  ExpandMore as ExpandMoreIcon,
-  RestartAlt as RestartAltIcon,
-  Search as SearchIcon,
-  Sync as SyncIcon,
-} from "@mui/icons-material";
+import AddIcon from "@mui/icons-material/Add";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import CloseIcon from "@mui/icons-material/Close";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import SearchIcon from "@mui/icons-material/Search";
+import SyncIcon from "@mui/icons-material/Sync";
 
 import BoardChatPanel, { PANEL_WIDTH } from "../components/BoardChatPanel.jsx";
 import ColorPicker from "../components/ColorPicker.jsx";

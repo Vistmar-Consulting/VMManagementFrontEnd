@@ -8,7 +8,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Check } from "@mui/icons-material";
+import Check from "@mui/icons-material/Check";
 import MemberAvatar from "./MemberAvatar.jsx";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";

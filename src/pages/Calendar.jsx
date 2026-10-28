@@ -24,14 +24,12 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Close,
-  People,
-  Refresh,
-  Schedule,
-} from "@mui/icons-material";
+import ChevronLeft from "@mui/icons-material/ChevronLeft";
+import ChevronRight from "@mui/icons-material/ChevronRight";
+import Close from "@mui/icons-material/Close";
+import People from "@mui/icons-material/People";
+import Refresh from "@mui/icons-material/Refresh";
+import Schedule from "@mui/icons-material/Schedule";
 import {
   format,
   parseISO,

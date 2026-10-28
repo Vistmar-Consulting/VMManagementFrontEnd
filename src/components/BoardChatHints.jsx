@@ -3,7 +3,7 @@
 // "?" button in the Board Chat header: a popover explaining how to use it.
 import { useState } from "react";
 import { Box, IconButton, Popover, Tooltip, Typography } from "@mui/material";
-import { HelpOutline as HelpIcon } from "@mui/icons-material";
+import HelpIcon from "@mui/icons-material/HelpOutline";
 
 const HINTS = [
   ["Ask anything about the board", "\"What do I need to get done today?\", \"Has Andy finished the appointment import?\", \"What's blocked for Unio?\""],

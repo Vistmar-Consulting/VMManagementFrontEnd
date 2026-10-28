@@ -11,7 +11,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close, EditOutlined } from "@mui/icons-material";
+import Close from "@mui/icons-material/Close";
+import EditOutlined from "@mui/icons-material/EditOutlined";
 
 import { useOrgMembers } from "../hooks/useOrgMembers.js";
 import { isClientEmail, memberIdFromEmail, removeOrgMember, upsertOrgMember } from "../lib/orgMembers.js";

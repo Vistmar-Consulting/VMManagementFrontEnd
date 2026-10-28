@@ -27,7 +27,10 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { Add, Close, Refresh, Search } from "@mui/icons-material";
+import Add from "@mui/icons-material/Add";
+import Close from "@mui/icons-material/Close";
+import Refresh from "@mui/icons-material/Refresh";
+import Search from "@mui/icons-material/Search";
 import { format } from "date-fns";
 import { arrayRemove, arrayUnion, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 

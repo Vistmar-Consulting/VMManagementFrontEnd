@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Alert, Box, Collapse, Stack, Typography } from "@mui/material";
-import { ExpandMore } from "@mui/icons-material";
+import ExpandMore from "@mui/icons-material/ExpandMore";
 
 import { useCollection } from "../hooks/useCollection.js";
 import { getContrastText } from "../theme/pillColors.js";

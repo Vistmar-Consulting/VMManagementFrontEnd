@@ -16,7 +16,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close } from "@mui/icons-material";
+import Close from "@mui/icons-material/Close";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 
 import { db } from "../firebase.js";

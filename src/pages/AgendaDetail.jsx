@@ -31,17 +31,15 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import {
-  ArrowBack,
-  ArrowDropDown,
-  AutoAwesome as AutoAwesomeIcon,
-  Check,
-  ExpandMore,
-  History as HistoryIcon,
-  MoreVert,
-  PersonAdd,
-  Schedule as ScheduleIcon,
-} from "@mui/icons-material";
+import ArrowBack from "@mui/icons-material/ArrowBack";
+import ArrowDropDown from "@mui/icons-material/ArrowDropDown";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import Check from "@mui/icons-material/Check";
+import ExpandMore from "@mui/icons-material/ExpandMore";
+import HistoryIcon from "@mui/icons-material/History";
+import MoreVert from "@mui/icons-material/MoreVert";
+import PersonAdd from "@mui/icons-material/PersonAdd";
+import ScheduleIcon from "@mui/icons-material/Schedule";
 
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 

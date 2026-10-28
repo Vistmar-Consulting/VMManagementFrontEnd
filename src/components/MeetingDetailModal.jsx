@@ -23,14 +23,12 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Close,
-  ExpandMore,
-  FiberManualRecord,
-  Search,
-} from "@mui/icons-material";
+import ChevronLeft from "@mui/icons-material/ChevronLeft";
+import ChevronRight from "@mui/icons-material/ChevronRight";
+import Close from "@mui/icons-material/Close";
+import ExpandMore from "@mui/icons-material/ExpandMore";
+import FiberManualRecord from "@mui/icons-material/FiberManualRecord";
+import Search from "@mui/icons-material/Search";
 import { format } from "date-fns";
 
 import {
