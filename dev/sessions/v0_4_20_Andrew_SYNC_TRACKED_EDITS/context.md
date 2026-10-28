@@ -4,11 +4,19 @@
 
 **Shipped:** Sync Meeting redline + editable proposal (plan Tasks 1–9) pushed to `origin/dev` at **`90e2065`** (rebased onto `f7b1a54`). Whole-branch code review: "ready to push". Before the rebase: `npx vitest run --testTimeout=15000 --maxWorkers=3` **540/540**, `npm run build` OK. After the rebase (incoming commits touched only `TaskBoard.jsx` + its test): `src/pages/__tests__` TaskBoard files 15/15 serially and `npm run build` OK; the full suite was not re-run after the rebase.
 
-**Not verified — needs you:** the live Apply. On local dev, `/api/liveblocks-auth` refuses every local build (426, by design since `fd45669`), so the live editor never connects and Apply refuses before writing anything. Verifying on the deployed site needs a second `/api/ai/prepare` (~$0.54), beyond the one call approved. Next step: on vm-management-front-end.vercel.app, Vistamar Platform Development agenda → Sync Meeting → Generate → untick all board rows → Edit tab: type a phrase into one topic body and into Open Floor → Apply → reload twice → both phrases should be in the live editors (topic body **and** Open Floor; the Open Floor live write is the new `applyUnified` code, covered only by unit tests of its helpers).
+**Live Apply verified 2026-10-28 07:39–07:41 PT** on vm-management-front-end.vercel.app (production deploy of `5115e15`, built 00:28:46), approved by Andy that morning. Vistamar Platform Development agenda → Generate → all 13 board suggestions unticked, no Delete boxes ticked → Edit tab: typed `ZEBRA-TOPIC-1028` into the Content Studio body and `ZEBRA-OPENFLOOR-1028` into Open Floor → both showed as `<ins>` on Changes → Apply → dialog closed without error. Three reloads, sampled every 1.5s: editors went empty → final content with both phrases, never stale content. Firestore confirmed both phrases (topic `xc5OlFBVuCvnzDOS1aSI` bodyHtml, agenda `openFloorHtml`).
 
-**Verified in the browser (local, one prepare call):** Changes tab redline (del/ins, new-topic and suggested-removal captions), Edit tab (locked retained titles, editable new title, blank title disables Apply with caption), typing + Cmd+Z undo in TipTap, edits show as insertions back on Changes, Apply refused with "Live editor not connected". **Nothing was written to Firestore.**
+**What the live run wrote to Firestore** (`agendas/m4b1tbph59cpv51hk1t4p2bh0g`): version snapshot `p298MpD9kbs2JGUKy2Fe` (14:39:18Z, at Generate, `pre-ai-gen`); at 14:41:14Z agenda `openFloorHtml`, `lastUnifiedGenAt`, `updatedAt`; bodyHtml of 6 retained topics (`T35ee02M…`, `XL9x3gv2…`, `aFahURKm…`, `ckKNQKg5…`, `keZeIuD2…`, `xc5OlFBV…`); one new topic `kIeZ3AjjePKuWufhIdjO` "Pricing Model & Go-to-Market Plan"; no topic deleted; plus the matching live Yjs fragments. Board items were not inspected in Firestore (all suggestions were unticked in the UI).
 
-**Spend:** one `/api/ai/prepare` ≈ $0.54 (plan estimate; actual tokens not read). No Refine. Total ≈ $0.54 of the $1.50 cap.
+**Test markers removed afterwards.** My first attempt (Cmd+ArrowDown then Backspace) left the caret mid-text and deleted 18 characters of the Content Studio body ("wner and next step") and 22 of Open Floor. Open Floor was restored by Cmd+Z; Content Studio's undo did nothing, so the 18 characters were retyped at the same spot. Then each marker was deleted by selecting its exact text. Final Firestore: Content Studio body `<ul><li><p>Marketing-article mode — In Progress</p></li><li><p>Inventory &amp; Coverage — Assigned; confirm owner and next step</p></li></ul><p></p>`, openFloorHtml `<ul><li><p>Any new platform or prospect items raised since last session?</p></li></ul><p></p>` — wording identical to the applied proposal; the trailing `<p></p>` matches every other editor-saved topic.
+
+**Correction to last night's entry:** the local run did write one Firestore doc — Generate takes a `pre-ai-gen` version snapshot (`dep8K8tgQ27AgMsK7cXV`, 06:32:35Z) before calling the AI (existing behaviour). Apply wrote nothing locally.
+
+**Verified in the browser (local, one prepare call):** Changes tab redline (del/ins, new-topic and suggested-removal captions), Edit tab (locked retained titles, editable new title, blank title disables Apply with caption), typing + Cmd+Z undo in TipTap, edits show as insertions back on Changes, Apply refused with "Live editor not connected".
+
+**Spend:** two `/api/ai/prepare` calls ≈ $1.08 (≈ $0.54 each, plan estimate; actual tokens not read). No Refine.
+
+**Main checkout:** fast-forwarded local `main` 3773d77 → origin/dev and ran `npm install` (`diff` now 9.0.0); working tree clean.
 
 **Bugs found and fixed (each with a test):**
 - Redline (`agendaDiff.js`): ul→ol at the same depth rendered inside one list; words glued across paragraphs, `<br>` and cells; nested-table rows read twice; similarity measured in mixed units; top-level inline content split one paragraph per node; empty parent bullet rendered `ul > ul`.
@@ -21,7 +29,7 @@
 
 **Test-limit change to check:** `TaskBoard.expandAll.test.jsx` — the last two tests' limits raised 20s → 60s (`7be26bd`), same remedy as `b74d172` for their siblings. Each timed out in full-suite runs under load (load avg 9–19; 21–48s), passes alone in 11–15s; file untouched by this feature otherwise, assertions unchanged.
 
-**Housekeeping:** this worktree has its own `node_modules` (`npm ci`, not the symlink). The main checkout needs `npm install` after merge to get `diff@9.0.0`. Dev server stopped, browser closed.
+**Housekeeping:** this worktree has its own `node_modules` (`npm ci`, not the symlink). Dev server stopped, browser closed.
 
 
 **Date:** 2026-10-27 · **Developer:** Andrew · **Status:** active
@@ -84,6 +92,7 @@ Agenda: Vistamar internal "Vistamar Platform Development updates" (`agendas/m4b1
 | Call | Cost |
 |---|---|
 | `/api/ai/prepare`, Vistamar Platform Development agenda, 2026-10-27 23:32 PT | ≈ $0.54 (plan estimate; actual token cost not read) |
+| `/api/ai/prepare`, same agenda, production, 2026-10-28 07:39 PT (approved by Andy) | ≈ $0.54 (plan estimate; actual token cost not read) |
 
 ## Deferred
 
