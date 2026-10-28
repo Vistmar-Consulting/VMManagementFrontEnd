@@ -317,10 +317,10 @@ export default function SyncMeetingDialog({
       return;
     }
     // Presence-aware guard: applyUnified overwrites the bodies of the topics it
-    // carries forward. If others are live in this agenda, confirm first.
+    // carries forward, and Open Floor. If others are live in this agenda, confirm first.
     if (others.length > 0) {
       const ok = window.confirm(
-        `${others.length} other ${others.length === 1 ? "person is" : "people are"} editing this agenda right now. Applying Sync Meeting overwrites the updated topics' text. Continue?`,
+        `${others.length} other ${others.length === 1 ? "person is" : "people are"} editing this agenda right now. Applying Sync Meeting overwrites the updated topics' and Open Floor's text. Continue?`,
       );
       if (!ok) return;
     }
