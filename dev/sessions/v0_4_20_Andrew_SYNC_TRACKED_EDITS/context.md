@@ -22,8 +22,8 @@ In the Sync Meeting review: (A) full text editing of the proposed agenda; (B) a 
 | 3 diffAgendaHtml | done, reviewed | 41a61e4, 8b5abfa, 613ea51 | 21 tests. Bugs fixed (each with a test): ul→ol at same depth nested wrongly; words glued across p/br/cells; nested-table rows collected twice; similarity mixed units; top-level inline split per node; empty parent bullet → `ul>ul`; sanitizeHtml dropped `<thead>` rows (pre-existing, now allows thead/tfoot) |
 | 4 buildAgendaRedline | done, reviewed | 3b8cfe9, e857de4 | 30 tests; review: no bugs, added Open Floor-changed, both-empty and duplicate-ref tests |
 | 5 Open Floor live write | done, reviewed | bafeba3, 6b6912e | 48 tests. applyUnified wiring has no unit test (no Firestore tx harness) → covered by the Task 9 browser check. Review fix: presence confirm now names Open Floor (wording only; SyncMeetingDialog has no test harness, so no test added) |
-| 6 ProposalReview | done, reviewed | b9800d2, d2f0c1b, (this) | 13 + 4 tests. Bugs fixed: edits typed during Refine silently lost (new `readOnly` lock; RichBodyEditor gained `editable` + `ariaLabel` props, toolbar/cmd+K locked too); tabs/panels and body editors lacked accessible names; crash on a non-string AI topic title |
-| 7 dialog wiring | pending | | |
+| 6 ProposalReview | done, reviewed | b9800d2, d2f0c1b, dd870a7 | 13 + 4 tests. Bugs fixed: edits typed during Refine silently lost (new `readOnly` lock; RichBodyEditor gained `editable` + `ariaLabel` props, toolbar/cmd+K locked too); tabs/panels and body editors lacked accessible names; crash on a non-string AI topic title |
+| 7 dialog wiring | done, reviewed | 3d4a0f1, c6a10a3, 3adc502 | New SyncMeetingDialog.review.test.jsx (9 tests). ProposalReview locked while refining/applying. Bugs fixed: new-topic titles saved untrimmed; blank-title rule was UI-only (planTopicWrites now trims + throws); Discard dropped hand edits without asking; Discard prompted after edits were already saved. Note: 3adc502 was committed while one test had timed out under machine load (load avg 16; 25s vs 5.5s normal); re-run alone 9/9 pass |
 | 8 AI Integration rows | pending | | |
 | 9 verify + push | pending | | |
 
