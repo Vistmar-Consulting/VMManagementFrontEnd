@@ -53,7 +53,7 @@ Diffing happens **per topic**, not over the composed agenda HTML, because topics
 
 - **Retained** topic (`ref` points to a pre-sync topic): `diffAgendaHtml(prev.bodyHtml, proposed.bodyHtml)`, under the topic's heading.
 - **New** topic: heading and body shown fully inserted.
-- **Topic suggested for removal** (in `dropped` and shown to the AI): heading and body shown fully struck, with its existing Delete checkbox next to it. Unchecked means Apply keeps it, as today.
+- **Topic suggested for removal** (in `dropped` and shown to the AI): heading and body shown fully struck, with a caption pointing to its Delete checkbox. The checkbox stays where it is today, above the review box. Unchecked means Apply keeps the topic, as today.
 - **Open Floor**: `diffAgendaHtml(prevOpenFloorHtml, proposal.openFloorHtml)`.
 
 The baseline is taken **once, when the dialog mounts**: the existing `prevTopicsSnapshot` plus a new `prevOpenFloorHtml` snapshot of `agenda.openFloorHtml`. Topics added by someone else during review are not in the baseline and do not appear as dropped. This matches the existing `shownIds` rule.
@@ -72,9 +72,9 @@ The "Proposed agenda — review before applying" box (today a `dangerouslySetInn
 
 then Open Floor with its own body editor.
 
-The body editor is a new small component, `src/components/editor/ProposalBodyEditor.jsx`: a plain, non-collab TipTap editor built from `bodyContentExtensions()` (`src/components/editor/editorExtensions.js`), the same set `CollabBodyEditor` uses, so tables and lists survive a round trip. Do not use `RichBodyEditor`: it has no table extension and would strip tables from AI bodies. `bodyContentExtensions()` sets `undoRedo: false` because Collaboration owns history there, so `ProposalBodyEditor` must add the `UndoRedo` extension itself or Cmd+Z will not work. Props: `valueHtml`, `onChangeHtml`. It reuses `EditorToolbar` (`{ editor, onLink }`, no collab dependency; `RichBodyEditor` already uses it), with `promptLink` as the link handler.
+The body editor is the existing, currently unused `src/components/editor/RichBodyEditor.jsx`, mounted unchanged in its default inline mode. It is a plain, non-collab TipTap editor with the same schema as `bodyContentExtensions()` (StarterKit with headings, code, blockquote and rules off, plus `TableKit`), so tables and lists survive a round trip. It keeps StarterKit's undo/redo, carries its own `EditorToolbar` and Cmd+K link handler, and flushes a pending change on unmount. (Corrected 2026-10-27: an earlier draft of this spec said it had no tables and proposed a new `ProposalBodyEditor`.)
 
-Each editor owns its content while mounted and reports changes up, debounced. It also flushes on unmount, on tab switch, **and before Refine and Apply run**, so the last keystrokes are never lost and Changes always diffs the latest text. A Refine response replaces the proposal, and the editors must then reset to the new content. Add a `proposalRev` counter to the dialog, incremented on every prepare and refine result, and key the editors by it.
+It is mounted with `debounceMs={0}`, so each edit reaches `proposal` on the next tick, before a person can click Apply or Refine. A switch to Changes unmounts the editors, which flushes anything pending, so Changes always diffs the latest text. A Refine response replaces the proposal, and the editors must then reset to the new content. Add a `proposalRev` counter to the dialog, incremented on every prepare and refine result, and key the editors by it.
 
 **Baselines.** Two sources, each used for one purpose:
 - The **redline** diffs against the mount-time snapshot (`prevTopicsSnapshot`, `prevOpenFloorHtml`): "what the agenda looked like before this sync".
@@ -107,7 +107,7 @@ Add a row to `HOW_IT_WORKS` in `src/pages/AIIntegration.jsx` (CLAUDE.md rule 4):
 - **Unit** (`src/lib/__tests__/agendaDiff.test.js`): `diffAgendaHtml` — equal input, word insert, word delete, replace, block insert, block delete, reordered blocks, nested list, same-shape table cell change, different-shape table, empty before, empty after. `buildAgendaRedline` — retained, new, dropped-shown, dropped-not-shown (topic added during review), Open Floor.
 - **Component**: editing a topic body in the Edit tab updates `proposal`, and Apply is called with the edited `bodyHtml`. Editing a retained topic's title is not possible. Switching to Changes after an edit shows the edit as an insertion.
 - **Apply**: `applyUnified` returns the Open Floor body under `"openFloor"` in `updatedBodies` only when it changed. `writeTopicBodies` writes it into the `"openFloor"` fragment.
-- **Editor flush**: an edit typed immediately before Apply or Refine (inside the debounce window) reaches the payload.
+- **Editor wiring**: an edit in a topic's or Open Floor's editor reaches `proposal` (component test with the editor stubbed). Typing in the real TipTap editor is checked in the browser.
 - **Sanitizer**: `del`/`ins` survive `sanitizeRedlineHtml` and are still stripped by `sanitizeHtml`.
 - **Browser** (CLAUDE.md rule 3, drive it yourself): open Sync Meeting on a real agenda, check both tabs, edit, Refine, Apply, reload, confirm the edited text is in the live editor, for a topic body **and** Open Floor. A fresh proposal needs a live `/api/ai/prepare` call (~$0.54 on Opus 5.5 fast). That call needs Andy's go-ahead with the price named first (global rule 14).
 
