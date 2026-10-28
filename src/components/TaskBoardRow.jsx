@@ -238,6 +238,9 @@ export default function TaskBoardRow({
                 if (el && el.scrollWidth > el.clientWidth) setTitleTipOpen(true);
               }}
               onClose={() => setTitleTipOpen(false)}
+              disableHoverListener={!compact}
+              disableTouchListener={!compact}
+              describeChild
               enterDelay={400}
               placement="top-start"
               slotProps={{ tooltip: { sx: { maxWidth: 420, fontSize: 12, lineHeight: 1.4 } } }}
@@ -253,7 +256,11 @@ export default function TaskBoardRow({
                   "&:hover": canUpdate ? { textDecoration: "underline" } : {},
                   ...(compact && { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 320 }),
                 }}
-                onClick={() => canUpdate && setEditingTitle(true)}
+                onClick={() => {
+                  // The tooltip unmounts with the title, so MUI never closes it.
+                  setTitleTipOpen(false);
+                  if (canUpdate) setEditingTitle(true);
+                }}
               >
                 {titleValue || item.title || "Enter title…"}
               </Typography>

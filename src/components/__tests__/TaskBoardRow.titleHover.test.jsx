@@ -43,6 +43,20 @@ describe("TaskBoardRow compact title hover", () => {
     expect(await screen.findByRole("tooltip", {}, { timeout: 5000 })).toHaveTextContent(LONG);
   }, 60000);
 
+  it("does not reopen the popup after the title is edited", async () => {
+    renderRow({ canUpdate: true });
+    const title = screen.getByText(LONG);
+    setWidths(title, { scrollWidth: 600, clientWidth: 320 });
+    fireEvent.mouseOver(title);
+    await screen.findByRole("tooltip", {}, { timeout: 5000 });
+
+    fireEvent.click(title);
+    fireEvent.blur(screen.getByDisplayValue(LONG));
+
+    expect(await screen.findByText(LONG)).toBeTruthy();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  }, 60000);
+
   it("shows no popup when the title fits", async () => {
     renderRow();
     const title = screen.getByText(LONG);
