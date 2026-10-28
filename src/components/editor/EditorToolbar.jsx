@@ -11,10 +11,11 @@ import FormatIndentDecrease from "@mui/icons-material/FormatIndentDecrease";
 import LinkIcon from "@mui/icons-material/Link";
 import { t } from "../../theme/tokens.js";
 import TableMenu from "./TableMenu.jsx";
+import ColorMenu from "./ColorMenu.jsx";
 
 /**
  * Compact MUI toolbar bound to a TipTap editor.
- * Exposes: bold, italic, underline, bullet list, numbered list,
+ * Exposes: bold, italic, underline, text color, highlight, bullet list, numbered list,
  * indent (sink list item), outdent (lift list item), link (cmd+K), table.
  *
  * Props:
@@ -99,6 +100,8 @@ export default function EditorToolbar({ editor, onLink }) {
         () => editor.chain().focus().toggleUnderline().run(),
         "underline",
       )}
+      <ColorMenu editor={editor} mode="color" sx={btnSx("__never__")} />
+      <ColorMenu editor={editor} mode="background" sx={btnSx("__never__")} />
       {btn(
         <FormatListBulleted fontSize="small" />,
         "Bullet list",
