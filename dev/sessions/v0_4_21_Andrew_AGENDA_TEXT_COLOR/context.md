@@ -10,6 +10,11 @@ Branch: worktree-agenda-text-tools (from main c03529a)
 - Verified: full suite 561/561 (second run; the first run had 1 unidentified failure, not reproduced),
   `npm run build` OK. Pre-push review: ready to push.
 - Not browser-verified locally (Andy's call: deployed site is the test surface).
+- Pushed to origin/dev at 0ad6972 (rebased onto c5b67b0; editor + AI tests 104/104 and build OK
+  after the rebase; full suite not re-run after it). Andy verified on the deployed site 2026-10-28.
+
+## Close
+Session complete 2026-10-28. Worktree removed after push. Deferred items below carry forward.
 - Strikethrough dropped by Andy (not needed).
 - This worktree has its own real `node_modules` (npm replaced the symlink on install).
 
