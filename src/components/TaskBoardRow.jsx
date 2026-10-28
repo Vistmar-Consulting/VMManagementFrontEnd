@@ -94,7 +94,9 @@ export default function TaskBoardRow({
   const [assigneeAnchor, setAssigneeAnchor] = useState(false);
   const [assigneePosition, setAssigneePosition] = useState(null);
   const [duePickerOpen, setDuePickerOpen] = useState(false);
+  const [titleTipOpen, setTitleTipOpen] = useState(false);
   const titleRef = useRef(null);
+  const titleTextRef = useRef(null);
   const titleSavedRef = useRef(false);
 
   useEffect(() => {
@@ -226,20 +228,36 @@ export default function TaskBoardRow({
               size="small"
             />
           ) : (
-            <Typography
-              variant="body2"
-              sx={{
-                cursor: canUpdate ? "pointer" : "default",
-                fontWeight: isSubitem ? 400 : 500,
-                color: (titleValue || item.title) ? "inherit" : "text.disabled",
-                fontStyle: (titleValue || item.title) ? "normal" : "italic",
-                "&:hover": canUpdate ? { textDecoration: "underline" } : {},
-                ...(compact && { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 320 }),
+            // Compact titles truncate with an ellipsis; hovering a truncated
+            // one pops the full text so it can be read without editing.
+            <Tooltip
+              title={titleValue || item.title || ""}
+              open={compact && titleTipOpen}
+              onOpen={() => {
+                const el = titleTextRef.current;
+                if (el && el.scrollWidth > el.clientWidth) setTitleTipOpen(true);
               }}
-              onClick={() => canUpdate && setEditingTitle(true)}
+              onClose={() => setTitleTipOpen(false)}
+              enterDelay={400}
+              placement="top-start"
+              slotProps={{ tooltip: { sx: { maxWidth: 420, fontSize: 12, lineHeight: 1.4 } } }}
             >
-              {titleValue || item.title || "Enter title…"}
-            </Typography>
+              <Typography
+                ref={titleTextRef}
+                variant="body2"
+                sx={{
+                  cursor: canUpdate ? "pointer" : "default",
+                  fontWeight: isSubitem ? 400 : 500,
+                  color: (titleValue || item.title) ? "inherit" : "text.disabled",
+                  fontStyle: (titleValue || item.title) ? "normal" : "italic",
+                  "&:hover": canUpdate ? { textDecoration: "underline" } : {},
+                  ...(compact && { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 320 }),
+                }}
+                onClick={() => canUpdate && setEditingTitle(true)}
+              >
+                {titleValue || item.title || "Enter title…"}
+              </Typography>
+            </Tooltip>
           )}
         </TableCell>
 
