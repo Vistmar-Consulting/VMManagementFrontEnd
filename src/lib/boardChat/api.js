@@ -1,13 +1,14 @@
 // src/lib/boardChat/api.js
 import { auth } from "../../firebase.js";
 
-// POST /api/ai/chat. Errors carry costUsd/model when the server billed the
-// call anyway (refusal, cut-off), so the cost tracker stays honest.
-export async function postChat(messages) {
+// POST /api/ai/chat (Board Chat) or /api/ai/meeting-chat. Errors carry
+// costUsd/model when the server billed the call anyway (refusal, cut-off), so
+// the cost tracker stays honest.
+export async function postChat(messages, route = "chat") {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
-  const res = await fetch("/api/ai/chat", {
+  const res = await fetch(`/api/ai/${route}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Token": token },
     body: JSON.stringify({ messages }),

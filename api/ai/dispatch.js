@@ -28,7 +28,8 @@
 // vercel.json rewrites /api/ai/:action onto it (that rewrite MUST stay
 // ordered before the /(.*) SPA catch-all, or the SPA swallows it again).
 
-import chat from "./_handlers/chat.js";
+import chat, { makeChatHandler } from "./_handlers/chat.js";
+import { MEETING_CHAT_SYSTEM_PROMPT, MEETING_CHAT_TOOLS } from "./_handlers/meetingChatTools.js";
 import generate from "./_handlers/generate.js";
 import prepare from "./_handlers/prepare.js";
 import refine from "./_handlers/refine.js";
@@ -39,7 +40,10 @@ import syncBoard from "./_handlers/syncBoard.js";
 // genuinely needs it; chat shares the same ceiling.
 export const config = { maxDuration: 300 };
 
-const ROUTES = { chat, generate, prepare, refine, "sync-board": syncBoard };
+// Meeting Chat (agenda page) shares Board Chat's handler with its own prompt + tools.
+const meetingChat = makeChatHandler({ system: MEETING_CHAT_SYSTEM_PROMPT, tools: MEETING_CHAT_TOOLS });
+
+const ROUTES = { chat, generate, prepare, refine, "sync-board": syncBoard, "meeting-chat": meetingChat };
 
 export default async function handler(req, res) {
   // Vercel populates req.query.action from the [action] path segment.

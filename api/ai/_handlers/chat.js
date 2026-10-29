@@ -1,6 +1,6 @@
 // api/ai/_handlers/chat.js
 //
-// Board Chat — ONE model call per request. The browser owns the tool loop: it
+// Board Chat and Meeting Chat — ONE model call per request. The browser owns the tool loop: it
 // runs the tools, appends tool_result blocks and POSTs again. Stateless; the
 // browser sends the full append-only history every call (thinking blocks
 // included, unchanged — required for preserved thinking on current models).
@@ -13,7 +13,15 @@ import { SYSTEM_PROMPT, TOOLS } from "./chatTools.js";
 
 const MAX_MESSAGES_CHARS = 2_000_000;
 
-export default async function handler(req, res) {
+// One handler per chat: same request contract, model and errors; each chat
+// brings its own system prompt and tool schemas.
+export function makeChatHandler({ system, tools }) {
+  return (req, res) => handleChat(req, res, { system, tools });
+}
+
+export default makeChatHandler({ system: SYSTEM_PROMPT, tools: TOOLS });
+
+async function handleChat(req, res, { system, tools }) {
   if (applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   if (!(await requireAuth(req, res))) return;
@@ -51,8 +59,8 @@ export default async function handler(req, res) {
       max_tokens: 16000,
       output_config: { effort: "medium" },
       cache_control: { type: "ephemeral" },
-      system: SYSTEM_PROMPT,
-      tools: TOOLS,
+      system,
+      tools,
       tool_choice: { type: "auto" },
       messages,
     });

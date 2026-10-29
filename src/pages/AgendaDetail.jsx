@@ -36,6 +36,7 @@ import ArrowDropDown from "@mui/icons-material/ArrowDropDown";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import Check from "@mui/icons-material/Check";
 import ExpandMore from "@mui/icons-material/ExpandMore";
+import ForumOutlined from "@mui/icons-material/ForumOutlined";
 import HistoryIcon from "@mui/icons-material/History";
 import MoreVert from "@mui/icons-material/MoreVert";
 import PersonAdd from "@mui/icons-material/PersonAdd";
@@ -46,6 +47,7 @@ import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
 import { getContrastText, getTextColor, hexToRgba } from "../theme/pillColors.js";
 import SyncMeetingDialog from "../components/SyncMeetingDialog.jsx";
+import MeetingChatPanel, { MEETING_CHAT_WIDTH } from "../components/MeetingChatPanel.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
 import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
@@ -1654,6 +1656,8 @@ export default function AgendaDetail() {
   const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [syncMeetingOpen, setSyncMeetingOpen] = useState(false);
+  // Meeting Chat stays open across agendas and visits, like Board Chat.
+  const [meetingChatOpen, setMeetingChatOpen] = useLocalStorage("vm-meeting-chat-open", false);
   // Overview topics this viewer has collapsed. Window-local by design: never
   // persisted, never shared, so everything opens expanded on load.
   const [collapsedTopicIds, setCollapsedTopicIds] = useState(() => new Set());
@@ -1851,7 +1855,15 @@ export default function AgendaDetail() {
   return (
     <Box
       className={presentationClassName(presentationMode)}
-      sx={{ maxWidth: 1280, mx: "auto", pb: 8, ...presentationModeSx }}
+      sx={{
+        maxWidth: 1280,
+        mx: "auto",
+        pb: 8,
+        // The Meeting Chat drawer overlays the right edge; keep the agenda clear of it.
+        pr: meetingChatOpen ? { md: `${MEETING_CHAT_WIDTH}px` } : 0,
+        transition: "padding 0.2s",
+        ...presentationModeSx,
+      }}
     >
       <LiveblocksRoot>
         <RoomProvider id={agendaRoomId(agendaId)} initialPresence={{}}>
@@ -1881,6 +1893,15 @@ export default function AgendaDetail() {
             active={presentationMode}
             onToggle={() => setPresentationMode(!presentationMode)}
           />
+          <Button
+            size="small"
+            variant={meetingChatOpen ? "contained" : "text"}
+            startIcon={<ForumOutlined fontSize="small" />}
+            sx={{ textTransform: "none", ...(meetingChatOpen ? {} : { color: t.ink3 }) }}
+            onClick={() => setMeetingChatOpen(!meetingChatOpen)}
+          >
+            Meeting Chat
+          </Button>
           {isRoleAdmin && <SyncMeetingHeaderButton onOpen={() => setSyncMeetingOpen(true)} />}
           <Tooltip title="Version history">
             <IconButton
@@ -2105,6 +2126,24 @@ export default function AgendaDetail() {
           categories={categories}
           tags={tags}
           onClose={() => setSyncMeetingOpen(false)}
+        />
+      )}
+      {user && (
+        <MeetingChatPanel
+          // One conversation per agenda: remount when the route moves to another.
+          key={agendaId}
+          open={meetingChatOpen}
+          onClose={() => setMeetingChatOpen(false)}
+          agendaId={agendaId}
+          agenda={agenda}
+          topics={topics}
+          isMaster={isMaster}
+          orgs={orgs || []}
+          orgName={orgById[organizationId]?.name || organizationId}
+          organizationId={organizationId}
+          items={allItems || []}
+          users={users || []}
+          user={user}
         />
       )}
           </CollabFlushRegistryProvider>
