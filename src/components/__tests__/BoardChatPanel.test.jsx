@@ -9,6 +9,16 @@ vi.mock("../../lib/boardChat/api.js", () => ({ postChat: (...a) => postChat(...a
 vi.mock("../../lib/boardChat/tools.js", () => ({ runReadTool: (...a) => runReadTool(...a) }));
 vi.mock("../../lib/itemWrites.js", () => ({ applyChangeSet: (...a) => applyChangeSet(...a) }));
 
+// jsdom's localStorage is not usable under this Node version; the panel
+// persists its conversation there.
+const store = new Map();
+vi.stubGlobal("localStorage", {
+  getItem: (k) => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => store.set(k, String(v)),
+  removeItem: (k) => store.delete(k),
+  clear: () => store.clear(),
+});
+
 const { default: BoardChatPanel } = await import("../BoardChatPanel.jsx");
 const { planBoardFilter } = await import("../../lib/boardChat/boardFilter.js");
 
@@ -49,6 +59,7 @@ function ask(text) {
 }
 
 beforeEach(() => {
+  store.clear();
   postChat.mockReset();
   runReadTool.mockReset();
   applyChangeSet.mockReset();
@@ -158,5 +169,53 @@ describe("BoardChatPanel", { timeout: 60000 }, () => {
     expect(await screen.findByText("no such status")).toBeTruthy();
     expect(toolResultIn(1)).toMatchObject({ is_error: true, content: "Unknown status 3 in columnFilters.statusId" });
     expect(applyPlan).not.toHaveBeenCalled();
+  });
+
+  it("the conversation and draft come back after leaving the page; the model keeps its history", async () => {
+    postChat.mockResolvedValueOnce(reply("first answer"));
+    const first = renderPanel();
+    ask("first question");
+    expect(await screen.findByText("first answer")).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("Ask Board Chat…"), { target: { value: "half-typed" } });
+    first.unmount();
+
+    postChat.mockResolvedValueOnce(reply("second answer"));
+    renderPanel();
+    expect(screen.getByText("first question")).toBeTruthy();
+    expect(screen.getByText("first answer")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ask Board Chat…").value).toBe("half-typed");
+    ask("follow-up");
+    expect(await screen.findByText("second answer")).toBeTruthy();
+    const sent = postChat.mock.calls[1][0];
+    expect(sent.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+    expect(sent[2].content).toBe("follow-up");
+  });
+
+  it("a turn cut off by leaving the page comes back marked interrupted, outside the model history", async () => {
+    postChat.mockReturnValueOnce(new Promise(() => {}));
+    const first = renderPanel();
+    ask("slow question");
+    expect(await screen.findByText("Thinking…")).toBeTruthy();
+    first.unmount();
+
+    postChat.mockResolvedValueOnce(reply("fresh"));
+    renderPanel();
+    expect(screen.getByText("Interrupted when you left the page — ask again.")).toBeTruthy();
+    ask("again");
+    expect(await screen.findByText("fresh")).toBeTruthy();
+    // No history was stored, so this is a first message again: snapshot + text.
+    expect(postChat.mock.calls[1][0]).toHaveLength(1);
+  });
+
+  it("New chat clears the stored conversation", async () => {
+    postChat.mockResolvedValueOnce(reply("an answer"));
+    const first = renderPanel();
+    ask("q");
+    expect(await screen.findByText("an answer")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    first.unmount();
+    renderPanel();
+    expect(screen.queryByText("an answer")).toBeNull();
+    expect(store.size).toBe(0);
   });
 });

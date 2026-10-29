@@ -1,7 +1,8 @@
 // src/components/BoardChatPanel.jsx
 //
-// Board Chat drawer. Holds the conversation in memory (cleared by New chat or
-// reload). The board snapshot goes in the first message; tools run here.
+// Board Chat drawer. The conversation and unsent draft persist per user in
+// localStorage (lib/boardChat/persist.js) until New chat or 12 idle hours.
+// The board snapshot goes in the first message; tools run here.
 // propose_changes opens BoardChatChangesModal and waits for Apply / Cancel.
 import { useEffect, useRef, useState } from "react";
 import { serverTimestamp } from "firebase/firestore";
@@ -24,6 +25,7 @@ import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
 import { buildReviewRows, toChangeSet } from "../lib/boardChat/proposal.js";
 import { buildBoardSnapshot, itemRef, makeLookups, memberName, toMillis } from "../lib/boardChat/snapshot.js";
+import { clearChat, entriesToStore, loadChat, saveChat } from "../lib/boardChat/persist.js";
 import { runReadTool } from "../lib/boardChat/tools.js";
 import appTheme from "../theme/index.js";
 
@@ -54,13 +56,16 @@ function contextBlock(snapshotText, user, users) {
 const textOf = (content) => (Array.isArray(content) ? content.filter((b) => b.type === "text").map((b) => b.text).join("\n\n") : "");
 
 export default function BoardChatPanel({ open, onClose, items, users, orgs, categories, tags, user, onApplyFilter }) {
-  const [history, setHistory] = useState([]);
-  const [entries, setEntries] = useState([]);
-  const [input, setInput] = useState("");
+  const storeKey = `vm-board-chat:${user.uid}`;
+  const [restored] = useState(() => loadChat(storeKey));
+  const [history, setHistory] = useState(restored?.history ?? []);
+  const [entries, setEntries] = useState(restored?.entries ?? []);
+  const [input, setInput] = useState(restored?.draft ?? "");
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(null);
   const [pending, setPending] = useState(null);
-  const seenRef = useRef({});
+  const [storageFull, setStorageFull] = useState(false);
+  const seenRef = useRef(restored?.seen ?? {});
   const pendingSeenRef = useRef(new Set());
   const listRef = useRef(null);
   const proposalCount = useRef(0);
@@ -90,6 +95,15 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
       }
     }
   }, [items]);
+
+  // The conversation and the unsent draft outlive the page (see persist.js).
+  useEffect(() => {
+    if (entries.length === 0 && history.length === 0 && !input) {
+      clearChat(storeKey);
+      return;
+    }
+    setStorageFull(!saveChat(storeKey, { history, entries: entriesToStore(entries, busy), seen: seenRef.current, draft: input }));
+  }, [storeKey, history, entries, input, busy]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -272,6 +286,12 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
         ))}
         {busy && <Typography variant="caption" color="text.secondary">Thinking…</Typography>}
       </Box>
+
+      {storageFull && (
+        <Typography variant="caption" color="text.secondary" sx={{ px: 2 }}>
+          This conversation is too long to keep after you leave the page — start a New chat to keep the next one.
+        </Typography>
+      )}
 
       <Stack direction="row" spacing={1} sx={{ p: 1.5, borderTop: 1, borderColor: "divider" }}>
         <TextField

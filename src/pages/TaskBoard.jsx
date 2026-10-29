@@ -179,7 +179,8 @@ export default function TaskBoard() {
   // to keep a stable identity for the memos below.
   const activeViewJson = JSON.stringify(activeView(viewStore));
   const aiFilter = useMemo(() => aiFilterOfView(JSON.parse(activeViewJson)), [activeViewJson]);
-  const [chatOpen, setChatOpen] = useState(false);
+  // Board Chat stays open across visits, like its persisted conversation.
+  const [chatOpen, setChatOpen] = useLocalStorage("vm-board-chat-open", false);
 
   // Group expanded state.
   const [activeExpanded, setActiveExpanded] = useState(true);
