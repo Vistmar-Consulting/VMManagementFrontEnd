@@ -17,6 +17,8 @@ vi.mock("@liveblocks/yjs", () => ({ getYjsProviderForRoom: () => provider }));
 // jsdom's localStorage is not usable under this Node version.
 const store = new Map();
 vi.stubGlobal("localStorage", {
+  get length() { return store.size; },
+  key: (i) => [...store.keys()][i] ?? null,
   getItem: (k) => (store.has(k) ? store.get(k) : null),
   setItem: (k, v) => store.set(k, String(v)),
   removeItem: (k) => store.delete(k),
@@ -94,6 +96,40 @@ describe("MeetingChatPanel", { timeout: 60000 }, () => {
     const result = toolResult(1);
     expect(result.applied).toEqual([{ index: 0, op: "update_topic", topic: "Website" }]);
     expect(result.declined).toEqual([{ index: 1, op: "delete_topic", why: "unticked by the user" }]);
+  });
+
+  it("returns a created topic's id to the model", async () => {
+    postChat
+      .mockResolvedValueOnce(toolUse({ summary: "Add", ops: [{ op: "create_topic", name: "Budget", reason: "asked" }] }))
+      .mockResolvedValueOnce(reply("Added."));
+    applyAgendaPlan.mockResolvedValue(["newTopic1"]);
+    renderPanel();
+    ask("add a Budget topic");
+    expect(await screen.findByText("Review agenda changes")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Apply 1 change" }));
+    expect(await screen.findByText("Added.")).toBeTruthy();
+    expect(toolResult(1).applied).toEqual([{ index: 0, op: "create_topic", topic: "Budget", topicId: "newTopic1" }]);
+  });
+
+  it("re-shows the review when a ticked topic changed while it was open", async () => {
+    postChat.mockResolvedValueOnce(toolUse({ summary: "s", ops: [{ op: "update_topic", topicId: "t1", name: "Site", reason: "r" }] }));
+    const view = renderPanel();
+    ask("rename");
+    expect(await screen.findByText("Review agenda changes")).toBeTruthy();
+    const edited = topics.map((tp) => (tp.id === "t1" ? { ...tp, updatedAt: new Date(999) } : tp));
+    view.rerender(
+      <ThemeProvider theme={createTheme()}>
+        <MeetingChatPanel
+          open onClose={vi.fn()} agendaId="ag1" agenda={agenda} topics={edited} isMaster={false}
+          orgs={[{ id: "bmd", name: "Bryn Mawr" }]} orgName="Bryn Mawr" organizationId="bmd"
+          items={[]} users={[{ id: "u1", displayName: "Andy" }]} user={{ uid: "u1", email: "a@x.com" }}
+        />
+      </ThemeProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Apply 1 change" }));
+    expect(await screen.findByText(/Changed by someone else while you were reviewing: Website/)).toBeTruthy();
+    expect(applyAgendaPlan).not.toHaveBeenCalled();
+    expect(screen.getByRole("checkbox", { name: "Rename “Website” to “Site”" }).checked).toBe(false);
   });
 
   it("refuses to apply while the live editor is disconnected, writing nothing", async () => {

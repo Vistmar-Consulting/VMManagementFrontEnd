@@ -13,6 +13,8 @@ vi.mock("../../lib/itemWrites.js", () => ({ applyChangeSet: (...a) => applyChang
 // persists its conversation there.
 const store = new Map();
 vi.stubGlobal("localStorage", {
+  get length() { return store.size; },
+  key: (i) => [...store.keys()][i] ?? null,
   getItem: (k) => (store.has(k) ? store.get(k) : null),
   setItem: (k, v) => store.set(k, String(v)),
   removeItem: (k) => store.delete(k),

@@ -6,6 +6,9 @@ import { sanitizeHtml } from "../agendaHtml.js";
 import { toMillis } from "../boardChat/snapshot.js";
 import { OPEN_FLOOR } from "./context.js";
 
+// The Open Floor's baseline is its content (see context.js seenOf).
+const openFloorStale = (seen, currentHtml) => typeof seen[OPEN_FLOOR] === "string" && seen[OPEN_FLOOR] !== currentHtml;
+
 const OPS = new Set(["create_topic", "update_topic", "delete_topic", "move_topic", "set_open_floor"]);
 const START = "start";
 
@@ -27,7 +30,8 @@ export function buildReviewRows(ops, { topics, agenda, isMaster, orgIds, seen = 
       if (typeof raw.bodyHtml !== "string") return fail("set_open_floor needs bodyHtml");
       if (openFloorBy !== null) return fail(`The Open Floor is already rewritten by change ${openFloorBy + 1}`);
       openFloorBy = index;
-      return { ...row, beforeHtml: sanitizeHtml(agenda?.openFloorHtml || ""), afterHtml: sanitizeHtml(raw.bodyHtml), stale: stale(OPEN_FLOOR, agenda?.updatedAt) };
+      const beforeHtml = sanitizeHtml(agenda?.openFloorHtml || "");
+      return { ...row, beforeHtml, afterHtml: sanitizeHtml(raw.bodyHtml), stale: openFloorStale(seen, beforeHtml) };
     }
 
     if (op === "create_topic") {
@@ -85,13 +89,33 @@ export function buildReviewRows(ops, { topics, agenda, isMaster, orgIds, seen = 
   });
 }
 
+// Staleness again, against the agenda as it is now — the review can stay open
+// while others edit. Returns the rows with `stale` recomputed.
+export function restale(rows, { topics, agenda, seen = {} }) {
+  const live = new Map((topics || []).map((tp) => [tp.id, tp.updatedAt]));
+  const isStale = (id, ts) => seen[id] != null && toMillis(ts) != null && toMillis(ts) > seen[id];
+  return rows.map((r) => {
+    if (!r.ok) return r;
+    if (r.op === "set_open_floor") return { ...r, stale: openFloorStale(seen, sanitizeHtml(agenda?.openFloorHtml || "")) };
+    if (r.topicId && live.has(r.topicId)) return { ...r, stale: isStale(r.topicId, live.get(r.topicId)) };
+    return r;
+  });
+}
+
 // The writes for the ticked, valid rows. A ticked row that depends on an
 // unticked or invalid one fails here rather than half-applying.
 // Returns { creates: [{ name, bodyHtml, sortOrder, organizationId }],
 //           updates: [{ id, patch }], deletes: [id], openFloorHtml: string|null,
 //           liveBodies: { [topicId | "openFloor"]: html } } — liveBodies are
 // the bodies of EXISTING fragments to write into the live editor.
-export function planAgendaWrites(rows, checked, { topics, isMaster }) {
+export function planAgendaWrites(rows, checked, { topics, isMaster, orgs = [] }) {
+  // Master agenda org groups run clients by sortOrder, then Vistamar (internal)
+  // last — Sync Meeting's order. Used to slot a topic whose org has no group yet.
+  const orgRank = (id) => {
+    const o = orgs.find((x) => x.id === id);
+    return [o?.type === "internal" ? 1 : 0, o?.sortOrder ?? 999];
+  };
+  const compareRank = (a, b) => a[0] - b[0] || a[1] - b[1];
   const kept = rows.filter((r) => r.ok && checked.has(r.index));
   const order = (topics || []).map((tp) => ({ id: tp.id, sortOrder: tp.sortOrder ?? 0, organizationId: tp.organizationId || null, placed: false }));
   const indexOf = (id) => order.findIndex((e) => e.id === id);
@@ -104,24 +128,27 @@ export function planAgendaWrites(rows, checked, { topics, isMaster }) {
 
   // Insert after `after` ("start", a topic id, or null = end — the end of the
   // org's group on a master agenda).
-  const insertAt = (entry, after) => {
-    if (after === START) {
-      const first = isMaster ? order.findIndex((e) => e.organizationId === entry.organizationId) : -1;
-      order.splice(first === -1 ? 0 : first, 0, entry);
-      return;
-    }
-    if (after) {
-      const i = indexOf(after);
-      if (i === -1) throw new Error(`Topic ${after} is no longer on the agenda`);
+  const insertAt = (entry, anchor) => {
+    if (anchor && anchor !== START) {
+      const i = indexOf(anchor);
+      if (i === -1) throw new Error(`Topic ${anchor} is no longer on the agenda`);
       order.splice(i + 1, 0, entry);
       return;
     }
-    if (isMaster) {
-      let last = -1;
-      order.forEach((e, i) => { if (e.organizationId === entry.organizationId) last = i; });
-      if (last !== -1) { order.splice(last + 1, 0, entry); return; }
+    if (!isMaster) {
+      if (anchor === START) order.unshift(entry);
+      else order.push(entry);
+      return;
     }
-    order.push(entry);
+    const same = order.flatMap((e, i) => (e.organizationId === entry.organizationId ? [i] : []));
+    if (same.length) {
+      order.splice(anchor === START ? same[0] : same[same.length - 1] + 1, 0, entry);
+      return;
+    }
+    // The org has no group yet: open one before the first group that sorts after it.
+    const rank = orgRank(entry.organizationId);
+    const next = order.findIndex((e) => compareRank(orgRank(e.organizationId), rank) > 0);
+    order.splice(next === -1 ? order.length : next, 0, entry);
   };
 
   // The review can stay open while others edit; a topic removed meanwhile

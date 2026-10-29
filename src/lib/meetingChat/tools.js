@@ -23,12 +23,16 @@ export function topicTasks(topic, items, organizationId) {
   return [...parents, ...live.filter((it) => it.parentId && parentIds.has(it.parentId))];
 }
 
-// Fireflies reads share the Past Meetings card's localStorage caches: a
-// recording's detail and transcript never change once processed.
-async function cached(key, fetcher) {
+// Fireflies reads use the Past Meetings card's localStorage caches when they
+// hold the recording (it never changes once processed). Summaries are small
+// and the card caches them anyway, so a miss is stored; a transcript is large,
+// so a miss is fetched but not stored — the chat's own record already carries
+// what the model read, and expires.
+async function cached(key, fetcher, { store }) {
   const raw = localStorage.getItem(key);
   if (raw) return JSON.parse(raw);
   const data = await fetcher();
+  if (!store) return data;
   try {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (err) {
@@ -40,8 +44,8 @@ async function cached(key, fetcher) {
 
 export const firefliesSource = {
   list: () => firefliesQuery(GQL_MEETING_LIST, { limit: 50, skip: 0 }),
-  detail: (id) => cached(`fireflies-detail-${id}`, () => firefliesQuery(GQL_MEETING_DETAIL, { transcriptId: id })),
-  sentences: (id) => cached(`fireflies-sentences-${id}`, () => firefliesQuery(GQL_TRANSCRIPT_SENTENCES, { transcriptId: id })),
+  detail: (id) => cached(`fireflies-detail-${id}`, () => firefliesQuery(GQL_MEETING_DETAIL, { transcriptId: id }), { store: true }),
+  sentences: (id) => cached(`fireflies-sentences-${id}`, () => firefliesQuery(GQL_TRANSCRIPT_SENTENCES, { transcriptId: id }), { store: false }),
 };
 
 export async function linkedMeetings(firefliesTitles, source) {

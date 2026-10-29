@@ -25,7 +25,7 @@ import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
 import { buildReviewRows, toChangeSet } from "../lib/boardChat/proposal.js";
 import { buildBoardSnapshot, itemRef, makeLookups, memberName, toMillis } from "../lib/boardChat/snapshot.js";
-import { clearChat, entriesToStore, loadChat, saveChat } from "../lib/boardChat/persist.js";
+import { restoreChat, usePersistedChat } from "../lib/boardChat/usePersistedChat.js";
 import { runReadTool } from "../lib/boardChat/tools.js";
 import appTheme from "../theme/index.js";
 
@@ -57,14 +57,13 @@ const textOf = (content) => (Array.isArray(content) ? content.filter((b) => b.ty
 
 export default function BoardChatPanel({ open, onClose, items, users, orgs, categories, tags, user, onApplyFilter }) {
   const storeKey = `vm-board-chat:${user.uid}`;
-  const [restored] = useState(() => loadChat(storeKey));
+  const [restored] = useState(() => restoreChat(storeKey, "vm-board-chat:"));
   const [history, setHistory] = useState(restored?.history ?? []);
   const [entries, setEntries] = useState(restored?.entries ?? []);
-  const [input, setInput] = useState(restored?.draft ?? "");
+  const [input, setInput] = useState(restored.draft);
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(null);
   const [pending, setPending] = useState(null);
-  const [storageFull, setStorageFull] = useState(false);
   const seenRef = useRef(restored?.seen ?? {});
   const pendingSeenRef = useRef(new Set());
   const listRef = useRef(null);
@@ -97,13 +96,18 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
   }, [items]);
 
   // The conversation and the unsent draft outlive the page (see persist.js).
+  const { storageFull } = usePersistedChat(storeKey, { history, entries, busy, seenRef, input });
+
+  // Leaving the board ends a running turn: no further (billed) model calls.
+  // Set in the effect body so StrictMode's mount-unmount-mount leaves it alive.
+  const mountedRef = useRef(false);
   useEffect(() => {
-    if (entries.length === 0 && history.length === 0 && !input) {
-      clearChat(storeKey);
-      return;
-    }
-    setStorageFull(!saveChat(storeKey, { history, entries: entriesToStore(entries, busy), seen: seenRef.current, draft: input }));
-  }, [storeKey, history, entries, input, busy]);
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const post = (messages) => (mountedRef.current
+    ? postChat(messages)
+    : Promise.reject(new Error("Stopped — you left the Task Board.")));
 
   useEffect(() => {
     const el = listRef.current;
@@ -197,7 +201,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
       setEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, reply: textOf(lastAssistant?.content), steps: [...(e.baseSteps || []), ...turn.steps], costUsd: (e.baseCost || 0) + turn.costUsd, unpriced: e.unpriced || turn.unpriced } : e)));
     };
     try {
-      const out = await runTurn({ messages, post: postChat, executeTool, onUpdate: update });
+      const out = await runTurn({ messages, post, executeTool, onUpdate: update });
       setHistory(out.messages);
       if (!out.done) setEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, notice: `Stopped after ${MAX_CALLS_PER_TURN} model calls — ask again to continue.` } : e)));
     } catch (err) {

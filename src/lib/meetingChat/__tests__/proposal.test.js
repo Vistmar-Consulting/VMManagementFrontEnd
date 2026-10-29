@@ -1,6 +1,6 @@
 // src/lib/meetingChat/__tests__/proposal.test.js
 import { describe, expect, it } from "vitest";
-import { buildReviewRows, planAgendaWrites } from "../proposal.js";
+import { buildReviewRows, planAgendaWrites, restale } from "../proposal.js";
 
 const topics = [
   { id: "a", name: "Alpha", bodyHtml: "<p>a</p>", sortOrder: 1, updatedAt: new Date(100) },
@@ -8,7 +8,7 @@ const topics = [
   { id: "c", name: "Gamma", bodyHtml: "", sortOrder: 3, updatedAt: new Date(100) },
 ];
 const agenda = { openFloorHtml: "<ul><li>x</li></ul>", updatedAt: new Date(100) };
-const ctx = { topics, agenda, isMaster: false, orgIds: new Set(), seen: { a: 100, b: 100, c: 100, openFloor: 100 } };
+const ctx = { topics, agenda, isMaster: false, orgIds: new Set(), seen: { a: 100, b: 100, c: 100, openFloor: "<ul><li>x</li></ul>" } };
 const all = (rows) => new Set(rows.map((r) => r.index));
 const plan = (ops, c = ctx) => {
   const rows = buildReviewRows(ops, c);
@@ -47,6 +47,26 @@ describe("buildReviewRows", () => {
       { op: "create_topic", name: "N", orgId: "o1", reason: "r" },
     ], m);
     expect(rows.map((r) => r.ok)).toEqual([false, false, false, true]);
+  });
+});
+
+describe("restale", () => {
+  it("flags a row whose topic changed after the review opened", () => {
+    const rows = buildReviewRows([
+      { op: "update_topic", topicId: "a", name: "A2", reason: "r" },
+      { op: "set_open_floor", bodyHtml: "<p>x</p>", reason: "r" },
+    ], ctx);
+    expect(rows.map((r) => r.stale)).toEqual([false, false]);
+    const later = restale(rows, { ...ctx, topics: topics.map((tp) => (tp.id === "a" ? { ...tp, updatedAt: new Date(900) } : tp)) });
+    expect(later.map((r) => r.stale)).toEqual([true, false]);
+  });
+
+  it("the Open Floor is stale only when its content changed, not when the agenda doc was touched", () => {
+    const rows = buildReviewRows([{ op: "set_open_floor", bodyHtml: "<p>x</p>", reason: "r" }], ctx);
+    const renamed = restale(rows, { ...ctx, agenda: { ...agenda, title: "New title", updatedAt: new Date(900) } });
+    expect(renamed[0].stale).toBe(false);
+    const edited = restale(rows, { ...ctx, agenda: { ...agenda, openFloorHtml: "<ul><li>y</li></ul>" } });
+    expect(edited[0].stale).toBe(true);
   });
 });
 
@@ -90,6 +110,26 @@ describe("planAgendaWrites", () => {
     const p = planAgendaWrites(rows, new Set([1]), ctx);
     expect(p.deletes).toEqual([]);
     expect(p.updates).toEqual([{ id: "b", patch: { name: "B2" } }]);
+  });
+
+  it("on a master agenda a topic alone in its org stays in place when moved to the start; a new org's group opens in org order", () => {
+    const orgs = [
+      { id: "o1", sortOrder: 1 }, { id: "o2", sortOrder: 2 }, { id: "o3", sortOrder: 3 },
+      { id: "vistamar", type: "internal", sortOrder: 0 },
+    ];
+    const mt = [
+      { id: "a", organizationId: "o1", sortOrder: 1 },
+      { id: "c", organizationId: "o3", sortOrder: 3 },
+      { id: "v", organizationId: "vistamar", sortOrder: 4 },
+    ];
+    const m = { ...ctx, isMaster: true, orgs, orgIds: new Set(orgs.map((o) => o.id)), topics: mt, seen: {} };
+    const moved = plan([{ op: "move_topic", topicId: "c", afterTopicId: "start", reason: "r" }], m);
+    // Back between o1 (1) and Vistamar (4) — not to the top of the agenda.
+    expect(moved.updates).toEqual([{ id: "c", patch: { sortOrder: 2.5 } }]);
+    const created = plan([{ op: "create_topic", name: "N", orgId: "o2", reason: "r" }], m);
+    expect(created.creates[0].sortOrder).toBe(2);
+    const startNew = plan([{ op: "create_topic", name: "N", orgId: "o2", afterTopicId: "start", reason: "r" }], m);
+    expect(startNew.creates[0].sortOrder).toBe(2);
   });
 
   it("on a master agenda a new topic with no anchor goes to the end of its org's group", () => {

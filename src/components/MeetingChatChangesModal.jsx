@@ -57,8 +57,8 @@ function redlineOf(r) {
   return null;
 }
 
-export default function MeetingChatChangesModal({ summary, rows, orgName, othersCount = 0, onApply, onCancel, applying = false, error = null }) {
-  const [checked, setChecked] = useState(() => new Set(rows.filter((r) => r.ok && !r.stale).map((r) => r.index)));
+export default function MeetingChatChangesModal({ summary, rows, initialChecked, orgName, othersCount = 0, onApply, onCancel, applying = false, error = null }) {
+  const [checked, setChecked] = useState(() => initialChecked ?? new Set(rows.filter((r) => r.ok && !r.stale).map((r) => r.index)));
   const toggle = (i) => setChecked((prev) => {
     const next = new Set(prev);
     if (next.has(i)) next.delete(i); else next.add(i);

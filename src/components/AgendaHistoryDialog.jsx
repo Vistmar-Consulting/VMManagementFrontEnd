@@ -3,6 +3,7 @@
 // revertible (restoreAgendaVersion snapshots the current state first).
 import { useMemo, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -19,6 +20,9 @@ import {
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { format } from "date-fns";
 import { orderBy } from "firebase/firestore";
+import { getYjsProviderForRoom } from "@liveblocks/yjs";
+import { useRoom } from "../lib/liveblocks.js";
+import { writeTopicBodies } from "./editor/topicBodyYjs.js";
 
 import { useCollection } from "../hooks/useCollection.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -64,6 +68,10 @@ export default function AgendaHistoryDialog({ agendaId, onClose }) {
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null); // a version doc being previewed
+  const [error, setError] = useState(null);
+  // Rendered inside the agenda's RoomProvider: a restore writes the live editor.
+  const room = useRoom();
+  const yProvider = useMemo(() => getYjsProviderForRoom(room), [room]);
 
   const saveVersion = async () => {
     setBusy(true);
@@ -76,11 +84,21 @@ export default function AgendaHistoryDialog({ agendaId, onClose }) {
   };
 
   const restore = async (versionId) => {
+    // Restored bodies go into the live editor too (its content wins over
+    // Firestore), so refuse before writing anything if it isn't connected.
+    if (!yProvider.synced) {
+      setError("Live editor not connected — reload the agenda and retry.");
+      return;
+    }
     if (!window.confirm("Restore this version? Your current agenda is saved as a version first, so you can undo.")) return;
     setBusy(true);
+    setError(null);
     try {
-      await restoreAgendaVersion(agendaId, versionId, { uid: user?.uid || null });
+      const bodies = await restoreAgendaVersion(agendaId, versionId, { uid: user?.uid || null });
+      writeTopicBodies(yProvider.getYDoc(), bodies);
       onClose();
+    } catch (err) {
+      setError(`Restore failed: ${err.message}`);
     } finally {
       setBusy(false);
     }
@@ -96,6 +114,7 @@ export default function AgendaHistoryDialog({ agendaId, onClose }) {
     <Dialog open onClose={busy ? undefined : onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pb: 1 }}>Version history</DialogTitle>
       <DialogContent dividers>
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
         {preview ? (
           <Box>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>

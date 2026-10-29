@@ -26,11 +26,21 @@ export function agendaView({ agenda, topics, orgs = [], isMaster }) {
   };
 }
 
+// Topics are compared by updatedAt (null = a write still waiting on its server
+// timestamp). The Open Floor is compared by content: its timestamp is the
+// agenda doc's, which a title rename also bumps.
 export function seenOf({ agenda, topics }) {
   return {
     ...Object.fromEntries((topics || []).map((tp) => [tp.id, toMillis(tp.updatedAt)])),
-    [OPEN_FLOOR]: toMillis(agenda?.updatedAt),
+    [OPEN_FLOOR]: sanitizeHtml(agenda?.openFloorHtml || ""),
   };
+}
+
+// Merge a fresh read into the baseline, keeping known values over pending nulls.
+export function mergeSeen(seen, fresh) {
+  const out = { ...seen };
+  for (const [id, v] of Object.entries(fresh)) if (v != null) out[id] = v;
+  return out;
 }
 
 export function buildAgendaContext({ agenda, topics, orgs = [], orgName, isMaster, user, users = [] }) {
@@ -61,5 +71,5 @@ export function buildAgendaContext({ agenda, topics, orgs = [], orgName, isMaste
     "--- OPEN FLOOR",
     view.openFloorHtml || "(empty)",
   ].join("\n");
-  return { text, seen: seenOf({ agenda, topics }) };
+  return { text, seen: mergeSeen({}, seenOf({ agenda, topics })) };
 }

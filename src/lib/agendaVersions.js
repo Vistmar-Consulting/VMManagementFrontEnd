@@ -34,6 +34,8 @@ export async function snapshotAgenda(agendaId, { source = "manual", label = null
       sortOrder: t.sortOrder ?? 0,
       categoryIds: t.categoryIds ?? [],
       tagIds: t.tagIds ?? [],
+      // The master agenda groups topics by organization.
+      organizationId: t.organizationId ?? null,
     };
   });
   const snapshot = {
@@ -53,6 +55,9 @@ export async function snapshotAgenda(agendaId, { source = "manual", label = null
 
 // Restore a version: first snapshots the CURRENT state (so a restore is itself
 // revertible), then overwrites the agenda content + syncs topics by id.
+// Returns the restored bodies by fragment key (topic id / "openFloor"): the
+// live editor's content wins over Firestore once it has text, so the caller
+// must write these into the room (writeTopicBodies) or the restore comes undone.
 export async function restoreAgendaVersion(agendaId, versionId, { uid = null } = {}) {
   await snapshotAgenda(agendaId, { source: "pre-restore", uid });
 
@@ -85,6 +90,8 @@ export async function restoreAgendaVersion(agendaId, versionId, { uid = null } =
         sortOrder: t.sortOrder ?? 0,
         categoryIds: t.categoryIds ?? [],
         tagIds: t.tagIds ?? [],
+        // Versions saved before organizationId was captured leave it as is.
+        ...(t.organizationId !== undefined ? { organizationId: t.organizationId } : {}),
         updatedAt: serverTimestamp(),
         updatedByUid: uid,
       },
@@ -92,4 +99,8 @@ export async function restoreAgendaVersion(agendaId, versionId, { uid = null } =
     );
   });
   await batch.commit();
+  return {
+    ...Object.fromEntries(snapTopics.map((t) => [t.id, t.bodyHtml ?? ""])),
+    openFloor: snap.openFloorHtml ?? "",
+  };
 }

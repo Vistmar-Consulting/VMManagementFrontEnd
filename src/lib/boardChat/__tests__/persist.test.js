@@ -1,10 +1,12 @@
 // src/lib/boardChat/__tests__/persist.test.js
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CHAT_TTL_MS, INTERRUPTED_NOTICE, clearChat, entriesToStore, loadChat, saveChat } from "../persist.js";
+import { CHAT_TTL_MS, INTERRUPTED_NOTICE, clearChat, entriesToStore, loadChat, purgeExpiredChats, saveChat } from "../persist.js";
 
 // jsdom's localStorage is not usable under this Node version.
 const store = new Map();
 const storage = {
+  get length() { return store.size; },
+  key: (i) => [...store.keys()][i] ?? null,
   getItem: (k) => (store.has(k) ? store.get(k) : null),
   setItem: (k, v) => store.set(k, String(v)),
   removeItem: (k) => store.delete(k),
@@ -28,6 +30,21 @@ describe("chat persistence", () => {
     expect(loadChat("k", CHAT_TTL_MS)).toEqual({ draft: "x" });
     expect(loadChat("k", CHAT_TTL_MS + 1)).toBeNull();
     expect(localStorage.getItem("k")).toBeNull();
+  });
+
+  it("discards a corrupt record instead of throwing", () => {
+    localStorage.setItem("k", "{not json");
+    expect(loadChat("k")).toBeNull();
+    expect(localStorage.getItem("k")).toBeNull();
+  });
+
+  it("purges expired records under a prefix, leaving live ones and other keys", () => {
+    saveChat("vm-meeting-chat:u:a1", { draft: "old" }, 0);
+    saveChat("vm-meeting-chat:u:a2", { draft: "new" }, CHAT_TTL_MS);
+    localStorage.setItem("vm-meeting-chat:u:a3", "garbage");
+    saveChat("other", { draft: "x" }, 0);
+    purgeExpiredChats("vm-meeting-chat:", CHAT_TTL_MS + 1);
+    expect([...store.keys()].sort()).toEqual(["other", "vm-meeting-chat:u:a2"]);
   });
 
   it("clears", () => {

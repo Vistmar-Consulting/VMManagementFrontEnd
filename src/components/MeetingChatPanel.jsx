@@ -17,17 +17,16 @@ import { writeTopicBodies } from "./editor/topicBodyYjs.js";
 import { useOthers, useRoom } from "../lib/liveblocks.js";
 import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
-import { clearChat, entriesToStore, loadChat, saveChat } from "../lib/boardChat/persist.js";
+import { restoreChat, usePersistedChat } from "../lib/boardChat/usePersistedChat.js";
 import { makeLookups } from "../lib/boardChat/snapshot.js";
 import { applyAgendaPlan } from "../lib/meetingChat/apply.js";
-import { OPEN_FLOOR, buildAgendaContext, seenOf } from "../lib/meetingChat/context.js";
-import { buildReviewRows, planAgendaWrites } from "../lib/meetingChat/proposal.js";
+import { OPEN_FLOOR, buildAgendaContext, mergeSeen, seenOf } from "../lib/meetingChat/context.js";
+import { buildReviewRows, planAgendaWrites, restale } from "../lib/meetingChat/proposal.js";
 import { firefliesSource, runMeetingReadTool } from "../lib/meetingChat/tools.js";
 import appTheme from "../theme/index.js";
 
 export const MEETING_CHAT_WIDTH = 420;
 const TOP = appTheme.appBar.height;
-const post = (messages) => postChat(messages, "meeting-chat");
 const textOf = (content) => (Array.isArray(content) ? content.filter((b) => b.type === "text").map((b) => b.text).join("\n\n") : "");
 
 const EXAMPLES = [
@@ -39,14 +38,13 @@ const EXAMPLES = [
 
 export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topics, isMaster, orgs, orgName, organizationId, items, users, user }) {
   const storeKey = `vm-meeting-chat:${user.uid}:${agendaId}`;
-  const [restored] = useState(() => loadChat(storeKey));
-  const [history, setHistory] = useState(restored?.history ?? []);
-  const [entries, setEntries] = useState(restored?.entries ?? []);
-  const [input, setInput] = useState(restored?.draft ?? "");
+  const [restored] = useState(() => restoreChat(storeKey, "vm-meeting-chat:"));
+  const [history, setHistory] = useState(restored.history ?? []);
+  const [entries, setEntries] = useState(restored.entries ?? []);
+  const [input, setInput] = useState(restored.draft);
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(null);
   const [pending, setPending] = useState(null);
-  const [storageFull, setStorageFull] = useState(false);
   const seenRef = useRef(restored?.seen ?? {});
   const pendingSeenRef = useRef(new Set());
   const listRef = useRef(null);
@@ -65,13 +63,19 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
   const total = entries.reduce((s, e) => s + (e.costUsd || 0), 0);
   const anyUnpriced = entries.some((e) => e.unpriced);
 
+  const { storageFull } = usePersistedChat(storeKey, { history, entries, busy, seenRef, input });
+
+  // Leaving the agenda ends a running turn: no further (billed) model calls.
+  // Set in the effect body, not the ref's initial value, so StrictMode's
+  // mount-unmount-mount leaves it alive.
+  const mountedRef = useRef(false);
   useEffect(() => {
-    if (entries.length === 0 && history.length === 0 && !input) {
-      clearChat(storeKey);
-      return;
-    }
-    setStorageFull(!saveChat(storeKey, { history, entries: entriesToStore(entries, busy), seen: seenRef.current, draft: input }));
-  }, [storeKey, history, entries, input, busy]);
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const post = (messages) => (mountedRef.current
+    ? postChat(messages, "meeting-chat")
+    : Promise.reject(new Error("Stopped — you left the agenda.")));
 
   // A null updatedAt is a write still waiting on its server timestamp.
   const settleSeen = () => {
@@ -113,18 +117,42 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
       setPending((p) => ({ ...p, error: "Live editor not connected — reload the agenda and retry." }));
       return;
     }
+    // Someone may have edited a ticked topic while the review was open: show
+    // the review again with it flagged and unticked (the modal remounts).
+    const fresh = restale(rows, { topics: latest.current.topics, agenda: latest.current.agenda, seen: seenRef.current });
+    const newlyStale = fresh.filter((r) => r.stale && checked.has(r.index) && !rows[r.index].stale);
+    if (newlyStale.length) {
+      proposalCount.current += 1;
+      setPending((p) => ({
+        ...p,
+        id: proposalCount.current,
+        rows: fresh,
+        // Keep the user's other choices; only the newly stale rows untick.
+        checked: new Set([...checked].filter((i) => !newlyStale.some((r) => r.index === i))),
+        error: `Changed by someone else while you were reviewing: ${newlyStale.map((r) => r.topicName || "the Open Floor").join(", ")}. Now unticked — tick to replace their edit, then Apply.`,
+      }));
+      return;
+    }
     setPending((p) => ({ ...p, applying: true, error: null }));
     let plan;
+    let createdIds;
     try {
       // Pending debounced edits land first, so they can't save over the new bodies.
       await flushAll();
-      plan = planAgendaWrites(rows, checked, { topics: latest.current.topics, isMaster: latest.current.isMaster });
-      await applyAgendaPlan(agendaId, plan, user.uid);
+      plan = planAgendaWrites(rows, checked, { topics: latest.current.topics, isMaster: latest.current.isMaster, orgs: latest.current.orgs });
+      createdIds = await applyAgendaPlan(agendaId, plan, user.uid);
     } catch (err) {
       setPending((p) => ({ ...p, applying: false, error: err.message }));
       return;
     }
-    const applied = rows.filter((r) => r.ok && checked.has(r.index)).map((r) => ({ index: r.index, op: r.op, topic: r.topicName || r.name || "Open Floor" }));
+    // plan.creates (and so createdIds) follow the kept create rows in order.
+    const keptCreates = rows.filter((r) => r.op === "create_topic" && r.ok && checked.has(r.index)).map((r) => r.index);
+    const applied = rows.filter((r) => r.ok && checked.has(r.index)).map((r) => ({
+      index: r.index,
+      op: r.op,
+      topic: r.topicName || r.name || "Open Floor",
+      ...(r.op === "create_topic" ? { topicId: createdIds[keptCreates.indexOf(r.index)] } : {}),
+    }));
     const declined = rows.filter((r) => !(r.ok && checked.has(r.index))).map((r) => ({ index: r.index, op: r.op, why: r.error || "unticked by the user" }));
     // Committed: once the listener delivers their server timestamps, what the
     // model wrote becomes what it has "seen" (its own changes aren't stale).
@@ -155,7 +183,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
   const executeTool = async (name, toolInput) => {
     if (name === "propose_agenda_changes") return proposeChanges(toolInput);
     const out = await runMeetingReadTool(name, toolInput, latest.current);
-    if (name === "get_agenda") seenRef.current = { ...seenRef.current, ...seenOf(latest.current) };
+    if (name === "get_agenda") seenRef.current = mergeSeen(seenRef.current, seenOf(latest.current));
     return out;
   };
 
@@ -287,6 +315,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
           key={pending.id}
           summary={pending.summary}
           rows={pending.rows}
+          initialChecked={pending.checked}
           orgName={(id) => lookups.orgName(id)}
           othersCount={others.length}
           applying={pending.applying}
