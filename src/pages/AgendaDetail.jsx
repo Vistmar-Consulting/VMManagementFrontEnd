@@ -76,7 +76,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { useCollection } from "../hooks/useCollection.js";
 import { useDoc } from "../hooks/useDoc.js";
 import { visibleAttendees } from "../lib/meetingHelpers.js";
-import { SCORECARD_BY_KEY, countScorecards } from "../lib/scorecards.js";
+import { SCORECARD_BY_KEY, countScorecards, countTasksByAssignee } from "../lib/scorecards.js";
 import { agendaRoomId } from "../lib/agendaRoom.js";
 import { sendMeetingPrep, sendScheduleEmail } from "../lib/meetingsApi.js";
 import PastMeetingsCard from "../components/PastMeetingsCard.jsx";
@@ -1073,6 +1073,7 @@ function AttendeesPanel({ attendees, userByEmail, taskCounts, value, onChange, o
     const label = a.name || a.email;
     const emailKey = a.email?.toLowerCase() || null;
     const active = value === emailKey;
+    const count = taskCounts?.[emailKey] ?? 0;
     return (
       <Box
         key={a.email || i}
@@ -1087,7 +1088,8 @@ function AttendeesPanel({ attendees, userByEmail, taskCounts, value, onChange, o
           cursor: "pointer",
           background: active ? t.copperFaint : "transparent",
           border: active ? `1px solid ${t.copper}` : "1px solid transparent",
-          transition: "background 0.15s, border-color 0.15s",
+          opacity: count === 0 && !active ? 0.5 : 1,
+          transition: "background 0.15s, border-color 0.15s, opacity 0.15s",
           "&:hover": { background: active ? t.copperFaint : t.cream2 },
         }}
       >
@@ -1096,7 +1098,7 @@ function AttendeesPanel({ attendees, userByEmail, taskCounts, value, onChange, o
           {label}
         </Typography>
         <Typography sx={{ fontSize: 10, color: t.ink3, ml: 0.5, fontWeight: 600 }}>
-          {(taskCounts?.[a.email?.toLowerCase()] ?? 0) || "—"}
+          {count || "—"}
         </Typography>
       </Box>
     );
@@ -1739,43 +1741,39 @@ export default function AgendaDetail() {
     return out;
   }, [allItems, organizationId, topics]);
 
-  // Meeting Focus sidebar counts — the Task Board's scorecard counts over this
-  // agenda's items, narrowed to the selected attendee.
-  const meetingFocusCounts = useMemo(() => {
+  const matchedTree = useMemo(() => {
     const parents = [];
     const subitemsByParent = {};
     for (const it of allMatchedItems) {
       if (!it.parentId) parents.push(it);
       else (subitemsByParent[it.parentId] ||= []).push(it);
     }
+    return { parents, subitemsByParent };
+  }, [allMatchedItems]);
+
+  // Meeting Focus sidebar counts — the Task Board's scorecard counts over this
+  // agenda's items, narrowed to the selected attendee.
+  const meetingFocusCounts = useMemo(() => {
     const uid = attendeeFilter ? userByEmail[attendeeFilter.toLowerCase()]?.id : null;
     const matches = attendeeFilter
       ? (it) => Boolean(uid) && Array.isArray(it.assigneeIds) && it.assigneeIds.includes(uid)
       : undefined;
-    return countScorecards(parents, subitemsByParent, matches);
-  }, [allMatchedItems, attendeeFilter, userByEmail]);
+    return countScorecards(matchedTree.parents, matchedTree.subitemsByParent, matches);
+  }, [matchedTree, attendeeFilter, userByEmail]);
 
-  // Per-attendee task counts. Resolves attendee.email → user.uid → matched
-  // items where uid ∈ assigneeIds. Unresolved emails (external attendees not
-  // in the users collection) get 0.
+  // Per-attendee task counts over the same tasks as Meeting Focus, narrowed to
+  // the selected Meeting Focus card — so the two panels always agree.
+  // Unresolved emails (external attendees not in the users collection) get 0.
   const attendeeTaskCounts = useMemo(() => {
+    const byUid = countTasksByAssignee(matchedTree.parents, matchedTree.subitemsByParent, meetingFocusFilter);
     const out = {};
     for (const a of visibleAttendees(agenda?.attendees)) {
       const key = a.email?.toLowerCase();
       if (!key) continue;
-      const userRecord = userByEmail[key];
-      if (!userRecord) {
-        out[key] = 0;
-        continue;
-      }
-      let n = 0;
-      for (const it of allMatchedItems) {
-        if (Array.isArray(it.assigneeIds) && it.assigneeIds.includes(userRecord.id)) n += 1;
-      }
-      out[key] = n;
+      out[key] = byUid[userByEmail[key]?.id] || 0;
     }
     return out;
-  }, [allMatchedItems, agenda?.attendees, userByEmail]);
+  }, [matchedTree, meetingFocusFilter, agenda?.attendees, userByEmail]);
 
   if (agendaLoading) {
     return (

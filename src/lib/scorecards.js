@@ -57,13 +57,31 @@ function isDueThisWeek(date) {
 // subitems, not itself. Archived items (and everything under an archived
 // parent) are excluded. `matches` narrows the tasks further (e.g. an assignee).
 export function countScorecards(parents, subitemsByParent, matches = () => true) {
+  const tasks = scorecardTasks(parents, subitemsByParent).filter(matches);
+  return Object.fromEntries(SCORECARDS.map((c) => [c.key, tasks.filter(c.match).length]));
+}
+
+// Per-assignee task counts over the same tasks the scorecards count, narrowed
+// to the selected scorecard — so an assignee's count under a card equals that
+// card's count with the assignee selected. Returns { uid: count }.
+export function countTasksByAssignee(parents, subitemsByParent, scorecardKey = null) {
+  const card = scorecardKey ? SCORECARD_BY_KEY[scorecardKey] : null;
+  const counts = {};
+  for (const task of scorecardTasks(parents, subitemsByParent)) {
+    if (card && !card.match(task)) continue;
+    for (const uid of new Set(task.assigneeIds || [])) counts[uid] = (counts[uid] || 0) + 1;
+  }
+  return counts;
+}
+
+function scorecardTasks(parents, subitemsByParent) {
   const tasks = [];
   for (const parent of parents) {
     if (parent.statusId === ARCHIVE) continue;
     const subs = subitemsByParent[parent.id];
     for (const task of subs?.length ? subs : [parent]) {
-      if (task.statusId !== ARCHIVE && matches(task)) tasks.push(task);
+      if (task.statusId !== ARCHIVE) tasks.push(task);
     }
   }
-  return Object.fromEntries(SCORECARDS.map((c) => [c.key, tasks.filter(c.match).length]));
+  return tasks;
 }
