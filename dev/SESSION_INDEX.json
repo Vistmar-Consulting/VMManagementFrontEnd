@@ -536,6 +536,15 @@
       "summary": "Meeting Agenda editor: text color + highlight color; AI keeps existing colors; external pastes lose colors.",
       "folder": "dev/sessions/v0_4_21_Andrew_AGENDA_TEXT_COLOR/",
       "status": "complete"
+    },
+    {
+      "session_id": "SES-20261028-Andrew-v0.4.22-meeting-chat",
+      "developer": "Andrew",
+      "date": "2026-10-28",
+      "commit_start": "4d97ccb",
+      "summary": "Overnight: Attendees counts follow the Meeting Focus card; Board Chat conversation persists across visits; Meeting Chat (Claude chat on the agenda page that reads Fireflies and edits topics / Open Floor through a review).",
+      "folder": "dev/sessions/v0_4_22_Andrew_MEETING_CHAT/",
+      "status": "active"
     }
   ]
 }
