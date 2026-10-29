@@ -27,7 +27,7 @@ Changing the agenda:
 - On a master agenda (topics grouped by organization), create_topic needs orgId, and a topic stays inside its organization's group.
 - If it is unclear which topic the user means, ask before proposing.
 
-Style: plain text, short. Simple "- " lists are fine; no tables, no headings.`;
+Style: short. The chat panel shows your reply as raw text, so write plain text with no markdown: no **bold**, no _italics_, no # headings, no tables. Simple "- " lists are fine.`;
 
 export const MEETING_CHAT_TOOLS = [
   {
