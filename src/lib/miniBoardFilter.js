@@ -5,8 +5,8 @@ import { SCORECARD_BY_KEY } from "./scorecards.js";
 // and a scorecard. An item matches when it passes both. A parent stays when it
 // or any subitem matches; its subitems narrow to the matches; a parent kept
 // only for a subitem is dimmed; every parent with a matching subitem opens.
-// `assigneeIds`: null = no attendee filter; [] = an attendee with no account,
-// who has no items. `keepIds` always match: items created under the filter
+// `assigneeIds`: null = no attendee filter; otherwise the attendee's assignee
+// id (lib/people.js); [] matches nothing. `keepIds` always match: items created under the filter
 // stay in view.
 export function filterMiniBoard(parents, subitemsByParent, { assigneeIds = null, scorecardKey = null, keepIds } = {}) {
   const card = scorecardKey ? SCORECARD_BY_KEY[scorecardKey] : null;

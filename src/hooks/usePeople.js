@@ -12,8 +12,11 @@ export function usePeople(users, orgs) {
   const [membersByOrg, setMembersByOrg] = useState({});
 
   useEffect(() => {
-    if (!orgKey) return undefined;
-    const unsubs = orgKey.split(",").map((orgId) => onSnapshot(
+    const orgIds = orgKey ? orgKey.split(",") : [];
+    // Drop a removed org's contacts.
+    setMembersByOrg((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => orgIds.includes(id))));
+    if (!orgIds.length) return undefined;
+    const unsubs = orgIds.map((orgId) => onSnapshot(
       collection(db, "organizations", orgId, "members"),
       (snap) => setMembersByOrg((prev) => ({ ...prev, [orgId]: snap.docs.map((d) => ({ id: d.id, ...d.data() })) })),
       // A directory that can't be read leaves that org's contacts out of the

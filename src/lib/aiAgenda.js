@@ -26,6 +26,7 @@ import { auth, db } from "../firebase.js";
 import { firefliesQuery, GQL_MEETING_LIST, GQL_MEETING_DETAIL } from "./fireflies.js";
 import { sanitizeHtml } from "./agendaHtml.js";
 import { agendaEditStamp } from "./agendaEdits.js";
+import { coinedTagOrg } from "./tagScope.js";
 import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
@@ -486,6 +487,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     .sort((a, b) => a.sortOrder - b.sortOrder);
   const topicPlan = planTopicWrites(currentTopics, proposal.topics || [], sel.deleteTopicIds || []);
   const curBodyById = new Map(curTopics.docs.map((d) => [d.id, sanitizeHtml(d.data().bodyHtml || "")]));
+  const curOrgById = new Map(curTopics.docs.map((d) => [d.id, d.data().organizationId || null]));
   // Fragment key → the body written to Firestore: retained topic ids, plus
   // "openFloor" when it changed. Returned so the caller can write the same
   // bodies into the live Yjs fragments.
@@ -582,7 +584,9 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     // Fresh-per-attempt accumulators (retries must not double-append).
     updatedBodies = {};
     const newTagWrites = [];
-    const resolveTag = (t) => {
+    // A coined tag is a Client Tag of the org whose topic coined it
+    // (lib/tagScope.js); coined for several orgs at once, it is shared.
+    const resolveTag = (t, orgId) => {
       const name = String(t || "").trim();
       if (!name) return null;
       if (existingTagIds.has(name)) return name;
@@ -591,9 +595,12 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       const id = tagSlug(name);
       if (!id) return null;
       if (existingTagIds.has(id)) return id;
-      if (!newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name });
+      const w = newTagWrites.find((x) => x.id === id) || newTagWrites[newTagWrites.push({ id, name, orgs: new Set() }) - 1];
+      w.orgs.add(orgId || null);
       return id;
     };
+    // A retained topic keeps its Firestore org; a new one carries the proposal's.
+    const topicOrg = (t, id) => (master ? (id ? curOrgById.get(id) : t.organizationId) || null : orgSlug || null);
 
     // Agenda doc: open floor + the anchor (advances only here). A changed Open
     // Floor also goes to its live fragment, which wins over Firestore once it
@@ -614,9 +621,9 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     // org — the structural title-lock. Omitted topics are kept; only the ones a
     // person checked for deletion are deleted.
     const topicRef = (id) => doc(db, "agendas", agendaId, "topics", id);
-    const keysOf = (t) => ({
+    const keysOf = (t, id) => ({
       categoryIds: [...new Set((t.categories || []).map(resolveCat).filter(Boolean))],
-      tagIds: [...new Set((t.tags || []).map(resolveTag).filter(Boolean))],
+      tagIds: [...new Set((t.tags || []).map((tag) => resolveTag(tag, topicOrg(t, id))).filter(Boolean))],
     });
     topicPlan.updates.forEach(({ id, topic, sortOrder }) => {
       // An unchanged body is left alone in Firestore AND the live fragment, so
@@ -627,7 +634,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       tx.update(topicRef(id), {
         ...(bodyChanged ? { bodyHtml } : {}),
         sortOrder,
-        ...keysOf(topic),
+        ...keysOf(topic, id),
         updatedAt: serverTimestamp(),
         updatedByUid: uid,
       });
@@ -743,6 +750,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
         name: w.name,
         color: "#8b5cf6",
         layer: 3,
+        organizationId: coinedTagOrg(w.orgs),
         sortOrder: tagSort + i + 1,
         createdAt: serverTimestamp(),
         createdByUid: uid,

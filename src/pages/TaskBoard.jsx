@@ -43,6 +43,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -80,6 +81,7 @@ import { useItemAttachmentCounts } from "../hooks/useItemAttachmentCounts.js";
 import { useItems } from "../hooks/useItems.js";
 import { usePeople } from "../hooks/usePeople.js";
 import { personName } from "../lib/people.js";
+import { tagsForOrg } from "../lib/tagScope.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
@@ -105,6 +107,8 @@ export default function TaskBoard() {
   const { data: users } = useCollection("users");
   // Assignees: the team plus client contacts (lib/people.js).
   const people = usePeople(users, orgs);
+  // Sync Board's owner matching and proposal picker: only people who can be assigned.
+  const assignablePeople = useMemo(() => people.list.filter((p) => p.assignable), [people]);
 
   // Shared top-level categories + tags (per Andy 2026-05-27 — Org_Id stripped
   // from Console's per-org model). Row dropdowns offer all values; column-
@@ -501,11 +505,12 @@ export default function TaskBoard() {
   const [tagDialog, setTagDialog] = useState(null);
   const [deleteTagConfirm, setDeleteTagConfirm] = useState(null);
 
-  const openAddTag = () => setTagDialog({ mode: "add", name: "", color: TAG_COLORS[0] });
+  // A new tag belongs to the client the board shows; on "All" it is shared.
+  const openAddTag = () => setTagDialog({ mode: "add", name: "", color: TAG_COLORS[0], organizationId: orgFilter === "all" ? null : orgFilter });
   const openEditTag = (tagId) => {
     const tag = tags.find((t) => t.id === tagId);
     if (!tag) return;
-    setTagDialog({ mode: "edit", id: tagId, name: tag.name, color: tag.color });
+    setTagDialog({ mode: "edit", id: tagId, name: tag.name, color: tag.color, organizationId: tag.organizationId ?? null });
   };
   const requestDeleteTag = (tagId) => setDeleteTagConfirm(tagId);
 
@@ -516,12 +521,14 @@ export default function TaskBoard() {
       await addDoc(collection(db, "tags"), {
         name,
         color: tagDialog.color,
+        organizationId: tagDialog.organizationId,
         createdAt: serverTimestamp(),
       });
     } else {
       await updateDoc(doc(db, "tags", tagDialog.id), {
         name,
         color: tagDialog.color,
+        organizationId: tagDialog.organizationId,
       });
     }
     setTagDialog(null);
@@ -626,12 +633,11 @@ export default function TaskBoard() {
     const extra = [...assigned].map((id) => people.byId[id]).filter((p) => p && !pool.includes(p));
     return [...pool, ...extra].map((p) => ({ value: p.id, label: personName(p), color: null }));
   }, [people, orgFilter, allItems]);
-  // Categories + tags are global. Show ALL in the column-header popover so
-  // newly-added values are immediately visible and editable. Per-org
-  // reduction happens implicitly — picking a category not used in the
-  // current visible set just filters to zero items.
+  // Categories are global: show ALL in the column-header popover so newly-
+  // added values are immediately visible and editable. Tags: shared tags plus
+  // the selected client's own; every tag on "All" (lib/tagScope.js).
   const categoryFilterValues = categories.map((c) => ({ value: c.id, label: c.name, color: c.color }));
-  const tagFilterValues = tags.map((t) => ({ value: t.id, label: t.name, color: t.color }));
+  const tagFilterValues = tagsForOrg(tags, orgFilter).map((t) => ({ value: t.id, label: t.name, color: t.color }));
 
   // Group renderer
   const renderGroup = (title, groupKey, groupItems, expanded, setExpanded, color) => (
@@ -1061,6 +1067,18 @@ export default function TaskBoard() {
             variant="outlined"
             margin="normal"
           />
+          <TextField
+            select
+            fullWidth
+            label="Used by"
+            value={tagDialog?.organizationId ?? ""}
+            onChange={(e) => setTagDialog((s) => ({ ...s, organizationId: e.target.value || null }))}
+            helperText="Shared tags show for every client; a client's tag only on that client's items."
+            margin="normal"
+          >
+            <MenuItem value="">Shared (all clients)</MenuItem>
+            {sortedOrgs.map((o) => <MenuItem key={o.id} value={o.id}>{o.name || o.id} only</MenuItem>)}
+          </TextField>
           <Box sx={{ mt: 2 }}>
             <ColorPicker
               color={tagDialog?.color || TAG_COLORS[0]}
@@ -1164,7 +1182,7 @@ export default function TaskBoard() {
       {syncBoardOpen && (
         <SyncBoardDialog
           items={allItems}
-          users={users}
+          users={assignablePeople}
           categories={categories}
           tags={tags}
           onClose={() => setSyncBoardOpen(false)}
@@ -1176,6 +1194,7 @@ export default function TaskBoard() {
         onClose={() => setChatOpen(false)}
         items={allItems}
         users={people.list}
+        people={people}
         orgs={orgs}
         categories={categories}
         tags={tags}

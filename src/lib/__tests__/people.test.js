@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPeople, personName } from "../people.js";
+import { buildPeople, personIds, personName } from "../people.js";
 
 const users = [
   { id: "uAndy", email: "adeemer@vistamarconsulting.com", displayName: "Andy Deemer" },
@@ -38,6 +38,19 @@ describe("buildPeople", () => {
   it("a signed-in teammate is one person, by uid, whatever the directory says", () => {
     expect(people.list.filter((p) => p.email === "adeemer@vistamarconsulting.com")).toHaveLength(1);
     expect(people.idForEmail("ADeemer@vistamarconsulting.com")).toBe("uAndy");
+  });
+
+  it("finds a signed-in person by the email they were assigned by before signing in", () => {
+    expect(people.byId["adeemer@vistamarconsulting.com"]).toBe(people.byId.uAndy);
+    expect(personIds(people.byId.uAndy)).toEqual(["uAndy", "adeemer@vistamarconsulting.com"]);
+    expect(personIds(people.byId["blewis@vistamarconsulting.com"])).toEqual(["blewis@vistamarconsulting.com"]);
+  });
+
+  it("a contact listed under two clients is offered for both, once", () => {
+    const two = buildPeople({ membersByOrg: { a: [{ email: "x@client.com" }], b: [{ email: "X@client.com" }] } });
+    expect(two.list).toHaveLength(1);
+    expect(two.list[0].orgIds).toEqual(["a", "b"]);
+    expect(ids(two.choicesFor("b"))).toEqual(["x@client.com"]);
   });
 
   it("anyone else is assigned by lowercased email", () => {

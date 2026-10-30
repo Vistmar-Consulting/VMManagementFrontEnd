@@ -80,7 +80,7 @@ export function itemRow(item, L, items) {
 // account that can't be assigned (seo@ and other bots).
 function memberRole(u, L) {
   if (u.assignable === false) return "not assignable";
-  if (u.kind === "client") return `client contact, ${L.orgName(u.orgId)}`;
+  if (u.kind === "client") return `client contact, ${u.orgIds.map(L.orgName).join(" / ")}`;
   return "Vistamar team";
 }
 
@@ -97,8 +97,8 @@ export function buildBoardSnapshot({ items, users, orgs, categories, tags }) {
     "CATEGORIES (id | name)",
     ...categories.map((c) => `${c.id} | ${c.name || c.id}`),
     "",
-    "TAGS (id | name)",
-    ...tags.map((t) => `${t.id} | ${t.name || t.id}`),
+    "TAGS (id | name | used by)",
+    ...tags.map((t) => `${t.id} | ${t.name || t.id} | ${t.organizationId ? `${L.orgName(t.organizationId)} only` : "shared"}`),
     "",
     `STATUSES: ${STATUS_OPTIONS.filter((s) => s.id !== 8).map((s) => `${s.id} ${s.name}`).join(", ")}`,
     `PRIORITIES: ${PRIORITY_LIST.map((p) => `${p.id} ${p.label}`).join(", ")}`,

@@ -40,7 +40,8 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import MemberAvatar from "./MemberAvatar.jsx";
 import { PRIORITY_LIST } from "../constants/itemPriorities.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
-import { EMPTY_PEOPLE, personName } from "../lib/people.js";
+import { EMPTY_PEOPLE, personIds, personName } from "../lib/people.js";
+import { tagGroupsForItem } from "../lib/tagScope.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 import { tsToDate } from "../utils/firestoreTime.js";
 
@@ -121,7 +122,8 @@ export default function TaskBoardRow({
   const category = categories.find((c) => c.id === item.categoryId);
   const inheritedCategory = isSubitem ? categories.find((c) => c.id === parentCategoryId) : null;
   const assigneeIds = item.assigneeIds || [];
-  const assignees = assigneeIds.map((id) => people.byId[id]).filter(Boolean);
+  const assignees = [...new Set(assigneeIds.map((id) => people.byId[id]).filter(Boolean))];
+  const isAssigned = (p) => personIds(p).some((id) => assigneeIds.includes(id));
   // The team, then this client's contacts. Someone already assigned who is no
   // longer offered (e.g. seo@) stays listed so they can be removed.
   const choices = people.choicesFor(item.organizationId);
@@ -389,13 +391,14 @@ export default function TaskBoardRow({
               {assigneeGroups.flatMap((g) => [
                 <ListSubheader key={`h-${g.label}`} sx={{ lineHeight: "28px", fontSize: "0.7rem" }}>{g.label}</ListSubheader>,
                 ...g.people.map((p) => {
-                  const selected = assigneeIds.includes(p.id);
+                  const selected = isAssigned(p);
                   return (
                     <MenuItem
                       key={p.id}
                       selected={selected}
                       onClick={() => {
-                        const next = selected ? assigneeIds.filter((id) => id !== p.id) : [...assigneeIds, p.id];
+                        const ids = personIds(p);
+                        const next = selected ? assigneeIds.filter((id) => !ids.includes(id)) : [...assigneeIds, p.id];
                         handleField({ assigneeIds: next });
                       }}
                       sx={{ gap: 1.5 }}
@@ -585,25 +588,29 @@ export default function TaskBoardRow({
                 </Box>
                 {canUpdate && (
                   <Menu anchorEl={tagsAnchor} open={Boolean(tagsAnchor)} onClose={() => setTagsAnchor(null)}>
-                    {tags.map((t) => {
-                      const selected = tagIds.includes(t.id);
-                      return (
-                        <MenuItem
-                          key={t.id}
-                          selected={selected}
-                          onClick={() => {
-                            const next = selected ? tagIds.filter((id) => id !== t.id) : [...tagIds, t.id];
-                            handleField({ tagIds: next });
-                          }}
-                        >
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-                            <Box sx={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: t.color, flexShrink: 0 }} />
-                            <Typography variant="body2" sx={{ flex: 1 }}>{t.name}</Typography>
-                            {selected && <Check sx={{ fontSize: 16, color: "primary.main" }} />}
-                          </Box>
-                        </MenuItem>
-                      );
-                    })}
+                    {/* Shared tags, then this item's client's own (lib/tagScope.js). */}
+                    {tagGroupsForItem(tags, item.organizationId, tagIds).flatMap((g) => [
+                      <ListSubheader key={`h-${g.label}`} sx={{ lineHeight: "28px", fontSize: "0.7rem" }}>{g.label}</ListSubheader>,
+                      ...g.tags.map((t) => {
+                        const selected = tagIds.includes(t.id);
+                        return (
+                          <MenuItem
+                            key={t.id}
+                            selected={selected}
+                            onClick={() => {
+                              const next = selected ? tagIds.filter((id) => id !== t.id) : [...tagIds, t.id];
+                              handleField({ tagIds: next });
+                            }}
+                          >
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
+                              <Box sx={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: t.color, flexShrink: 0 }} />
+                              <Typography variant="body2" sx={{ flex: 1 }}>{t.name}</Typography>
+                              {selected && <Check sx={{ fontSize: 16, color: "primary.main" }} />}
+                            </Box>
+                          </MenuItem>
+                        );
+                      }),
+                    ])}
                     {tagIds.length > 0 && (
                       <MenuItem onClick={() => { setTagsAnchor(null); handleField({ tagIds: [] }); }}>
                         <Typography variant="body2" color="text.secondary">Clear all</Typography>

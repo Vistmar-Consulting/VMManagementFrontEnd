@@ -23,6 +23,7 @@ import { firefliesQuery, GQL_MEETING_LIST, GQL_MEETING_DETAIL } from "./fireflie
 import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { resolvePrompt } from "./aiAgenda.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
+import { coinedTagOrg } from "./tagScope.js";
 import {
   LOOKBACK_MS,
   bucketTranscripts,
@@ -315,10 +316,15 @@ export async function applyBoardSync(runs, selections, uid = null) {
     dropped.push(...preDropped);
     for (const k of Object.keys(counts)) delete counts[k];
     const newTagWrites = [];
-    const coin = (name) => {
+    // A coined tag is a Client Tag of the org it was coined for; coined for
+    // several orgs in one apply, it is shared (lib/tagScope.js).
+    const coin = (name, org) => {
       const id = tagSlug(name);
       if (!id) return null;
-      if (!existingTagIds.has(id) && !tagNowExists.has(id) && !newTagWrites.find((w) => w.id === id)) newTagWrites.push({ id, name: String(name).trim() });
+      if (!existingTagIds.has(id) && !tagNowExists.has(id)) {
+        const w = newTagWrites.find((x) => x.id === id) || newTagWrites[newTagWrites.push({ id, name: String(name).trim(), orgs: new Set() }) - 1];
+        w.orgs.add(org);
+      }
       return id;
     };
     // Running descriptions, so two notes on one item both land.
@@ -348,7 +354,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
           existingParents.add(ref);
         }
         const promo = p.promotions[idx] || {};
-        const tagIds = [...new Set([...(promo.tagIds || []), ...(promo.newTags || []).map(coin).filter(Boolean)])];
+        const tagIds = [...new Set([...(promo.tagIds || []), ...(promo.newTags || []).map((n) => coin(n, p.slug)).filter(Boolean)])];
         order = generateKeyBetween(order, null);
         tx.set(p.refs[pos], {
           organizationId: p.slug,
@@ -413,7 +419,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
 
     // Coined tags (layer-3 client-proprietary) — same doc as applyUnified.
     newTagWrites.forEach((w, i) => {
-      tx.set(doc(db, "tags", w.id), { name: w.name, color: "#8b5cf6", layer: 3, sortOrder: tagSort + i + 1, createdAt: serverTimestamp(), createdByUid: uid });
+      tx.set(doc(db, "tags", w.id), { name: w.name, color: "#8b5cf6", layer: 3, organizationId: coinedTagOrg(w.orgs), sortOrder: tagSort + i + 1, createdAt: serverTimestamp(), createdByUid: uid });
     });
     // set+merge deep-merges the nested orgs map, so another org's stamp is kept.
     for (const [tid, orgs] of Object.entries(ledgerStamps)) {

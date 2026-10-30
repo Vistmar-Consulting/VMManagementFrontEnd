@@ -84,13 +84,15 @@ export async function claimEmailAssignments(uid, email) {
   const key = String(email || "").trim().toLowerCase();
   if (!key) return 0;
   const snap = await getDocs(query(collection(db, "items"), where("assigneeIds", "array-contains", key)));
-  if (snap.empty) return 0;
-  const batch = writeBatch(db);
-  snap.docs.forEach((d) => {
-    const ids = d.data().assigneeIds.map((id) => (id === key ? uid : id));
-    batch.update(d.ref, { assigneeIds: [...new Set(ids)], updatedAt: serverTimestamp() });
-  });
-  await batch.commit();
+  // Batches of 450 (Firestore allows 500 writes per batch).
+  for (let i = 0; i < snap.docs.length; i += 450) {
+    const batch = writeBatch(db);
+    snap.docs.slice(i, i + 450).forEach((d) => {
+      const ids = d.data().assigneeIds.map((id) => (id === key ? uid : id));
+      batch.update(d.ref, { assigneeIds: [...new Set(ids)], updatedAt: serverTimestamp() });
+    });
+    await batch.commit();
+  }
   return snap.size;
 }
 

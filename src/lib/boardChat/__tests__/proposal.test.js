@@ -22,6 +22,24 @@ const ctx = {
 };
 
 describe("buildReviewRows", () => {
+  it("a new assignee must be offered for the task's org; one already on it may stay", () => {
+    const withPeople = {
+      ...ctx,
+      items: [{ ...items[0], assigneeIds: ["seo"] }, ...items.slice(1)],
+      memberIds: new Set(["u1", "seo", "unio-contact", "bmd-contact"]),
+      assignableIn: (org) => new Set(org === "unio" ? ["u1", "unio-contact"] : ["u1", "bmd-contact"]),
+    };
+    const rows = buildReviewRows([
+      { op: "update", itemId: "p1", reason: "r", fields: { assigneeIds: ["seo", "unio-contact"] } },
+      { op: "update", itemId: "s1", reason: "r", fields: { assigneeIds: ["bmd-contact"] } },
+      { op: "update", itemId: "s2", reason: "r", fields: { assigneeIds: ["seo"] } },
+    ], withPeople);
+    expect(rows[0].ok).toBe(true);
+    expect(rows[1].ok).toBe(false);
+    expect(rows[1].error).toMatch(/Can't assign bmd-contact/);
+    expect(rows[2].ok).toBe(false);
+  });
+
   it("moving to Done stamps completedAt; leaving Done clears it", () => {
     const rows = buildReviewRows([
       { op: "update", itemId: "p1", reason: "r", fields: { statusId: 5 } },

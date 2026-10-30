@@ -61,6 +61,7 @@ import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
 import { usePeople } from "../hooks/usePeople.js";
 import { EMPTY_PEOPLE } from "../lib/people.js";
+import { tagsForOrg } from "../lib/tagScope.js";
 import { addTopic, deleteTopic, editAgenda, editTopic } from "../lib/agendaEdits.js";
 import { memberName } from "../lib/boardChat/snapshot.js";
 import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
@@ -1530,7 +1531,8 @@ export function AgendaTopicCard({
           topic={topic}
           agendaId={agendaId}
           categories={categories}
-          tags={tags}
+          // Shared tags and the topic's client's own, plus any it already has.
+          tags={(tags || []).filter((tg) => tagsForOrg([tg], topic.organizationId || organizationId).length || (topic.tagIds || []).includes(tg.id))}
           onClose={() => setEditOpen(false)}
         />
       )}
@@ -1684,6 +1686,8 @@ export default function AgendaDetail() {
   // Assignees on the mini boards and the Attendees counts: the team plus
   // client contacts (lib/people.js).
   const people = usePeople(users, orgs);
+  // Sync Meeting's owner matching and proposal picker: only people who can be assigned.
+  const assignablePeople = useMemo(() => people.list.filter((p) => p.assignable), [people]);
 
   // V2.2.2e: data sources for the embedded MiniProjectBoard. Items,
   // categories, tags are read once at this level and threaded down to every
@@ -2114,7 +2118,7 @@ export default function AgendaDetail() {
           items={allItems}
           orgSlug={organizationId}
           master={isMaster}
-          users={users}
+          users={assignablePeople}
           categories={categories}
           tags={tags}
           onClose={() => setSyncMeetingOpen(false)}
@@ -2146,7 +2150,7 @@ export default function AgendaDetail() {
           orgName={orgById[organizationId]?.name || organizationId}
           organizationId={organizationId}
           items={allItems || []}
-          users={users || []}
+          users={people.list}
           user={user}
         />
       )}

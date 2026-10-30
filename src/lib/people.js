@@ -21,24 +21,29 @@ export function personName(p) {
   return (p.displayName || full || p.email || p.id || "").trim();
 }
 
+// Every id an item may hold for this person: their id, and for someone who
+// signed in, the email they may have been assigned by before.
+export const personIds = (p) => (p.email && p.email !== p.id ? [p.id, p.email] : [p.id]);
+
 // users: users/* docs. membersByOrg: { [orgId]: organizations/{orgId}/members docs }.
 export function buildPeople({ users = [], membersByOrg = {} } = {}) {
-  const byId = {};
+  const list = [];
   const byEmail = {};
   const add = (p) => {
-    byId[p.id] = p;
+    list.push(p);
     if (p.email) byEmail[p.email] = p;
+    return p;
   };
 
   // Signed-in users first: their uid is the id, whatever the directories say.
   for (const u of users) {
     const email = memberIdFromEmail(u.email);
-    add({ ...u, email, kind: "team", assignable: u.active !== false && isVistamarTeamEmail(email) });
+    add({ ...u, email, kind: "team", orgIds: [], assignable: u.active !== false && isVistamarTeamEmail(email) });
   }
   for (const m of membersByOrg[VISTAMAR_ORG_ID] || []) {
     const email = memberIdFromEmail(m.email);
     if (!email || byEmail[email] || !isVistamarTeamEmail(email)) continue;
-    add({ id: email, email, displayName: m.name || email, kind: "team", assignable: true });
+    add({ id: email, email, displayName: m.name || email, kind: "team", orgIds: [], assignable: true });
   }
   const clientsByOrg = {};
   for (const [orgId, members] of Object.entries(membersByOrg)) {
@@ -46,14 +51,21 @@ export function buildPeople({ users = [], membersByOrg = {} } = {}) {
     for (const m of members) {
       const email = memberIdFromEmail(m.email);
       if (!email || !isClientEmail(email)) continue;
-      if (!byEmail[email]) add({ id: email, email, displayName: m.name || email, kind: "client", orgId, assignable: true });
-      (clientsByOrg[orgId] ||= []).push(byEmail[email]);
+      const p = byEmail[email] || add({ id: email, email, displayName: m.name || email, kind: "client", orgIds: [], assignable: true });
+      if (!p.orgIds.includes(orgId)) p.orgIds.push(orgId);
+      (clientsByOrg[orgId] ||= []).push(p);
     }
   }
 
-  const team = Object.values(byId).filter((p) => p.kind === "team" && p.assignable).sort(byName);
+  // A signed-in person is also found by their email: an item assigned by
+  // email before they signed in still shows them while claimEmailAssignments
+  // moves it to their uid (or if that hasn't run yet).
+  const byId = {};
+  for (const p of list) for (const id of personIds(p)) byId[id] = p;
+
+  const team = list.filter((p) => p.kind === "team" && p.assignable).sort(byName);
   return {
-    list: Object.values(byId),
+    list,
     byId,
     // The assignee id for an email: the uid of whoever signed in with it,
     // otherwise the email itself (how a not-signed-in person is assigned).

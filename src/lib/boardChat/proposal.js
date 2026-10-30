@@ -100,6 +100,25 @@ function makeTempIds(ops, itemsById) {
   return { firstIndex, fallback };
 }
 
+// An assignee the item doesn't already have must be someone offered for its
+// organization (the team, or that client's contacts — lib/people.js). One
+// already on the item may stay even if no longer offered (e.g. seo@).
+// Without ctx.assignableIn (other callers), memberIds alone decides.
+function checkNewAssignees(ids, orgId, existing, ctx) {
+  if (!ids || !ctx.assignableIn) return;
+  const allowed = ctx.assignableIn(orgId);
+  const bad = ids.filter((id) => !existing.includes(id) && !allowed.has(id));
+  if (bad.length) throw new Error(`Can't assign ${bad.join(", ")} to a task of this organization`);
+}
+
+// Likewise a new tag must be shared or the organization's own (lib/tagScope.js).
+function checkNewTags(ids, orgId, existing, ctx) {
+  if (!ids || !ctx.tagsIn) return;
+  const allowed = ctx.tagsIn(orgId);
+  const bad = ids.filter((id) => !existing.includes(id) && !allowed.has(id));
+  if (bad.length) throw new Error(`Tag ${bad.join(", ")} belongs to another organization`);
+}
+
 // Same rule for an item and each cascade child: stale when the model never
 // saw it or its live updatedAt is newer than what the model saw.
 function isStale(item, ctx) {
@@ -134,6 +153,8 @@ function buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, tempIds) {
       if (!ctx.orgIds.has(op.orgId)) throw new Error(`Organization ${op.orgId || "(none)"} not found`);
       row = { ...base, tempId, orgId: op.orgId, parentId: null, parentTempId: null, fields };
     }
+    checkNewAssignees(fields.assigneeIds, row.orgId, [], ctx);
+    checkNewTags(fields.tagIds, row.orgId, [], ctx);
     tempCreates.set(row.tempId, row);
     return row;
   }
@@ -153,6 +174,8 @@ function buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, tempIds) {
   const both = clear.filter((f) => op.fields?.[f] !== undefined);
   if (both.length) throw new Error(`${both.join(", ")} is both set and cleared`);
   const patch = normalizeFields(op.fields, ctx);
+  checkNewAssignees(patch.assigneeIds, item.organizationId, item.assigneeIds || [], ctx);
+  checkNewTags(patch.tagIds, item.organizationId, item.tagIds || [], ctx);
   for (const f of clear) patch[f] = null;
   if (patch.statusId !== undefined && patch.statusId !== item.statusId) {
     if (patch.statusId === STATUS.DONE) patch.completedAt = ctx.now;

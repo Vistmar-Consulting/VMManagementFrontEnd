@@ -27,6 +27,7 @@ import { applyChangeSet } from "../lib/itemWrites.js";
 import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
 import { buildReviewRows, toChangeSet } from "../lib/boardChat/proposal.js";
+import { tagsForOrg } from "../lib/tagScope.js";
 import { buildBoardSnapshot, itemRef, makeLookups, memberName, toMillis } from "../lib/boardChat/snapshot.js";
 import { usePersistedDraft } from "../lib/boardChat/usePersistedChat.js";
 import { chatTitle, nextTurnIndex } from "../lib/chatHistory/store.js";
@@ -64,7 +65,9 @@ const storedEntry = ({ user, reply, steps, costUsd, unpriced, notice, error, his
 
 const textOf = (content) => (Array.isArray(content) ? content.filter((b) => b.type === "text").map((b) => b.text).join("\n\n") : "");
 
-export default function BoardChatPanel({ open, onClose, items, users, orgs, categories, tags, user, onApplyFilter, views = [], onDeleteChatViews }) {
+// users: everyone an id may name (on the Task Board, the people directory's
+// list); people (lib/people.js), when given, limits new assignees per org.
+export default function BoardChatPanel({ open, onClose, items, users, people = null, orgs, categories, tags, user, onApplyFilter, views = [], onDeleteChatViews }) {
   const [history, setHistory] = useState([]);
   const [entries, setEntries] = useState([]);
   // Mirrors `entries` synchronously: a turn saves the entry it just finished.
@@ -129,7 +132,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
   // A turn runs for many renders. Tools read the board through this ref so
   // each call sees the live items, not the ones from when the user hit Send.
   const latest = useRef(null);
-  latest.current = { items, users, orgs, categories, tags, lookups, itemLabel, onApplyFilter, onDeleteChatViews };
+  latest.current = { items, users, people, orgs, categories, tags, lookups, itemLabel, onApplyFilter, onDeleteChatViews };
   const total = entries.reduce((s, e) => s + (e.costUsd || 0), 0);
   const anyUnpriced = entries.some((e) => e.unpriced);
 
@@ -164,13 +167,15 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
   }, [entries, busy]);
 
   const proposeChanges = (toolInput) => new Promise((resolve, reject) => {
-    const { items: liveItems, orgs, users, categories, tags } = latest.current;
+    const { items: liveItems, orgs, users, people, categories, tags } = latest.current;
     const rows = buildReviewRows(toolInput.ops, {
       items: liveItems,
       orgIds: new Set(orgs.map((o) => o.id)),
-      memberIds: new Set(users.filter((u) => u.assignable !== false).map((u) => u.id)),
+      memberIds: new Set(users.map((u) => u.id)),
+      ...(people ? { assignableIn: (orgId) => new Set(people.choicesFor(orgId).map((p) => p.id)) } : {}),
       categoryIds: new Set(categories.map((c) => c.id)),
       tagIds: new Set(tags.map((t) => t.id)),
+      tagsIn: (orgId) => new Set(tagsForOrg(tags, orgId).map((t) => t.id)),
       seen: seenRef.current,
       now: serverTimestamp(),
     });
