@@ -64,6 +64,20 @@ service cloud.firestore {
       allow delete: if isRoleAdmin();
     }
 
+    // Board Chat / Meeting Chat history and Board Chat filter views. Private
+    // to their owner: no other user, admins included, can read or write them.
+    match /users/{uid}/chats/{chatId} {
+      allow read, write: if isActiveUser() && request.auth.uid == uid;
+
+      match /turns/{turnId} {
+        allow read, write: if isActiveUser() && request.auth.uid == uid;
+      }
+    }
+
+    match /users/{uid}/boardViews/{viewId} {
+      allow read, write: if isActiveUser() && request.auth.uid == uid;
+    }
+
     match /organizations/{orgId} {
       allow read: if isActiveUser();
       allow write: if isAdmin();
