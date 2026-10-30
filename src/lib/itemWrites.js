@@ -6,7 +6,7 @@
 // hasChildren and the delete cascade stay identical everywhere. (Discarding
 // a just-added blank item and the category/tag clean-up still write items
 // directly from TaskBoard.jsx.)
-import { collection, doc, runTransaction, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 import { db } from "../firebase.js";
 
@@ -76,6 +76,22 @@ export async function createSubitem({ ref, parent, uid, order }) {
     tx.set(ref, blankItem({ organizationId: parent.organizationId, parentId: parent.id, itemNumber: next, uid, order }));
     tx.update(parentRef, { nextSubitemNumber: next + 1, hasChildren: true, updatedAt: serverTimestamp() });
   });
+}
+
+// Items assigned to someone by email before they signed in (lib/people.js)
+// move to their uid. Runs at every sign-in, so a failed run retries next time.
+export async function claimEmailAssignments(uid, email) {
+  const key = String(email || "").trim().toLowerCase();
+  if (!key) return 0;
+  const snap = await getDocs(query(collection(db, "items"), where("assigneeIds", "array-contains", key)));
+  if (snap.empty) return 0;
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => {
+    const ids = d.data().assigneeIds.map((id) => (id === key ? uid : id));
+    batch.update(d.ref, { assigneeIds: [...new Set(ids)], updatedAt: serverTimestamp() });
+  });
+  await batch.commit();
+  return snap.size;
 }
 
 export function updateItem(itemId, patch) {

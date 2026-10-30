@@ -36,6 +36,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { boardItemPath } from "../lib/boardFocus.js";
 import TaskBoardRow from "./TaskBoardRow.jsx";
 import { filterMiniBoard } from "../lib/miniBoardFilter.js";
+import { EMPTY_PEOPLE } from "../lib/people.js";
 
 const ACTIVE_STATUSES = new Set([1, 2, 4, 6, 8]);
 const COMPLETED_STATUS = 5;
@@ -95,7 +96,7 @@ export default function MiniProjectBoard({
   agendaId,
   organizationId,
   items,
-  users,
+  people = EMPTY_PEOPLE,
   categories,
   tags,
   onOpenComments,
@@ -384,7 +385,7 @@ export default function MiniProjectBoard({
                       dimmed={filtered.dimmedIds.has(item.id)}
                       expanded={isItemExpanded(item.id)}
                       onSetExpanded={(v) => setItemExpanded(item.id, v)}
-                      users={users || []}
+                      people={people}
                       categories={categories || []}
                       tags={tags || []}
                       compact

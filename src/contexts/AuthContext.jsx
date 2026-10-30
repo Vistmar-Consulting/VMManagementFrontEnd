@@ -4,6 +4,7 @@ import {
   signOut as firebaseSignOut,
 } from "firebase/auth";
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { claimEmailAssignments } from "../lib/itemWrites.js";
 
 import { auth, db } from "../firebase.js";
 
@@ -111,6 +112,11 @@ export function AuthProvider({ children }) {
         setLoading(false);
         return;
       }
+
+      // Not awaited: sign-in never waits on it, and it retries next sign-in.
+      claimEmailAssignments(firebaseUser.uid, firebaseUser.email).catch((err) => {
+        console.error("[auth] moving email assignments to your account failed:", err);
+      });
 
       profileUnsubscribe = onSnapshot(
         userRef,

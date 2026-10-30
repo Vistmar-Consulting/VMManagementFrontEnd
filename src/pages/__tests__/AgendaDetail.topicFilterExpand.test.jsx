@@ -17,7 +17,7 @@ const item = (statusId) => ({ id: "p1", title: "One", statusId, order: "a0", org
 
 function renderCard(focusFilter, items) {
   const ui = (f, list) => (
-    <AgendaTopicCard topic={TOPIC} agendaId="a1" organizationId={ORG} items={list} users={[]} userByEmail={{}}
+    <AgendaTopicCard topic={TOPIC} agendaId="a1" organizationId={ORG} items={list}
       categories={[]} tags={[]} focusFilter={f} attendeeFilter={null} />
   );
   const result = render(ui(focusFilter, items));

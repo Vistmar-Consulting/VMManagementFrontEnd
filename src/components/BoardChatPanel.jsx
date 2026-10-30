@@ -168,7 +168,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
     const rows = buildReviewRows(toolInput.ops, {
       items: liveItems,
       orgIds: new Set(orgs.map((o) => o.id)),
-      memberIds: new Set(users.map((u) => u.id)),
+      memberIds: new Set(users.filter((u) => u.assignable !== false).map((u) => u.id)),
       categoryIds: new Set(categories.map((c) => c.id)),
       tagIds: new Set(tags.map((t) => t.id)),
       seen: seenRef.current,

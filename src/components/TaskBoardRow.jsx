@@ -18,6 +18,7 @@ import {
   Box,
   Chip as MuiChip,
   IconButton,
+  ListSubheader,
   Menu,
   MenuItem,
   TableCell,
@@ -39,6 +40,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import MemberAvatar from "./MemberAvatar.jsx";
 import { PRIORITY_LIST } from "../constants/itemPriorities.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
+import { EMPTY_PEOPLE, personName } from "../lib/people.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 import { tsToDate } from "../utils/firestoreTime.js";
 
@@ -49,7 +51,8 @@ export default function TaskBoardRow({
   item,
   isSubitem = false,
   subitems = [],
-  users = [],
+  // Who can be assigned, and who an assignee id is (lib/people.js).
+  people = EMPTY_PEOPLE,
   categories = [],
   tags = [],
   // Subitems inherit their parent's category; the parent row passes it down.
@@ -118,7 +121,16 @@ export default function TaskBoardRow({
   const category = categories.find((c) => c.id === item.categoryId);
   const inheritedCategory = isSubitem ? categories.find((c) => c.id === parentCategoryId) : null;
   const assigneeIds = item.assigneeIds || [];
-  const assignees = assigneeIds.map((uid) => users.find((u) => u.id === uid)).filter(Boolean);
+  const assignees = assigneeIds.map((id) => people.byId[id]).filter(Boolean);
+  // The team, then this client's contacts. Someone already assigned who is no
+  // longer offered (e.g. seo@) stays listed so they can be removed.
+  const choices = people.choicesFor(item.organizationId);
+  const kept = assignees.filter((p) => !choices.includes(p));
+  const assigneeGroups = [
+    ...(kept.length ? [{ label: "Assigned", people: kept }] : []),
+    { label: "Vistamar", people: choices.filter((p) => p.kind === "team") },
+    { label: "Client contacts", people: choices.filter((p) => p.kind === "client") },
+  ].filter((g) => g.people.length);
   const hasSubitems = subitems && subitems.length > 0;
 
   const dueDate = tsToDate(item.dueDate);
@@ -374,24 +386,27 @@ export default function TaskBoardRow({
               open={Boolean(assigneeAnchor)}
               onClose={() => { setAssigneeAnchor(false); setAssigneePosition(null); }}
             >
-              {users.filter((u) => u.active !== false).map((u) => {
-                const selected = assigneeIds.includes(u.id);
-                return (
-                  <MenuItem
-                    key={u.id}
-                    selected={selected}
-                    onClick={() => {
-                      const next = selected ? assigneeIds.filter((id) => id !== u.id) : [...assigneeIds, u.id];
-                      handleField({ assigneeIds: next });
-                    }}
-                    sx={{ gap: 1.5 }}
-                  >
-                    <MemberAvatar user={u} size={22} />
-                    <Typography variant="body2" sx={{ flex: 1 }}>{u.displayName || u.email}</Typography>
-                    {selected && <Check sx={{ fontSize: 16, color: "primary.main" }} />}
-                  </MenuItem>
-                );
-              })}
+              {assigneeGroups.flatMap((g) => [
+                <ListSubheader key={`h-${g.label}`} sx={{ lineHeight: "28px", fontSize: "0.7rem" }}>{g.label}</ListSubheader>,
+                ...g.people.map((p) => {
+                  const selected = assigneeIds.includes(p.id);
+                  return (
+                    <MenuItem
+                      key={p.id}
+                      selected={selected}
+                      onClick={() => {
+                        const next = selected ? assigneeIds.filter((id) => id !== p.id) : [...assigneeIds, p.id];
+                        handleField({ assigneeIds: next });
+                      }}
+                      sx={{ gap: 1.5 }}
+                    >
+                      <MemberAvatar user={p} size={22} />
+                      <Typography variant="body2" sx={{ flex: 1 }}>{personName(p)}</Typography>
+                      {selected && <Check sx={{ fontSize: 16, color: "primary.main" }} />}
+                    </MenuItem>
+                  );
+                }),
+              ])}
             </Menu>
           )}
         </TableCell>
@@ -788,7 +803,7 @@ export default function TaskBoardRow({
           isSubitem
           subitems={[]}
           parentCategoryId={item.categoryId}
-          users={users}
+          people={people}
           categories={categories}
           tags={tags}
           compact={compact}

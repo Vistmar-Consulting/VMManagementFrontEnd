@@ -48,6 +48,10 @@ vi.mock("../../lib/chatHistory/store.js", async (importOriginal) => ({
 }));
 // The views list lives in Firestore (useBoardViews, tested on its own); here
 // a stand-in keeps it in localStorage under VIEWS_KEY.
+vi.mock("../../hooks/usePeople.js", async () => {
+  const { buildPeople } = await import("../../lib/people.js");
+  return { usePeople: (users) => buildPeople({ users }) };
+});
 vi.mock("../../lib/boardChat/useBoardViews.js", async () => {
   const { useState } = await import("react");
   return {

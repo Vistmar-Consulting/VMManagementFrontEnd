@@ -59,6 +59,8 @@ import ScheduleCreateDialog from "../components/ScheduleCreateDialog.jsx";
 import SendInviteDialog from "../components/SendInviteDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
+import { usePeople } from "../hooks/usePeople.js";
+import { EMPTY_PEOPLE } from "../lib/people.js";
 import { addTopic, deleteTopic, editAgenda, editTopic } from "../lib/agendaEdits.js";
 import { memberName } from "../lib/boardChat/snapshot.js";
 import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
@@ -1256,8 +1258,7 @@ export function AgendaTopicCard({
   agendaId,
   organizationId,
   items,
-  users,
-  userByEmail,
+  people = EMPTY_PEOPLE,
   categories,
   tags,
   focusFilter,
@@ -1314,11 +1315,12 @@ export function AgendaTopicCard({
     return subs.length ? [...matchedItems, ...subs] : matchedItems;
   }, [matchedItems, items, organizationId]);
 
-  // Uid of the sidebar-selected attendee; also filters the Mini Project Board.
-  const attendeeUid = useMemo(() => {
-    if (!attendeeFilter || !userByEmail) return null;
-    return userByEmail[attendeeFilter.toLowerCase?.() || ""]?.id || null;
-  }, [attendeeFilter, userByEmail]);
+  // Assignee id of the sidebar-selected attendee (uid, or email for a client
+  // contact / not-signed-in teammate); also filters the Mini Project Board.
+  const attendeeUid = useMemo(
+    () => (attendeeFilter ? people.idForEmail(attendeeFilter) : null),
+    [attendeeFilter, people],
+  );
   const assigneeFilterIds = useMemo(
     () => (attendeeFilter ? (attendeeUid ? [attendeeUid] : []) : null),
     [attendeeFilter, attendeeUid],
@@ -1331,8 +1333,7 @@ export function AgendaTopicCard({
     if (!focusFilter && !attendeeFilter) return null;
     const focusCard = focusFilter ? SCORECARD_BY_KEY[focusFilter] : null;
     for (const it of filterScopeItems) {
-      // attendeeFilter requires the item's assigneeIds to include the filter's uid.
-      // An attendee with no account (no uid) has no items.
+      // attendeeFilter requires the item's assigneeIds to include the attendee.
       if (attendeeFilter && !(attendeeUid && Array.isArray(it.assigneeIds) && it.assigneeIds.includes(attendeeUid))) {
         continue;
       }
@@ -1511,7 +1512,7 @@ export function AgendaTopicCard({
             agendaId={agendaId}
             organizationId={organizationId}
             items={items}
-            users={users}
+            people={people}
             categories={categories}
             tags={tags}
             onOpenComments={onOpenComments}
@@ -1680,6 +1681,9 @@ export default function AgendaDetail() {
     return m;
   }, [users]);
   const userById = useMemo(() => Object.fromEntries((users || []).map((u) => [u.id, u])), [users]);
+  // Assignees on the mini boards and the Attendees counts: the team plus
+  // client contacts (lib/people.js).
+  const people = usePeople(users, orgs);
 
   // V2.2.2e: data sources for the embedded MiniProjectBoard. Items,
   // categories, tags are read once at this level and threaded down to every
@@ -1750,26 +1754,26 @@ export default function AgendaDetail() {
   // Meeting Focus sidebar counts — the Task Board's scorecard counts over this
   // agenda's items, narrowed to the selected attendee.
   const meetingFocusCounts = useMemo(() => {
-    const uid = attendeeFilter ? userByEmail[attendeeFilter.toLowerCase()]?.id : null;
+    const id = attendeeFilter ? people.idForEmail(attendeeFilter) : null;
     const matches = attendeeFilter
-      ? (it) => Boolean(uid) && Array.isArray(it.assigneeIds) && it.assigneeIds.includes(uid)
+      ? (it) => Boolean(id) && Array.isArray(it.assigneeIds) && it.assigneeIds.includes(id)
       : undefined;
     return countScorecards(matchedTree.parents, matchedTree.subitemsByParent, matches);
-  }, [matchedTree, attendeeFilter, userByEmail]);
+  }, [matchedTree, attendeeFilter, people]);
 
   // Per-attendee task counts over the same tasks as Meeting Focus, narrowed to
-  // the selected Meeting Focus card — so the two panels always agree.
-  // Unresolved emails (external attendees not in the users collection) get 0.
+  // the selected Meeting Focus card — so the two panels always agree. Client
+  // contacts and not-signed-in teammates are counted by their email id.
   const attendeeTaskCounts = useMemo(() => {
-    const byUid = countTasksByAssignee(matchedTree.parents, matchedTree.subitemsByParent, meetingFocusFilter);
+    const byId = countTasksByAssignee(matchedTree.parents, matchedTree.subitemsByParent, meetingFocusFilter);
     const out = {};
     for (const a of visibleAttendees(agenda?.attendees)) {
       const key = a.email?.toLowerCase();
       if (!key) continue;
-      out[key] = byUid[userByEmail[key]?.id] || 0;
+      out[key] = byId[people.idForEmail(key)] || 0;
     }
     return out;
-  }, [matchedTree, meetingFocusFilter, agenda?.attendees, userByEmail]);
+  }, [matchedTree, meetingFocusFilter, agenda?.attendees, people]);
 
   if (agendaLoading) {
     return (
@@ -2034,8 +2038,7 @@ export default function AgendaDetail() {
                                 agendaId={agendaId}
                                 organizationId={organizationId}
                                 items={allItems}
-                                users={users}
-                                userByEmail={userByEmail}
+                                people={people}
                                 categories={categories}
                                 tags={tags}
                                 focusFilter={meetingFocusFilter}

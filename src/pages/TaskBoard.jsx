@@ -78,6 +78,8 @@ import { db } from "../firebase.js";
 import { useCollection } from "../hooks/useCollection.js";
 import { useItemAttachmentCounts } from "../hooks/useItemAttachmentCounts.js";
 import { useItems } from "../hooks/useItems.js";
+import { usePeople } from "../hooks/usePeople.js";
+import { personName } from "../lib/people.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
@@ -101,6 +103,8 @@ export default function TaskBoard() {
   const { data: allItems, loading: itemsLoading, error: itemsError } = useItems();
   const { data: orgs } = useCollection("organizations");
   const { data: users } = useCollection("users");
+  // Assignees: the team plus client contacts (lib/people.js).
+  const people = usePeople(users, orgs);
 
   // Shared top-level categories + tags (per Andy 2026-05-27 — Org_Id stripped
   // from Console's per-org model). Row dropdowns offer all values; column-
@@ -395,7 +399,7 @@ export default function TaskBoard() {
   // handler fresh from its latest props).
   const handleBoardChatFilter = (input, chatId) => {
     const current = { ...ownFilters, aiFilter: activeView(viewStore)?.filters.aiFilter ?? null };
-    const plan = planBoardFilter(input, { orgs, items: allItems, users, categories, tags }, current);
+    const plan = planBoardFilter(input, { orgs, items: allItems, users: people.list, categories, tags }, current);
     if (plan.kind === "clear") {
       flushSync(() => {
         setViewStore(resetViews(viewStore));
@@ -614,11 +618,14 @@ export default function TaskBoard() {
   // Filter chip values for column popovers
   const priorityFilterValues = PRIORITY_LIST.map((p) => ({ value: p.id, label: p.label, color: p.color }));
   const statusFilterValues = STATUS_OPTIONS.map((s) => ({ value: s.id, label: s.name, color: s.color }));
-  const assigneeFilterValues = users.filter((u) => u.active !== false).map((u) => ({
-    value: u.id,
-    label: u.displayName || u.email,
-    color: null,
-  }));
+  // Everyone assignable in the org shown ("All": the team and every client's
+  // contacts), plus anyone already assigned who no longer is (e.g. seo@).
+  const assigneeFilterValues = useMemo(() => {
+    const pool = orgFilter === "all" ? people.list.filter((p) => p.assignable) : people.choicesFor(orgFilter);
+    const assigned = new Set(allItems.flatMap((i) => i.assigneeIds || []));
+    const extra = [...assigned].map((id) => people.byId[id]).filter((p) => p && !pool.includes(p));
+    return [...pool, ...extra].map((p) => ({ value: p.id, label: personName(p), color: null }));
+  }, [people, orgFilter, allItems]);
   // Categories + tags are global. Show ALL in the column-header popover so
   // newly-added values are immediately visible and editable. Per-org
   // reduction happens implicitly — picking a category not used in the
@@ -672,7 +679,7 @@ export default function TaskBoard() {
                       subitems={subitems}
                       ghost={ghost}
                       dimmed={Boolean(selectedCard) && !keptIds.has(item.id) && !selectedCard.match(item)}
-                      users={users}
+                      people={people}
                       categories={categories}
                       tags={tags}
                       expanded={isRowExpanded(rowKey(groupKey, item.id, ghost), ghost || filterForceExpandedIds.has(item.id))}
@@ -1168,7 +1175,7 @@ export default function TaskBoard() {
         open={chatOpen}
         onClose={() => setChatOpen(false)}
         items={allItems}
-        users={users}
+        users={people.list}
         orgs={orgs}
         categories={categories}
         tags={tags}
