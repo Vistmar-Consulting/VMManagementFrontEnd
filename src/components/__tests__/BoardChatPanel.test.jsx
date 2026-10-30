@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ThemeProvider, createTheme } from "@mui/material";
 
 const postChat = vi.fn();
@@ -9,8 +9,36 @@ vi.mock("../../lib/boardChat/api.js", () => ({ postChat: (...a) => postChat(...a
 vi.mock("../../lib/boardChat/tools.js", () => ({ runReadTool: (...a) => runReadTool(...a) }));
 vi.mock("../../lib/itemWrites.js", () => ({ applyChangeSet: (...a) => applyChangeSet(...a) }));
 
+// Saved chats: an in-memory stand-in for Firestore with the real turn
+// encoding (turnDoc) and restore rules (restoreTurns).
+const chats = new Map();
+const saveTurn = vi.fn();
+vi.mock("../../lib/chatHistory/store.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    newChatId: () => `chat-${chats.size + 1}`,
+    saveTurn: (...a) => saveTurn(...a),
+    loadChat: async (uid, id) => {
+      const c = chats.get(id);
+      return c ? { ...actual.restoreTurns([...c.turns.values()]), seen: c.summary.seen } : null;
+    },
+    deleteChat: async (uid, id) => { chats.delete(id); },
+  };
+});
+const { turnDoc } = await import("../../lib/chatHistory/store.js");
+const realSave = async (uid, id, turn, summary) => {
+  const c = chats.get(id) ?? { summary: {}, turns: new Map() };
+  c.turns.set(turn.index, turnDoc(turn));
+  c.summary = { ...c.summary, ...summary, updatedAt: null };
+  chats.set(id, c);
+};
+vi.mock("../../hooks/useCollection.js", () => ({
+  useCollection: (path) => ({ data: path ? [...chats].map(([id, c]) => ({ id, ...c.summary })) : [], loading: false, error: null }),
+}));
+
 // jsdom's localStorage is not usable under this Node version; the panel
-// persists its conversation there.
+// keeps its draft and open chat there.
 const store = new Map();
 vi.stubGlobal("localStorage", {
   get length() { return store.size; },
@@ -36,7 +64,7 @@ const toolUse = (id, name, input) => ({ content: [{ type: "tool_use", id, name, 
 const reply = (text) => ({ content: [{ type: "text", text }], stopReason: "end_turn", costUsd: 0.001, model: "m" });
 const propose = (id) => toolUse(id, "propose_changes", { summary: "Rename", ops: [{ op: "update", itemId: "p1", fields: { title: `T${id}` } }] });
 
-function renderPanel({ onApplyFilter = vi.fn() } = {}) {
+function renderPanel({ onApplyFilter = vi.fn(), views = [], onDeleteChatViews = vi.fn() } = {}) {
   return render(
     <ThemeProvider theme={createTheme()}>
       <BoardChatPanel
@@ -49,6 +77,8 @@ function renderPanel({ onApplyFilter = vi.fn() } = {}) {
         tags={[]}
         user={{ uid: "u1", email: "a@x.com" }}
         onApplyFilter={onApplyFilter}
+        views={views}
+        onDeleteChatViews={onDeleteChatViews}
       />
     </ThemeProvider>,
   );
@@ -62,6 +92,9 @@ function ask(text) {
 
 beforeEach(() => {
   store.clear();
+  chats.clear();
+  saveTurn.mockReset();
+  saveTurn.mockImplementation(realSave);
   postChat.mockReset();
   runReadTool.mockReset();
   applyChangeSet.mockReset();
@@ -183,7 +216,8 @@ describe("BoardChatPanel", { timeout: 60000 }, () => {
 
     postChat.mockResolvedValueOnce(reply("second answer"));
     renderPanel();
-    expect(screen.getByText("first question")).toBeTruthy();
+    // The question, and the chat's title in the header.
+    expect(await screen.findAllByText("first question")).toHaveLength(2);
     expect(screen.getByText("first answer")).toBeTruthy();
     expect(screen.getByPlaceholderText("Ask Board Chat…").value).toBe("half-typed");
     ask("follow-up");
@@ -191,6 +225,10 @@ describe("BoardChatPanel", { timeout: 60000 }, () => {
     const sent = postChat.mock.calls[1][0];
     expect(sent.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
     expect(sent[2].content).toBe("follow-up");
+    // One chat, one stored exchange per question.
+    expect(chats.size).toBe(1);
+    expect([...chats.get("chat-1").turns.keys()]).toEqual([0, 1]);
+    expect(chats.get("chat-1").summary).toMatchObject({ title: "first question", turnCount: 2 });
   });
 
   it("a turn cut off by leaving the page comes back marked interrupted, outside the model history", async () => {
@@ -202,22 +240,51 @@ describe("BoardChatPanel", { timeout: 60000 }, () => {
 
     postChat.mockResolvedValueOnce(reply("fresh"));
     renderPanel();
-    expect(screen.getByText("Interrupted when you left the page — ask again.")).toBeTruthy();
+    expect(await screen.findByText("Interrupted when you left the page — ask again.")).toBeTruthy();
     ask("again");
     expect(await screen.findByText("fresh")).toBeTruthy();
     // No history was stored, so this is a first message again: snapshot + text.
     expect(postChat.mock.calls[1][0]).toHaveLength(1);
   });
 
-  it("New chat clears the stored conversation", async () => {
+  it("New chat starts empty; the earlier chat stays in History and reopens", async () => {
     postChat.mockResolvedValueOnce(reply("an answer"));
     const first = renderPanel();
-    ask("q");
+    ask("old question");
     expect(await screen.findByText("an answer")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    expect(screen.queryByText("an answer")).toBeNull();
     first.unmount();
+
     renderPanel();
     expect(screen.queryByText("an answer")).toBeNull();
-    expect(store.size).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Chat history" }));
+    fireEvent.click(screen.getByText("old question"));
+    expect(await screen.findByText("an answer")).toBeTruthy();
+  });
+
+  it("deleting a chat that made views asks, and can delete the views too", async () => {
+    postChat.mockResolvedValueOnce(reply("an answer"));
+    const onDeleteChatViews = vi.fn();
+    renderPanel({ views: [{ id: "v1", chatId: "chat-1" }, { id: "v2", chatId: "chat-1" }], onDeleteChatViews });
+    ask("make views");
+    expect(await screen.findByText("an answer")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Chat history" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete chat make views" }));
+    expect(screen.getByText(/It made 2 filter views/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Delete both" }));
+    await waitFor(() => expect(onDeleteChatViews).toHaveBeenCalledWith("chat-1"));
+    expect(chats.size).toBe(0);
+    expect(screen.queryByText("an answer")).toBeNull();
+  });
+
+  it("a chat that fails to save says so", async () => {
+    saveTurn.mockRejectedValue(new Error("offline"));
+    postChat.mockResolvedValueOnce(reply("an answer"));
+    renderPanel();
+    ask("q");
+    expect(await screen.findByText("Could not save this chat: offline")).toBeTruthy();
+    expect(await screen.findByText("an answer")).toBeTruthy();
   });
 });

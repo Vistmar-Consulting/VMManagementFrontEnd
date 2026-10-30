@@ -67,6 +67,7 @@ vi.mock("../../hooks/useCollection.js", () => ({
 vi.mock("../../hooks/useCollectionGroup.js", () => ({
   useCollectionGroup: () => ({ data: [], loading: false, error: null }),
 }));
+vi.mock("../../lib/boardChat/useBoardViews.js", () => ({ useBoardViews: () => [[], () => {}, null] }));
 
 const { default: TaskBoard } = await import("../TaskBoard.jsx");
 

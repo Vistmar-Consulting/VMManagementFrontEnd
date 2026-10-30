@@ -39,8 +39,14 @@ export function toggleView(store, id, current) {
 }
 
 export function removeView(store, id) {
-  const views = store.views.filter((v) => v.id !== id);
-  if (store.activeId !== id) return { store: { ...store, views }, apply: null };
+  return removeViews(store, [id]);
+}
+
+// Removing the active view turns it off: the filters from before it come back.
+export function removeViews(store, ids) {
+  const gone = new Set(ids);
+  const views = store.views.filter((v) => !gone.has(v.id));
+  if (!gone.has(store.activeId)) return { store: { ...store, views }, apply: null };
   return { store: { views, activeId: null, before: null }, apply: store.before };
 }
 

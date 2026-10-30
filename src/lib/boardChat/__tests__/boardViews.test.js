@@ -1,6 +1,6 @@
 // src/lib/boardChat/__tests__/boardViews.test.js
 import { describe, it, expect } from "vitest";
-import { EMPTY_VIEWS, activeView, addView, aiFilterOfView, isEdited, removeView, resetViews, toggleView } from "../boardViews.js";
+import { EMPTY_VIEWS, activeView, addView, aiFilterOfView, isEdited, removeView, removeViews, resetViews, toggleView } from "../boardViews.js";
 
 const own = { orgFilter: "vistamar", titleSearch: "", columnFilters: {}, scorecardFilter: null };
 const fA = { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: { itemIds: ["a1", "a2"] } };
@@ -58,6 +58,17 @@ describe("boardViews", () => {
     r = removeView(r.store, "v2");
     expect(r.store).toEqual(EMPTY_VIEWS);
     expect(r.apply).toEqual(own);
+  });
+
+  it("removeViews removes several at once (a deleted chat's views) and restores the before-filters", () => {
+    let s = addView(EMPTY_VIEWS, { id: "v1", label: "A", filters: fA }, own).store;
+    s = addView(s, { id: "v2", label: "B", filters: fB }, fA).store;
+    s = addView(s, { id: "v3", label: "C", filters: fB }, fB).store;
+    const r = removeViews(s, ["v1", "v3"]);
+    expect(r.store.views.map((v) => v.id)).toEqual(["v2"]);
+    expect(r.store.activeId).toBeNull();
+    expect(r.apply).toEqual(own);
+    expect(removeViews(s, []).apply).toBeNull();
   });
 
   it("resetViews turns every view off without deleting any", () => {

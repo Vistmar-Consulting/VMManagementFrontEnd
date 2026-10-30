@@ -1,6 +1,6 @@
 // src/lib/boardChat/__tests__/persist.test.js
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CHAT_TTL_MS, INTERRUPTED_NOTICE, clearChat, entriesToStore, loadChat, purgeExpiredChats, saveChat } from "../persist.js";
+import { CHAT_TTL_MS, clearChat, loadChat, purgeExpiredChats, saveChat } from "../persist.js";
 
 // jsdom's localStorage is not usable under this Node version.
 const store = new Map();
@@ -61,19 +61,5 @@ describe("chat persistence", () => {
     expect(loadChat("k")).toBeNull();
     vi.spyOn(storage, "setItem").mockImplementationOnce(() => { throw new Error("boom"); });
     expect(() => saveChat("k", {})).toThrow("boom");
-  });
-});
-
-describe("entriesToStore", () => {
-  const entries = [{ user: "a", reply: "b" }, { user: "c", reply: "" }];
-
-  it("stores entries as-is when no turn is running", () => {
-    expect(entriesToStore(entries, false)).toBe(entries);
-  });
-
-  it("marks the in-flight entry interrupted", () => {
-    const out = entriesToStore(entries, true);
-    expect(out[0]).toBe(entries[0]);
-    expect(out[1]).toEqual({ user: "c", reply: "", notice: INTERRUPTED_NOTICE });
   });
 });

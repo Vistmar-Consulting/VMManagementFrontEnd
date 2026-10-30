@@ -39,6 +39,28 @@ vi.mock("../../hooks/useCollectionGroup.js", () => ({
 
 const postChat = vi.fn();
 vi.mock("../../lib/boardChat/api.js", () => ({ postChat: (...a) => postChat(...a) }));
+vi.mock("../../lib/chatHistory/store.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  newChatId: () => "chat-1",
+  saveTurn: () => Promise.resolve(),
+  loadChat: () => Promise.resolve(null),
+  deleteChat: () => Promise.resolve(),
+}));
+// The views list lives in Firestore (useBoardViews, tested on its own); here
+// a stand-in keeps it in localStorage under VIEWS_KEY.
+vi.mock("../../lib/boardChat/useBoardViews.js", async () => {
+  const { useState } = await import("react");
+  return {
+    useBoardViews: () => {
+      const [views, setViews] = useState(() => JSON.parse(localStorage.getItem("test-board-views") || "[]"));
+      const set = (next) => {
+        localStorage.setItem("test-board-views", JSON.stringify(next));
+        setViews(next);
+      };
+      return [views, set, null];
+    },
+  };
+});
 
 const { default: TaskBoard } = await import("../TaskBoard.jsx");
 
@@ -55,7 +77,7 @@ function renderBoard() {
 }
 
 
-const VIEWS_KEY = "vm-board-chat-views";
+const VIEWS_KEY = "test-board-views";
 const viewA = {
   id: "va", label: "Parent one work",
   filters: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: { itemIds: ["p1"] } },
@@ -65,7 +87,7 @@ const viewB = {
   filters: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: { itemIds: ["p2"] } },
 };
 const ACTIVE_KEY = "vm-board-chat-active";
-// The views list lives in localStorage, the active view per tab in sessionStorage.
+// The views list (stand-in above), the active view per tab in sessionStorage.
 const seed = ({ views, activeId, before }) => {
   localStorage.clear();
   sessionStorage.clear();
@@ -156,26 +178,6 @@ describe("TaskBoard Board Chat views and Reset", () => {
     expect(screen.queryByText(/· edited/)).toBeNull();
   }, 60000);
 
-  it("keeps views saved in the old single-object format", () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    localStorage.setItem(VIEWS_KEY, JSON.stringify({ views: [viewA], activeId: "va", before: null }));
-    renderBoard();
-    expect(chip("AI: Parent one work").getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(chip("AI: Parent one work"));
-    expect(chip("AI: Parent one work").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.queryByText("Parent Two")).toBeNull();
-  }, 60000);
-
-  it("ignores a saved views entry with the wrong shape", () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    localStorage.setItem(VIEWS_KEY, JSON.stringify({ junk: true }));
-    renderBoard();
-    expect(screen.queryByText("Parent One")).toBeTruthy();
-    expect(screen.queryByText(/AI: /)).toBeNull();
-  }, 60000);
-
   it("x deletes a view", () => {
     seed({ views: [viewA, viewB], activeId: null, before: null });
     renderBoard();
@@ -207,6 +209,7 @@ describe("TaskBoard Board Chat views and Reset", () => {
     expect(await screen.findByText("Filtered.")).toBeTruthy();
 
     await waitFor(() => expect(stored().views.map((v) => v.label)).toEqual(["Two", "Two done"]));
+    expect(stored().views.map((v) => v.chatId)).toEqual(["chat-1", "chat-1"]);
     expect(stored().views[0].filters).toMatchObject({ titleSearch: "", aiFilter: { itemIds: ["p2"] } });
     expect(stored().views[1].filters).toMatchObject({ titleSearch: "", aiFilter: { itemIds: ["p2"] }, columnFilters: { statusId: [5] } });
     expect(stored().before).toMatchObject({ titleSearch: "", orgFilter: "all" });

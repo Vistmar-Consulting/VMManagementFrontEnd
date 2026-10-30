@@ -82,12 +82,12 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
 import { planBoardFilter } from "../lib/boardChat/boardFilter.js";
-import { EMPTY_ACTIVE, activeView, addView, aiFilterOfView, isEdited, removeView, resetViews, toggleView } from "../lib/boardChat/boardViews.js";
+import { EMPTY_ACTIVE, activeView, addView, aiFilterOfView, isEdited, removeView, removeViews, resetViews, toggleView } from "../lib/boardChat/boardViews.js";
+import { useBoardViews } from "../lib/boardChat/useBoardViews.js";
 import { canBoardSync } from "../lib/boardSyncCore.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
 
-const NO_VIEWS = [];
 const LAST_ORG_KEY = "vm-board-org-filter";
 const readLastOrg = () => {
   const raw = localStorage.getItem(LAST_ORG_KEY);
@@ -141,15 +141,11 @@ export default function TaskBoard() {
   const [orgPickerCreating, setOrgPickerCreating] = useState(false);
 
   // Board Chat filter views (see lib/boardChat/boardViews.js). An active view
-  // re-applies its filters on load. The saved views are shared by every tab;
-  // which one is on (and the filters to restore) is per tab, since each tab
-  // keeps its own filters. Views saved before the split ({ views, ... }) are
-  // read as a plain list.
-  const [storedViews, setStoredViews] = useLocalStorage("vm-board-chat-views", NO_VIEWS);
+  // re-applies its filters on load. The saved views are the user's, in
+  // Firestore (useBoardViews); which one is on (and the filters to restore) is
+  // per tab, since each tab keeps its own filters.
+  const [views, setStoredViews, viewsError] = useBoardViews(user.uid);
   const [storedActive, setStoredActive] = useSessionStorage("vm-board-chat-active", EMPTY_ACTIVE);
-  const views = Array.isArray(storedViews) ? storedViews
-    : Array.isArray(storedViews?.views) ? storedViews.views
-    : NO_VIEWS;
   const activeId = views.some((v) => v.id === storedActive?.activeId) ? storedActive.activeId : null;
   const viewStore = { views, activeId, before: activeId ? storedActive.before : null };
   const setViewStore = (store) => {
@@ -174,8 +170,8 @@ export default function TaskBoard() {
   // Scorecard single-select filter.
   const [scorecardFilter, setScorecardFilter] = useState(() => initialView?.filters.scorecardFilter ?? null);
 
-  // The active view's AI item list: { label, ids: Set }. useLocalStorage
-  // returns a fresh object every render, so this is keyed on the view's JSON
+  // The active view's AI item list: { label, ids: Set }. Every Firestore
+  // snapshot brings fresh view objects, so this is keyed on the view's JSON
   // to keep a stable identity for the memos below.
   const activeViewJson = JSON.stringify(activeView(viewStore));
   const aiFilter = useMemo(() => aiFilterOfView(JSON.parse(activeViewJson)), [activeViewJson]);
@@ -383,7 +379,7 @@ export default function TaskBoard() {
   // model reply run back to back with no render between them, so each one
   // commits synchronously and the next sees its result (the panel reads this
   // handler fresh from its latest props).
-  const handleBoardChatFilter = (input) => {
+  const handleBoardChatFilter = (input, chatId) => {
     const current = { ...ownFilters, aiFilter: activeView(viewStore)?.filters.aiFilter ?? null };
     const plan = planBoardFilter(input, { orgs, items: allItems, users, categories, tags }, current);
     if (plan.kind === "clear") {
@@ -393,8 +389,13 @@ export default function TaskBoard() {
       });
       return { applied: true, view: null };
     }
-    flushSync(() => runViewChange(addView(viewStore, { id: crypto.randomUUID(), label: plan.label, filters: plan.filters }, ownFilters)));
+    flushSync(() => runViewChange(addView(viewStore, { id: crypto.randomUUID(), label: plan.label, filters: plan.filters, chatId }, ownFilters)));
     return { applied: true, view: plan.label, itemCount: plan.filters.aiFilter?.itemIds.length ?? null };
+  };
+
+  // A deleted chat's views, when the user chose to delete them too.
+  const deleteChatViews = (chatId) => {
+    runViewChange(removeViews(viewStore, viewStore.views.filter((v) => v.chatId === chatId).map((v) => v.id)));
   };
 
   // Reset: every view off (none deleted), search / column / scorecard
@@ -900,6 +901,7 @@ export default function TaskBoard() {
         </Button>
       </Stack>
 
+      {viewsError && <Alert severity="error">{viewsError}</Alert>}
       {viewStore.views.length > 0 && (
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
           {viewStore.views.map((view) => {
@@ -1154,6 +1156,8 @@ export default function TaskBoard() {
         tags={tags}
         user={user}
         onApplyFilter={handleBoardChatFilter}
+        views={viewStore.views}
+        onDeleteChatViews={deleteChatViews}
       />
     </>
   );

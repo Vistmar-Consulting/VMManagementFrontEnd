@@ -1,8 +1,9 @@
 // src/components/BoardChatPanel.jsx
 //
-// Board Chat drawer. The conversation and unsent draft persist per user in
-// localStorage (lib/boardChat/persist.js) until New chat or 12 idle hours.
-// The board snapshot goes in the first message; tools run here.
+// Board Chat drawer. Every chat is saved per user in Firestore until the user
+// deletes it (lib/chatHistory); History lists them to reopen or delete. The
+// unsent draft stays in localStorage. The board snapshot goes in the first
+// message; tools run here.
 // propose_changes opens BoardChatChangesModal and waits for Apply / Cancel.
 import { useEffect, useRef, useState } from "react";
 import { serverTimestamp } from "firebase/firestore";
@@ -17,15 +18,19 @@ import {
   Typography,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import HistoryIcon from "@mui/icons-material/History";
 import SendIcon from "@mui/icons-material/Send";
 import BoardChatChangesModal from "./BoardChatChangesModal.jsx";
 import BoardChatHints from "./BoardChatHints.jsx";
+import ChatHistoryView from "./ChatHistoryView.jsx";
 import { applyChangeSet } from "../lib/itemWrites.js";
 import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
 import { buildReviewRows, toChangeSet } from "../lib/boardChat/proposal.js";
 import { buildBoardSnapshot, itemRef, makeLookups, memberName, toMillis } from "../lib/boardChat/snapshot.js";
-import { restoreChat, usePersistedChat } from "../lib/boardChat/usePersistedChat.js";
+import { usePersistedDraft } from "../lib/boardChat/usePersistedChat.js";
+import { chatTitle } from "../lib/chatHistory/store.js";
+import { useChatSession } from "../lib/chatHistory/useChatSession.js";
 import { runReadTool } from "../lib/boardChat/tools.js";
 import appTheme from "../theme/index.js";
 
@@ -53,21 +58,65 @@ function contextBlock(snapshotText, user, users) {
   ].join("\n");
 }
 
+// What a saved exchange keeps of a panel entry (retry bookkeeping is dropped:
+// a reopened chat has no Retry).
+const storedEntry = ({ user, reply, steps, costUsd, unpriced, notice, error, historyStart }) => ({ user, reply, steps, costUsd, unpriced, notice, error, historyStart });
+
 const textOf = (content) => (Array.isArray(content) ? content.filter((b) => b.type === "text").map((b) => b.text).join("\n\n") : "");
 
-export default function BoardChatPanel({ open, onClose, items, users, orgs, categories, tags, user, onApplyFilter }) {
-  const storeKey = `vm-board-chat:${user.uid}`;
-  const [restored] = useState(() => restoreChat(storeKey, "vm-board-chat:"));
-  const [history, setHistory] = useState(restored?.history ?? []);
-  const [entries, setEntries] = useState(restored?.entries ?? []);
-  const [input, setInput] = useState(restored.draft);
+export default function BoardChatPanel({ open, onClose, items, users, orgs, categories, tags, user, onApplyFilter, views = [], onDeleteChatViews }) {
+  const [history, setHistory] = useState([]);
+  const [entries, setEntries] = useState([]);
+  // Mirrors `entries` synchronously: a turn saves the entry it just finished.
+  const entriesRef = useRef([]);
+  const patchEntries = (fn) => {
+    entriesRef.current = fn(entriesRef.current);
+    setEntries(entriesRef.current);
+  };
+  const [input, setInput] = usePersistedDraft(`vm-board-chat:${user.uid}`, "vm-board-chat:");
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(null);
   const [pending, setPending] = useState(null);
-  const seenRef = useRef(restored?.seen ?? {});
+  const [showHistory, setShowHistory] = useState(false);
+  const seenRef = useRef({});
   const pendingSeenRef = useRef(new Set());
   const listRef = useRef(null);
   const proposalCount = useRef(0);
+
+  const resetTo = ({ history: h, entries: e, seen }) => {
+    setHistory(h);
+    patchEntries(() => e);
+    setRetry(null);
+    seenRef.current = { ...seen };
+    pendingSeenRef.current = new Set();
+  };
+  // Saved chats are read once the panel is first opened.
+  const [everOpened, setEverOpened] = useState(open);
+  useEffect(() => { if (open) setEverOpened(true); }, [open]);
+  const session = useChatSession({
+    uid: user.uid,
+    kind: "board",
+    pointerKey: `vm-board-chat-current:${user.uid}`,
+    enabled: everOpened,
+    onRestore: resetTo,
+  });
+  const currentTitle = session.chats.find((c) => c.id === session.chatId)?.title;
+
+  // One exchange, saved at Send ("running") and again when its turn ends.
+  const saveEntry = (index, status, messages) => {
+    const all = entriesRef.current;
+    const entry = all[index];
+    session.save(
+      { index, status, messages: messages.slice(entry.historyStart), entry: storedEntry(entry) },
+      {
+        title: chatTitle(all[0].user),
+        costUsd: all.reduce((s, e) => s + (e.costUsd || 0), 0),
+        unpriced: all.some((e) => e.unpriced),
+        turnCount: all.length,
+        seen: seenRef.current,
+      },
+    );
+  };
 
   const lookups = makeLookups({ users, orgs, categories, tags });
   const itemLabel = (id) => {
@@ -77,7 +126,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
   // A turn runs for many renders. Tools read the board through this ref so
   // each call sees the live items, not the ones from when the user hit Send.
   const latest = useRef(null);
-  latest.current = { items, users, orgs, categories, tags, lookups, itemLabel, onApplyFilter };
+  latest.current = { items, users, orgs, categories, tags, lookups, itemLabel, onApplyFilter, onDeleteChatViews };
   const total = entries.reduce((s, e) => s + (e.costUsd || 0), 0);
   const anyUnpriced = entries.some((e) => e.unpriced);
 
@@ -94,9 +143,6 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
       }
     }
   }, [items]);
-
-  // The conversation and the unsent draft outlive the page (see persist.js).
-  const { storageFull } = usePersistedChat(storeKey, { history, entries, busy, seenRef, input });
 
   // Leaving the board ends a running turn: no further (billed) model calls.
   // Set in the effect body so StrictMode's mount-unmount-mount leaves it alive.
@@ -180,7 +226,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
     if (name === "propose_changes") return proposeChanges(toolInput);
     const live = latest.current;
     if (name === "set_board_filter") {
-      const result = live.onApplyFilter(toolInput);
+      const result = live.onApplyFilter(toolInput, session.idNow());
       return { result, step: result.view ? `Filtered board: ${result.view}` : "Cleared board filters" };
     }
     const out = await runReadTool(name, toolInput, { items: live.items, lookups: live.lookups });
@@ -195,26 +241,28 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
   const runFrom = async (messages, entryIndex) => {
     setBusy(true);
     setRetry(null);
-    setEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, error: null, notice: null } : e)));
+    patchEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, error: null, notice: null } : e)));
     const update = ({ messages: m, turn }) => {
       const lastAssistant = [...m].reverse().find((x) => x.role === "assistant");
-      setEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, reply: textOf(lastAssistant?.content), steps: [...(e.baseSteps || []), ...turn.steps], costUsd: (e.baseCost || 0) + turn.costUsd, unpriced: e.unpriced || turn.unpriced } : e)));
+      patchEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, reply: textOf(lastAssistant?.content), steps: [...(e.baseSteps || []), ...turn.steps], costUsd: (e.baseCost || 0) + turn.costUsd, unpriced: e.unpriced || turn.unpriced } : e)));
     };
     try {
       const out = await runTurn({ messages, post, executeTool, onUpdate: update });
       setHistory(out.messages);
-      if (!out.done) setEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, notice: `Stopped after ${MAX_CALLS_PER_TURN} model calls — ask again to continue.` } : e)));
+      if (!out.done) patchEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, notice: `Stopped after ${MAX_CALLS_PER_TURN} model calls — ask again to continue.` } : e)));
+      saveEntry(entryIndex, "done", out.messages);
     } catch (err) {
       setHistory(err.messages);
       // A retry starts a fresh turn, so this attempt's steps and cost become
       // the entry's base and the retry's are added on top.
-      setEntries((prev) => prev.map((e, i) => {
+      patchEntries((prev) => prev.map((e, i) => {
         if (i !== entryIndex) return e;
         const steps = [...(e.baseSteps || []), ...(err.turn?.steps || [])];
         const cost = (e.baseCost || 0) + (err.turn?.costUsd || 0);
         return { ...e, error: err.message, baseSteps: steps, steps, baseCost: cost, costUsd: cost, unpriced: e.unpriced || err.turn?.unpriced };
       }));
       setRetry({ messages: err.messages, entryIndex });
+      saveEntry(entryIndex, "error", err.messages);
     } finally {
       setBusy(false);
     }
@@ -230,17 +278,30 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
       seenRef.current = { ...snap.seen };
       content = [{ type: "text", text: contextBlock(snap.text, user, users) }, { type: "text", text }];
     }
-    const entryIndex = entries.length;
-    setEntries((prev) => [...prev, { user: text, reply: "", steps: [], costUsd: 0 }]);
-    runFrom([...history, { role: "user", content }], entryIndex);
+    const entryIndex = entriesRef.current.length;
+    const messages = [...history, { role: "user", content }];
+    patchEntries((prev) => [...prev, { user: text, reply: "", steps: [], costUsd: 0, historyStart: history.length }]);
+    saveEntry(entryIndex, "running", messages);
+    runFrom(messages, entryIndex);
   };
 
   const newChat = () => {
-    setHistory([]);
-    setEntries([]);
-    setRetry(null);
-    seenRef.current = {};
-    pendingSeenRef.current = new Set();
+    session.startNew();
+    resetTo({ history: [], entries: [], seen: {} });
+    setShowHistory(false);
+  };
+
+  const openChat = (id) => {
+    setShowHistory(false);
+    if (id !== session.chatId) session.open(id);
+  };
+
+  // The chat is deleted first: if that fails, its views are left alone.
+  const deleteChat = async (id, { deleteViews }) => {
+    const wasOpen = id === session.chatId;
+    if (!(await session.remove(id))) return;
+    if (deleteViews) latest.current.onDeleteChatViews(id);
+    if (wasOpen) resetTo({ history: [], entries: [], seen: {} });
   };
 
   return (
@@ -256,17 +317,34 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
         <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }} aria-label="Conversation cost">
           {formatUsd(total)}{anyUnpriced ? " + unpriced" : ""}
         </Typography>
+        <IconButton size="small" onClick={() => setShowHistory((v) => !v)} disabled={busy} aria-label="Chat history" aria-pressed={showHistory} color={showHistory ? "primary" : "default"}>
+          <HistoryIcon fontSize="small" />
+        </IconButton>
         <Button size="small" onClick={newChat} disabled={busy}>New chat</Button>
         <IconButton size="small" onClick={onClose} aria-label="Close Board Chat"><CloseIcon fontSize="small" /></IconButton>
       </Stack>
+      {currentTitle && !showHistory && (
+        <Typography variant="caption" color="text.secondary" noWrap sx={{ px: 2, pt: 0.5 }}>{currentTitle}</Typography>
+      )}
+      {session.error && <Alert severity="error" sx={{ mx: 2, mt: 1 }}>{session.error}</Alert>}
 
       <Box ref={listRef} sx={{ flexGrow: 1, overflowY: "auto", px: 2, py: 1.5 }}>
-        {entries.length === 0 && (
+        {showHistory && (
+          <ChatHistoryView
+            chats={session.chats}
+            currentId={session.chatId}
+            onOpen={openChat}
+            onDelete={deleteChat}
+            viewCount={(id) => views.filter((v) => v.chatId === id).length}
+          />
+        )}
+        {!showHistory && session.loading && <Typography variant="body2" color="text.secondary">Loading chat…</Typography>}
+        {!showHistory && !session.loading && entries.length === 0 && (
           <Typography variant="body2" color="text.secondary">
             Ask about tasks, owners and meetings, filter the board, or ask for changes — you confirm every change before it's made.
           </Typography>
         )}
-        {entries.map((e, i) => (
+        {!showHistory && !session.loading && entries.map((e, i) => (
           <Box key={i} sx={{ mb: 2 }}>
             <Box sx={{ ml: 4, p: 1, borderRadius: 1, bgcolor: "action.hover" }}>
               <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>{e.user}</Typography>
@@ -288,12 +366,12 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
             )}
           </Box>
         ))}
-        {busy && <Typography variant="caption" color="text.secondary">Thinking…</Typography>}
+        {busy && !showHistory && <Typography variant="caption" color="text.secondary">Thinking…</Typography>}
       </Box>
 
-      {storageFull && (
+      {session.blocked && (
         <Typography variant="caption" color="text.secondary" sx={{ px: 2 }}>
-          This conversation is too long to keep after you leave the page — start a New chat to keep the next one.
+          This chat can&apos;t be saved any further — start a New chat to keep the next one.
         </Typography>
       )}
 
@@ -307,7 +385,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
           value={input}
           onChange={(ev) => setInput(ev.target.value)}
           onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); } }}
-          disabled={busy}
+          disabled={busy || session.loading}
         />
         <IconButton onClick={send} disabled={busy || !input.trim()} aria-label="Send"><SendIcon /></IconButton>
       </Stack>
