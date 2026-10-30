@@ -17,9 +17,8 @@ import {
   DialogTitle,
   Typography,
 } from "@mui/material";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
-import { db } from "../firebase.js";
+import { editTopic } from "../lib/agendaEdits.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const ROW_LABEL_SX = {
@@ -51,12 +50,7 @@ export default function TopicEditDialog({ topic, agendaId, categories, tags, onC
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
-        categoryIds: selectedCats,
-        tagIds: selectedTags,
-        updatedAt: serverTimestamp(),
-        updatedByUid: user?.uid || null,
-      });
+      await editTopic(agendaId, topic.id, { categoryIds: selectedCats, tagIds: selectedTags }, user?.uid);
       onClose();
     } finally {
       setSaving(false);

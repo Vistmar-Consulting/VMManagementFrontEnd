@@ -25,6 +25,7 @@ import { generateKeyBetween } from "fractional-indexing";
 import { auth, db } from "../firebase.js";
 import { firefliesQuery, GQL_MEETING_LIST, GQL_MEETING_DETAIL } from "./fireflies.js";
 import { sanitizeHtml } from "./agendaHtml.js";
+import { agendaEditStamp } from "./agendaEdits.js";
 import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
@@ -604,6 +605,8 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       updatedAt: serverTimestamp(),
       updatedByUid: uid,
       lastUnifiedGenAt: serverTimestamp(),
+      lastUnifiedGenByUid: uid,
+      ...agendaEditStamp(uid),
     });
 
     // Topics: a sync never deletes a topic on its own (planTopicWrites).

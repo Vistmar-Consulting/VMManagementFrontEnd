@@ -17,6 +17,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase.js";
+import { agendaEditStamp } from "./agendaEdits.js";
 
 // Capture the current agenda content as a new version doc. Returns its id.
 export async function snapshotAgenda(agendaId, { source = "manual", label = null, uid = null } = {}) {
@@ -75,6 +76,7 @@ export async function restoreAgendaVersion(agendaId, versionId, { uid = null } =
     openFloorHtml: snap.openFloorHtml ?? "",
     updatedAt: serverTimestamp(),
     updatedByUid: uid,
+    ...agendaEditStamp(uid),
   });
   // Drop topics that aren't in the snapshot.
   curSnap.docs.forEach((d) => {

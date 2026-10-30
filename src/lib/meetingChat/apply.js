@@ -4,6 +4,7 @@
 // into Version history so the apply can be reverted. Returns the new topic ids.
 import { collection, doc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase.js";
+import { agendaEditStamp } from "../agendaEdits.js";
 import { snapshotAgenda } from "../agendaVersions.js";
 
 export async function applyAgendaPlan(agendaId, plan, uid) {
@@ -27,7 +28,10 @@ export async function applyAgendaPlan(agendaId, plan, uid) {
   });
   for (const u of plan.updates) batch.update(doc(db, "agendas", agendaId, "topics", u.id), { ...u.patch, ...stamp });
   for (const id of plan.deletes) batch.delete(doc(db, "agendas", agendaId, "topics", id));
-  if (plan.openFloorHtml !== null) batch.update(doc(db, "agendas", agendaId), { openFloorHtml: plan.openFloorHtml, ...stamp });
+  batch.update(doc(db, "agendas", agendaId), {
+    ...(plan.openFloorHtml !== null ? { openFloorHtml: plan.openFloorHtml, ...stamp } : {}),
+    ...agendaEditStamp(uid),
+  });
   await batch.commit();
   return created;
 }

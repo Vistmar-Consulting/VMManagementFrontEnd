@@ -59,15 +59,14 @@ import ScheduleCreateDialog from "../components/ScheduleCreateDialog.jsx";
 import SendInviteDialog from "../components/SendInviteDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
+import { addTopic, deleteTopic, editAgenda, editTopic } from "../lib/agendaEdits.js";
+import { memberName } from "../lib/boardChat/snapshot.js";
 import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
 import TaskBoardModal from "../components/TaskBoardModal.jsx";
 import { format, formatDistanceToNow, parseISO, addDays } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { listMeetings } from "../lib/meetingsApi.js";
 import {
-  addDoc,
-  collection,
-  deleteDoc,
   doc,
   orderBy,
   query,
@@ -260,11 +259,7 @@ function AgendaHero({ agenda, agendaId, calendarSeries, orgs, viewMode, setViewM
   const persistTitle = async () => {
     const trimmed = titleDraft.trim();
     if (!trimmed || trimmed === agenda?.title) return;
-    await updateDoc(doc(db, "agendas", agendaId), {
-      title: trimmed,
-      updatedAt: serverTimestamp(),
-      updatedByUid: user?.uid || null,
-    });
+    await editAgenda(agendaId, { title: trimmed }, user?.uid);
   };
 
   // Display the next upcoming occurrence for recurring meetings; the stored
@@ -439,16 +434,12 @@ export function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onT
   const persistName = async () => {
     const trimmed = name.trim() || "New Topic";
     if (trimmed === topic.name) return;
-    await updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
-      name: trimmed,
-      updatedAt: serverTimestamp(),
-      updatedByUid: user?.uid || null,
-    });
+    await editTopic(agendaId, topic.id, { name: trimmed }, user?.uid);
   };
 
   const handleDelete = async () => {
     if (!window.confirm(`Delete topic "${topic.name || "Untitled"}"? This removes the whole topic and its notes.`)) return;
-    await deleteDoc(doc(db, "agendas", agendaId, "topics", topic.id)).catch(() => {});
+    await deleteTopic(agendaId, topic.id, user?.uid);
   };
 
   return (
@@ -556,13 +547,7 @@ export function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onT
           valueHtml={topic.bodyHtml || ""}
           fragmentKey={topic.id}
           placeholder="Add talking points…"
-          onChangeHtml={(html) =>
-            updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
-              bodyHtml: html,
-              updatedAt: serverTimestamp(),
-              updatedByUid: user?.uid || null,
-            })
-          }
+          onChangeHtml={(html) => editTopic(agendaId, topic.id, { bodyHtml: html }, user?.uid)}
         />
       </Box>
     </Box>
@@ -582,13 +567,7 @@ function OpenFloorSection({ agendaId, agenda }) {
         valueHtml={agenda?.openFloorHtml || ""}
         fragmentKey="openFloor"
         placeholder="Add open-floor items…"
-        onChangeHtml={(html) =>
-          updateDoc(doc(db, "agendas", agendaId), {
-            openFloorHtml: html,
-            updatedAt: serverTimestamp(),
-            updatedByUid: user?.uid || null,
-          })
-        }
+        onChangeHtml={(html) => editAgenda(agendaId, { openFloorHtml: html }, user?.uid)}
       />
     </Box>
   );
@@ -601,13 +580,7 @@ function OpenFloorSection({ agendaId, agenda }) {
 function AddTopicButton({ agendaId, lastSortOrder }) {
   const { user } = useAuth();
   const handleAdd = async () => {
-    await addDoc(collection(db, "agendas", agendaId, "topics"), {
-      name: "New Topic",
-      sortOrder: (lastSortOrder ?? 0) + 1,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdByUid: user?.uid || null,
-    });
+    await addTopic(agendaId, { name: "New Topic", sortOrder: (lastSortOrder ?? 0) + 1 }, user?.uid);
   };
   return (
     <Box
@@ -1155,6 +1128,22 @@ function AttendeesPanel({ attendees, userByEmail, taskCounts, value, onChange, o
   );
 }
 
+// Header "updated 5 minutes ago" / "synced 1 day ago", with the avatar of who
+// did it (none for a sync made before syncs recorded who ran them).
+function AgendaStamp({ label, verb, at, user }) {
+  const name = user ? memberName(user) : null;
+  return (
+    <Tooltip title={`${label} ${format(at, "MMM d, yyyy · h:mm a")}${name ? ` by ${name}` : ""}`}>
+      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mr: 0.75 }}>
+        <Typography variant="caption" sx={{ color: t.ink3 }}>
+          {verb} {formatDistanceToNow(at, { addSuffix: true })}
+        </Typography>
+        {user && <MemberAvatar user={user} size={18} border={false} tooltip={false} />}
+      </Stack>
+    </Tooltip>
+  );
+}
+
 function PreparedByPanel() {
   return (
     <Box sx={{ background: t.cream, borderRadius: 2, p: 2 }}>
@@ -1392,11 +1381,7 @@ export function AgendaTopicCard({
   const persistName = async () => {
     const trimmed = nameDraft.trim() || "New Topic";
     if (trimmed === topic.name) return;
-    await updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
-      name: trimmed,
-      updatedAt: serverTimestamp(),
-      updatedByUid: user?.uid || null,
-    });
+    await editTopic(agendaId, topic.id, { name: trimmed }, user?.uid);
   };
 
   const handleDelete = async () => {
@@ -1406,7 +1391,7 @@ export function AgendaTopicCard({
     // subcollection docs become unreachable but don't violate rules. A
     // proper cascading delete via writeBatch lands when V2.2.2e ports
     // useItemMutations or when V2.2 enables a cancel-cascade Cloud Function.
-    await deleteDoc(doc(db, "agendas", agendaId, "topics", topic.id)).catch(() => {});
+    await deleteTopic(agendaId, topic.id, user?.uid);
   };
 
   return (
@@ -1512,13 +1497,7 @@ export function AgendaTopicCard({
             valueHtml={topic.bodyHtml || ""}
             fragmentKey={topic.id}
             placeholder="Add talking points…"
-            onChangeHtml={(html) =>
-              updateDoc(doc(db, "agendas", agendaId, "topics", topic.id), {
-                bodyHtml: html,
-                updatedAt: serverTimestamp(),
-                updatedByUid: user?.uid || null,
-              })
-            }
+            onChangeHtml={(html) => editTopic(agendaId, topic.id, { bodyHtml: html }, user?.uid)}
           />
 
           <MiniProjectBoard
@@ -1591,17 +1570,14 @@ function AddOrgTopicButton({ agendaId, org, prevSort, nextSort }) {
     const sortOrder = (prevSort != null && nextSort != null)
       ? (prevSort + nextSort) / 2
       : (prevSort ?? 0) + 1;
-    await addDoc(collection(db, "agendas", agendaId, "topics"), {
+    await addTopic(agendaId, {
       name: "New Topic",
       bodyHtml: "",
       sortOrder,
       organizationId: org?.id || null,
       categoryIds: [],
       tagIds: [],
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdByUid: user?.uid || null,
-    });
+    }, user?.uid);
   };
   return (
     <Box
@@ -1694,6 +1670,7 @@ export default function AgendaDetail() {
     }
     return m;
   }, [users]);
+  const userById = useMemo(() => Object.fromEntries((users || []).map((u) => [u.id, u])), [users]);
 
   // V2.2.2e: data sources for the embedded MiniProjectBoard. Items,
   // categories, tags are read once at this level and threaded down to every
@@ -1851,11 +1828,7 @@ export default function AgendaDetail() {
     else if (prev == null) newSort = next - 1;
     else if (next == null) newSort = prev + 1;
     else newSort = (prev + next) / 2;
-    await updateDoc(doc(db, "agendas", agendaId, "topics", moved.id), {
-      sortOrder: newSort,
-      updatedAt: serverTimestamp(),
-      updatedByUid: user?.uid || null,
-    });
+    await editTopic(agendaId, moved.id, { sortOrder: newSort }, user?.uid);
   };
 
   return (
@@ -1887,12 +1860,11 @@ export default function AgendaDetail() {
           </IconButton>
         </Tooltip>
         <Stack direction="row" alignItems="center" spacing={0.5}>
+          {agenda?.lastEditedAt?.toDate && (
+            <AgendaStamp label="Last updated" verb="updated" at={agenda.lastEditedAt.toDate()} user={userById[agenda.lastEditedByUid]} />
+          )}
           {isRoleAdmin && agenda?.lastUnifiedGenAt?.toDate && (
-            <Tooltip title={`Last synced ${format(agenda.lastUnifiedGenAt.toDate(), "MMM d, yyyy · h:mm a")}`}>
-              <Typography variant="caption" sx={{ color: t.ink3, mr: 0.5 }}>
-                synced {formatDistanceToNow(agenda.lastUnifiedGenAt.toDate(), { addSuffix: true })}
-              </Typography>
-            </Tooltip>
+            <AgendaStamp label="Last synced" verb="synced" at={agenda.lastUnifiedGenAt.toDate()} user={userById[agenda.lastUnifiedGenByUid]} />
           )}
           <AgendaPresence />
           <PresentationModeToggle
