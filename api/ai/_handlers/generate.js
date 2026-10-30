@@ -76,7 +76,7 @@ function buildCategorization(categories, tagVocab) {
 For each topic, also set:
 - categories: 1–3 category SLUGS from this list — the most relevant kinds of work the topic covers. Use the slug exactly.
 ${catList}
-- tags: relevant tags from this vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur (e.g. a specific initiative name).
+- tags: relevant tags from this vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur (e.g. a specific initiative name). Never coin a tag for urgency or a blocked state (e.g. "urgent", "blocked") — those are statuses.
 Tags: ${tagList}
 
 Use the SOPs below to assign categories accurately and to reference the right owner/contact in the agenda content (e.g. who executes website vs. technical work).

@@ -62,7 +62,7 @@ const HOW_IT_WORKS = [
     group: "What it categorizes",
     items: [
       ["Topic categories + tags", "Each generated topic gets the 1–3 most relevant categories + tags, so its Working-view mini-board surfaces the org's related tasks. A client's meeting only sees the shared tags and that client's own; another client's tag is never applied."],
-      ["New tags", "The AI can coin a new specific tag when nothing fits — shown flagged “new” in the review so you approve it. A coined tag belongs to the client whose meeting coined it (a Client Tag)."],
+      ["New tags", "The AI can coin a new specific tag when nothing fits — shown flagged “new” in the review so you approve it. A coined tag belongs to the client whose meeting coined it (a Client Tag). It never coins a tag for urgency or a blocked state (“urgent”, “blocked”) — those are statuses."],
       ["Task owners", "An “Owner:” in a proposed task is matched to the Vistamar team or that client's contacts (Client Settings) — never another client's contact, and never seo@ or other bot accounts."],
     ],
   },

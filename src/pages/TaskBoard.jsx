@@ -81,7 +81,8 @@ import { useItemAttachmentCounts } from "../hooks/useItemAttachmentCounts.js";
 import { useItems } from "../hooks/useItems.js";
 import { usePeople } from "../hooks/usePeople.js";
 import { personName } from "../lib/people.js";
-import { tagsForOrg } from "../lib/tagScope.js";
+import { tagGroups } from "../lib/tagScope.js";
+import { deleteTag } from "../lib/tagWrites.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
@@ -115,7 +116,7 @@ export default function TaskBoard() {
   // header filter popovers reduce to values actually used by visible items
   // (built below from `topLevel`).
   const { data: categories } = useCollection("categories");
-  const { data: tags } = useCollection("tags");
+  const { data: tags, loading: tagsLoading } = useCollection("tags");
 
   // Notes + Files badge counts for every row.
   const { getCommentCount, getFileCount } = useItemAttachmentCounts();
@@ -504,6 +505,7 @@ export default function TaskBoard() {
   // ───── Tag CRUD ─────
   const [tagDialog, setTagDialog] = useState(null);
   const [deleteTagConfirm, setDeleteTagConfirm] = useState(null);
+  const [deleteTagState, setDeleteTagState] = useState({ busy: false, error: null });
 
   // A new tag belongs to the client the board shows; on "All" it is shared.
   const openAddTag = () => setTagDialog({ mode: "add", name: "", color: TAG_COLORS[0], organizationId: orgFilter === "all" ? null : orgFilter });
@@ -512,7 +514,10 @@ export default function TaskBoard() {
     if (!tag) return;
     setTagDialog({ mode: "edit", id: tagId, name: tag.name, color: tag.color, organizationId: tag.organizationId ?? null });
   };
-  const requestDeleteTag = (tagId) => setDeleteTagConfirm(tagId);
+  // Name and usage are read when the dialog opens and kept until it has faded
+  // out: the live tag list drops the tag before the dialog finishes closing.
+  const requestDeleteTag = (tagId) =>
+    setDeleteTagConfirm({ open: true, id: tagId, name: tags.find((t) => t.id === tagId)?.name || "Untitled", count: tagUsageCount(tagId) });
 
   const handleSaveTag = async () => {
     const name = tagDialog?.name?.trim();
@@ -535,22 +540,21 @@ export default function TaskBoard() {
   };
 
   const handleConfirmDeleteTag = async () => {
-    const tagId = deleteTagConfirm;
+    const tagId = deleteTagConfirm?.id;
     if (!tagId) return;
-    // Atomic: strip the tag from every affected item AND delete the tag
-    // doc in one batch — same partial-failure safety as the category path.
-    const affected = allItems.filter((i) => (i.tagIds || []).includes(tagId));
-    const batch = writeBatch(db);
-    affected.forEach((i) => {
-      const next = (i.tagIds || []).filter((t) => t !== tagId);
-      batch.update(doc(db, "items", i.id), {
-        tagIds: next,
-        updatedAt: serverTimestamp(),
-      });
-    });
-    batch.delete(doc(db, "tags", tagId));
-    await batch.commit();
-    setDeleteTagConfirm(null);
+    setDeleteTagState({ busy: true, error: null });
+    try {
+      await deleteTag(tagId, user.uid);
+      setDeleteTagConfirm((c) => ({ ...c, open: false }));
+      setDeleteTagState({ busy: false, error: null });
+    } catch (err) {
+      setDeleteTagState({ busy: false, error: err.message || "Delete failed" });
+    }
+  };
+  const closeDeleteTag = () => {
+    if (deleteTagState.busy) return;
+    setDeleteTagConfirm((c) => ({ ...c, open: false }));
+    setDeleteTagState({ busy: false, error: null });
   };
 
   // Counts for delete-confirm dialog messages.
@@ -639,18 +643,21 @@ export default function TaskBoard() {
   const categoryFilterValues = categories.map((c) => ({ value: c.id, label: c.name, color: c.color }));
   const tagFilterValues = useMemo(() => {
     // Plus any tag this client's items carry from elsewhere, so they stay filterable.
-    const carried = new Set(allItems.filter((i) => i.organizationId === orgFilter).flatMap((i) => i.tagIds || []));
-    const scoped = new Set(tagsForOrg(tags, orgFilter).map((t) => t.id));
-    return tags.filter((t) => scoped.has(t.id) || carried.has(t.id)).map((t) => ({ value: t.id, label: t.name, color: t.color }));
-  }, [tags, orgFilter, allItems]);
+    const carried = [...new Set(allItems.filter((i) => i.organizationId === orgFilter).flatMap((i) => i.tagIds || []))];
+    const orgNames = Object.fromEntries((orgs || []).map((o) => [o.id, o.name]));
+    return tagGroups(tags, orgFilter, { extraIds: carried, orgNames }).flatMap((g) =>
+      g.tags.map((t) => ({ value: t.id, label: t.name, color: t.color, group: g.label, groupId: g.id })));
+  }, [tags, orgFilter, allItems, orgs]);
   // A tag filter left over from another client would hide every row with no
   // box to untick: keep only the tags this view offers.
   useEffect(() => {
+    // Until tags load nothing is offered; pruning then would wipe a saved filter.
+    if (tagsLoading) return;
     const allowed = new Set(tagFilterValues.map((v) => v.value));
     const selected = columnFilters.tagIds || [];
     if (selected.some((id) => !allowed.has(id))) handleFilterChange("tagIds", selected.filter((id) => allowed.has(id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reacts to the offered tags only
-  }, [tagFilterValues]);
+  }, [tagFilterValues, tagsLoading]);
 
   // Group renderer
   const renderGroup = (title, groupKey, groupItems, expanded, setExpanded, color) => (
@@ -1136,14 +1143,20 @@ export default function TaskBoard() {
       />
 
       {/* ───────── Tag Delete Confirm ───────── */}
-      <Dialog open={Boolean(deleteTagConfirm)} onClose={() => setDeleteTagConfirm(null)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={Boolean(deleteTagConfirm?.open)}
+        onClose={closeDeleteTag}
+        TransitionProps={{ onExited: () => setDeleteTagConfirm(null) }}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle sx={{ pb: 1 }}>Delete tag?</DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
-            {tags.find((t) => t.id === deleteTagConfirm)?.name || "Untitled"}
+            {deleteTagConfirm?.name}
           </Typography>
           {(() => {
-            const n = tagUsageCount(deleteTagConfirm);
+            const n = deleteTagConfirm?.count || 0;
             if (n === 0) return (
               <Typography variant="body2" color="text.secondary">No items currently use this tag.</Typography>
             );
@@ -1153,13 +1166,19 @@ export default function TaskBoard() {
               </Typography>
             );
           })()}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Agenda topics that use this tag will have it removed too.
+          </Typography>
+          {deleteTagState.error && <Alert severity="error" sx={{ mt: 1.5 }}>{deleteTagState.error}</Alert>}
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
             This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDeleteTagConfirm(null)}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={handleConfirmDeleteTag}>Delete</Button>
+          <Button onClick={closeDeleteTag} disabled={deleteTagState.busy}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDeleteTag} disabled={deleteTagState.busy}>
+            {deleteTagState.busy ? "Deleting…" : "Delete"}
+          </Button>
         </DialogActions>
       </Dialog>
 

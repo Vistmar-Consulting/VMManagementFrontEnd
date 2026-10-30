@@ -17,6 +17,7 @@ import { differenceInHours, formatDistanceToNow } from "date-fns";
 import {
   Box,
   Chip as MuiChip,
+  Divider,
   IconButton,
   ListSubheader,
   Menu,
@@ -41,7 +42,7 @@ import MemberAvatar from "./MemberAvatar.jsx";
 import { PRIORITY_LIST } from "../constants/itemPriorities.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { EMPTY_PEOPLE, personIds, personName } from "../lib/people.js";
-import { tagGroupsForItem } from "../lib/tagScope.js";
+import { tagGroups } from "../lib/tagScope.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 import { tsToDate } from "../utils/firestoreTime.js";
 
@@ -589,8 +590,9 @@ export default function TaskBoardRow({
                 {canUpdate && (
                   <Menu anchorEl={tagsAnchor} open={Boolean(tagsAnchor)} onClose={() => setTagsAnchor(null)}>
                     {/* Shared tags, then this item's client's own (lib/tagScope.js). */}
-                    {tagGroupsForItem(tags, item.organizationId, tagIds).flatMap((g) => [
-                      <ListSubheader key={`h-${g.label}`} sx={{ lineHeight: "28px", fontSize: "0.7rem" }}>{g.label}</ListSubheader>,
+                    {tagGroups(tags, item.organizationId, { extraIds: tagIds }).flatMap((g, gi) => [
+                      gi > 0 && <Divider key={`d-${g.id}`} />,
+                      <ListSubheader key={`h-${g.id}`} sx={{ lineHeight: "28px", fontSize: "0.7rem" }}>{g.label}</ListSubheader>,
                       ...g.tags.map((t) => {
                         const selected = tagIds.includes(t.id);
                         return (
@@ -610,7 +612,7 @@ export default function TaskBoardRow({
                           </MenuItem>
                         );
                       }),
-                    ])}
+                    ].filter(Boolean))}
                     {tagIds.length > 0 && (
                       <MenuItem onClick={() => { setTagsAnchor(null); handleField({ tagIds: [] }); }}>
                         <Typography variant="body2" color="text.secondary">Clear all</Typography>

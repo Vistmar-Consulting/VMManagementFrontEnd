@@ -4,8 +4,8 @@
 // update / delete handlers and Board Chat's Apply all go through here, so
 // counters (organizations.nextItemNumber, parent.nextSubitemNumber),
 // hasChildren and the delete cascade stay identical everywhere. (Discarding
-// a just-added blank item and the category/tag clean-up still write items
-// directly from TaskBoard.jsx.)
+// a just-added blank item and the category clean-up still write items
+// directly from TaskBoard.jsx; tag deletes go through lib/tagWrites.js.)
 import { collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 import { db } from "../firebase.js";

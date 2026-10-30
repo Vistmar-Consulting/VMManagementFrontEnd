@@ -184,9 +184,21 @@ export default function TaskBoardColumnHeader({
                     {allSelected ? "Deselect All" : "Select All"}
                   </Typography>
                 </MenuItem>
-                {filteredValues.map((fv) => {
+                {filteredValues.flatMap((fv, i) => {
                   const checked = (selectedFilters || []).includes(fv.value);
-                  return (
+                  // Grouped values (Tags: shared, then client) get a heading,
+                  // with a line above every group after the first.
+                  const startsGroup = fv.groupId && fv.groupId !== filteredValues[i - 1]?.groupId;
+                  return [
+                    startsGroup && i > 0 && <MuiDivider key={`d-${fv.groupId}`} sx={{ my: 0.5 }} />,
+                    startsGroup && (
+                      <Typography
+                        key={`h-${fv.groupId}`}
+                        sx={{ px: 2, pt: 0.5, pb: 0.25, fontSize: "0.7rem", fontWeight: 600, color: "text.secondary" }}
+                      >
+                        {fv.group}
+                      </Typography>
+                    ),
                     <MenuItem
                       key={fv.value}
                       dense
@@ -250,8 +262,8 @@ export default function TaskBoardColumnHeader({
                           )}
                         </Box>
                       )}
-                    </MenuItem>
-                  );
+                    </MenuItem>,
+                  ].filter(Boolean);
                 })}
 
                 {showAddNew && (

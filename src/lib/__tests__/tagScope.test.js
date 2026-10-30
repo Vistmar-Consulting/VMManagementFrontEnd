@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coinedTagOrg, isSharedTag, tagGroupsForItem, tagsForOrg } from "../tagScope.js";
+import { coinedTagOrg, isSharedTag, tagGroups, tagsForOrg } from "../tagScope.js";
 
 const tags = [
   { id: "email" },
@@ -24,11 +24,21 @@ describe("tag scope", () => {
   });
 
   it("an item's picker groups shared, own, and other tags it already has", () => {
-    expect(tagGroupsForItem(tags, "id-care", []).map((g) => [g.label, ids(g.tags)])).toEqual([
+    expect(tagGroups(tags, "id-care").map((g) => [g.label, ids(g.tags)])).toEqual([
       ["Shared tags", ["email", "urgent"]],
       ["Client tags", ["careers"]],
     ]);
-    expect(tagGroupsForItem(tags, "unio", ["hipaa"]).map((g) => g.label)).toEqual(["Shared tags", "Other tags on this item"]);
+    expect(tagGroups(tags, "id-care", { orgNames: { "id-care": "ID Care" } })[1].label).toBe("ID Care tags");
+    expect(tagGroups(tags, "unio", { extraIds: ["hipaa"] }).map((g) => g.label)).toEqual(["Shared tags", "Other tags"]);
+  });
+
+  it("on All, shared tags come first, then each organization's tags by name", () => {
+    const orgNames = { "id-care": "ID Care", vistamar: "Vistamar" };
+    expect(tagGroups(tags, "all", { orgNames }).map((g) => [g.label, ids(g.tags)])).toEqual([
+      ["Shared tags", ["email", "urgent"]],
+      ["ID Care tags", ["careers"]],
+      ["Vistamar tags", ["hipaa"]],
+    ]);
   });
 
   it("a coined tag belongs to the one org that coined it, else it is shared", () => {

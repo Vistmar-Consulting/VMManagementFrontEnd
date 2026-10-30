@@ -69,6 +69,8 @@ export async function restoreAgendaVersion(agendaId, versionId, { uid = null } =
   const snapIds = new Set(snapTopics.map((t) => t.id));
 
   const curSnap = await getDocs(collection(db, "agendas", agendaId, "topics"));
+  // A tag deleted since the version was saved stays deleted.
+  const tagIds = new Set((await getDocs(collection(db, "tags"))).docs.map((d) => d.id));
 
   const batch = writeBatch(db);
   batch.update(doc(db, "agendas", agendaId), {
@@ -91,7 +93,7 @@ export async function restoreAgendaVersion(agendaId, versionId, { uid = null } =
         bodyHtml: t.bodyHtml ?? "",
         sortOrder: t.sortOrder ?? 0,
         categoryIds: t.categoryIds ?? [],
-        tagIds: t.tagIds ?? [],
+        tagIds: (t.tagIds ?? []).filter((id) => tagIds.has(id)),
         // Versions saved before organizationId was captured leave it as is.
         ...(t.organizationId !== undefined ? { organizationId: t.organizationId } : {}),
         updatedAt: serverTimestamp(),

@@ -54,4 +54,4 @@ Every content edit (title, topics, bodies, Open Floor, topic categories/tags, Sy
 
 ## Deferred
 
-(none)
+- **Trim candidate: not-signed-in teammate support.** Added so Bill Lewis (no app sign-in) can be assigned tasks. Andy wants it removed if it stays single-use. The Bill-specific parts are: the `organizations/vistamar/members` source in `src/lib/people.js` (directory teammates without a `users` doc) and `claimEmailAssignments` in `src/lib/itemWrites.js`, called from `AuthContext` at sign-in. Keep the email-id assignee path itself: client contacts never sign in and depend on it. Remove when Bill signs in or is no longer assigned work.

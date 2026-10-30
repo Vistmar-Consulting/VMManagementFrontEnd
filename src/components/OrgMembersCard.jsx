@@ -6,6 +6,10 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Stack,
   TextField,
@@ -31,6 +35,11 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
   const [editEmail, setEditEmail] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState(null);
+
+  // Member awaiting delete confirmation; kept while the dialog fades out.
+  const [removing, setRemoving] = useState(null);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   const sorted = [...(members || [])].sort((a, b) =>
     (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase())
@@ -58,11 +67,15 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
     }
   };
 
-  const handleRemove = async (memberId) => {
+  const handleConfirmRemove = async () => {
+    setRemoveBusy(true);
     try {
-      await removeOrgMember(orgSlug, memberId);
+      await removeOrgMember(orgSlug, removing.id);
     } catch (err) {
       setAddError(err.message || "Remove failed");
+    } finally {
+      setRemoveBusy(false);
+      setRemoveOpen(false);
     }
   };
 
@@ -187,7 +200,7 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
                     <IconButton size="small" onClick={() => startEdit(member)} aria-label={`Edit ${member.name || member.email}`}>
                       <EditOutlined sx={{ fontSize: 16 }} />
                     </IconButton>
-                    <IconButton size="small" onClick={() => handleRemove(member.id)} aria-label={`Remove ${member.name || member.email}`}>
+                    <IconButton size="small" onClick={() => { setRemoving(member); setRemoveOpen(true); }} aria-label={`Remove ${member.name || member.email}`}>
                       <Close sx={{ fontSize: 16 }} />
                     </IconButton>
                   </Box>
@@ -233,6 +246,30 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
           </Alert>
         )}
       </CardContent>
+
+      <Dialog
+        open={removeOpen}
+        onClose={() => { if (!removeBusy) setRemoveOpen(false); }}
+        TransitionProps={{ onExited: () => setRemoving(null) }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>Delete member?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+            {removing?.name || removing?.email}
+          </Typography>
+          {removing?.name && (
+            <Typography variant="body2" color="text.secondary">{removing.email}</Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRemoveOpen(false)} disabled={removeBusy}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleConfirmRemove} disabled={removeBusy}>
+            {removeBusy ? "Deleting…" : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

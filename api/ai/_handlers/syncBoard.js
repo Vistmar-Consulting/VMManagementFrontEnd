@@ -117,7 +117,7 @@ ${orgContext || "(none)"}
 
 ${internal ? `${VISTAMAR_BOARD_SCOPE}\n\n` : ""}### boardChanges.creates — NEW tasks
 ${CREATE_BASE_RULES}
-- Set categories to an array with exactly ONE category SLUG from the list below (use the slug exactly), and tags from the vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur.
+- Set categories to an array with exactly ONE category SLUG from the list below (use the slug exactly), and tags from the vocabulary. Coin a NEW lowercase-hyphenated tag ONLY when nothing fits and it will recur. Never coin a tag for urgency or a blocked state (e.g. "urgent", "blocked") — those are statuses.
 ${PARENT_REF_RULES}
 
 ${MOVES_RULES}

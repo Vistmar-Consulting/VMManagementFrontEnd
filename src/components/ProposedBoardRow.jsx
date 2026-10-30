@@ -3,6 +3,8 @@ import {
   Box,
   Checkbox,
   Chip as MuiChip,
+  Divider,
+  ListSubheader,
   Menu,
   MenuItem,
   TextField,
@@ -13,7 +15,7 @@ import MemberAvatar from "./MemberAvatar.jsx";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
 import { assignableForOrg } from "../lib/people.js";
-import { tagsForOrg } from "../lib/tagScope.js";
+import { tagGroups } from "../lib/tagScope.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 
 const STATUS_BY_ID = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id, s]));
@@ -55,7 +57,8 @@ export default function ProposedBoardRow({
   const selectedTagIds = promo.tagIds || [];
   const selectedTags = selectedTagIds.map((id) => tags.find((t) => t.id === id)).filter(Boolean);
   const ownerChoices = [...new Set([...assignableForOrg(users, orgId), ...assignees])];
-  const tagChoices = [...new Set([...tagsForOrg(tags, orgId), ...selectedTags])];
+  // Shared tags, then this client's own, then any already picked from elsewhere.
+  const tagChoiceGroups = tagGroups(tags, orgId, { extraIds: selectedTagIds });
   const isSubitem = Boolean(create.parentRef);
 
   let parentLabel = null;
@@ -341,27 +344,31 @@ export default function ProposedBoardRow({
         )}
         {isChecked && (
           <Menu anchorEl={tagsAnchor} open={Boolean(tagsAnchor)} onClose={() => setTagsAnchor(null)}>
-            {tagChoices.map((t) => {
-              const sel = selectedTagIds.includes(t.id);
-              return (
-                <MenuItem
-                  key={t.id}
-                  selected={sel}
-                  onClick={() => {
-                    const next = sel
-                      ? selectedTagIds.filter((id) => id !== t.id)
-                      : [...selectedTagIds, t.id];
-                    onUpdatePromotion(idx, { tagIds: next });
-                  }}
-                >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: t.color, flexShrink: 0 }} />
-                    <Typography variant="body2" sx={{ flex: 1 }}>{t.name}</Typography>
-                    {sel && <Check sx={{ fontSize: 16, color: "primary.main" }} />}
-                  </Box>
-                </MenuItem>
-              );
-            })}
+            {tagChoiceGroups.flatMap((g, gi) => [
+              gi > 0 && <Divider key={`d-${g.id}`} />,
+              <ListSubheader key={`h-${g.id}`} sx={{ lineHeight: "28px", fontSize: "0.7rem" }}>{g.label}</ListSubheader>,
+              ...g.tags.map((t) => {
+                const sel = selectedTagIds.includes(t.id);
+                return (
+                  <MenuItem
+                    key={t.id}
+                    selected={sel}
+                    onClick={() => {
+                      const next = sel
+                        ? selectedTagIds.filter((id) => id !== t.id)
+                        : [...selectedTagIds, t.id];
+                      onUpdatePromotion(idx, { tagIds: next });
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: t.color, flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ flex: 1 }}>{t.name}</Typography>
+                      {sel && <Check sx={{ fontSize: 16, color: "primary.main" }} />}
+                    </Box>
+                  </MenuItem>
+                );
+              }),
+            ].filter(Boolean))}
             {selectedTagIds.length > 0 && (
               <MenuItem
                 onClick={() => {
