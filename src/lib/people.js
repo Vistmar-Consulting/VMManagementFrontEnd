@@ -25,6 +25,12 @@ export function personName(p) {
 // signed in, the email they may have been assigned by before.
 export const personIds = (p) => (p.email && p.email !== p.id ? [p.id, p.email] : [p.id]);
 
+// From a people list (or plain users), those offered for an org's tasks: the
+// assignable team and that org's client contacts.
+export function assignableForOrg(list, orgId) {
+  return list.filter((p) => p.assignable !== false && (p.kind !== "client" || (p.orgIds || []).includes(orgId)));
+}
+
 // users: users/* docs. membersByOrg: { [orgId]: organizations/{orgId}/members docs }.
 export function buildPeople({ users = [], membersByOrg = {} } = {}) {
   const list = [];

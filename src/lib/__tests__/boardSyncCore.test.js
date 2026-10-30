@@ -286,6 +286,21 @@ describe("initPromotion", () => {
     const p = initPromotion({ categories: [], tags: ["Laser Launch", "laser launch", "!!!"], note: "" }, { categories, tags, users: [] });
     expect(p.newTags).toEqual(["Laser Launch"]);
   });
+  it("keeps a client's run to shared tags and its own; another client's tag is dropped, not coined", () => {
+    const scoped = [{ id: "homepage", name: "homepage", organizationId: "id-care" }, { id: "email", name: "email", organizationId: null }];
+    const p = initPromotion({ categories: [], tags: ["Homepage", "email"], note: "" }, { categories, tags: scoped, users: [], orgId: "unio" });
+    expect(p.tagIds).toEqual(["email"]);
+    expect(p.newTags).toEqual([]);
+  });
+  it("infers only an owner offered for the task's org", () => {
+    const people = [
+      { id: "dave@unio.com", displayName: "David Embleton", kind: "client", orgIds: ["unio"] },
+      { id: "u3", displayName: "Scot Robinson", kind: "team" },
+    ];
+    expect(initPromotion({ categories: [], tags: [], note: "Owner: David" }, { categories, tags, users: people, orgId: "id-care" }).assigneeIds).toBeUndefined();
+    expect(initPromotion({ categories: [], tags: [], note: "Owner: David" }, { categories, tags, users: people, orgId: "unio" }).assigneeIds).toEqual(["dave@unio.com"]);
+    expect(initPromotion({ categories: [], tags: [], note: "Owner: Scot" }, { categories, tags, users: people, orgId: "id-care" }).assigneeIds).toEqual(["u3"]);
+  });
   it("no category → null; infers assignee from the note", () => {
     const p = initPromotion({ categories: [], tags: [], note: "Owner: Bill" }, { categories, tags, users: [{ id: "u2", displayName: "Bill Jones" }] });
     expect(p.categoryId).toBeNull();

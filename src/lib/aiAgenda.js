@@ -26,7 +26,7 @@ import { auth, db } from "../firebase.js";
 import { firefliesQuery, GQL_MEETING_LIST, GQL_MEETING_DETAIL } from "./fireflies.js";
 import { sanitizeHtml } from "./agendaHtml.js";
 import { agendaEditStamp } from "./agendaEdits.js";
-import { coinedTagOrg } from "./tagScope.js";
+import { coinedTagOrg, tagsForOrg } from "./tagScope.js";
 import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
@@ -289,7 +289,12 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
     return { slug: d.id, name: c.name || d.id, description: c.description || "", sop: c.sop || "" };
   });
   const tagSnap = await getDocs(query(collection(db, "tags"), orderBy("sortOrder", "asc")));
-  const tagVocab = tagSnap.docs.map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null }));
+  // A client's meeting sees the shared tags and its own; the cross-org master
+  // sees every tag, and apply keeps each topic to its org's (resolveTag).
+  const tagVocab = tagsForOrg(
+    tagSnap.docs.map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null, organizationId: d.data().organizationId || null })),
+    master ? null : targetOrg,
+  ).map(({ name, layer }) => ({ name, layer }));
 
   return {
     transcripts,
@@ -499,7 +504,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     return catByName.get(val.toLowerCase()) || null;
   };
   const existingTagIds = new Set(tagSnap.docs.map((d) => d.id));
-  const existingTagByName = new Map(tagSnap.docs.map((d) => [(d.data().name || d.id).toLowerCase(), d.id]));
+  const existingTags = tagSnap.docs.map((d) => ({ id: d.id, name: d.data().name || d.id, organizationId: d.data().organizationId || null }));
   const tagSort = tagSnap.size;
 
   // Resolve which org each accepted create belongs to (master = per-create org;
@@ -586,15 +591,18 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     const newTagWrites = [];
     // A coined tag is a Client Tag of the org whose topic coined it
     // (lib/tagScope.js); coined for several orgs at once, it is shared.
+    // Only shared tags and the topic's org's own match; a name that is another
+    // org's tag is dropped (its id is taken, so it can't be coined either).
     const resolveTag = (t, orgId) => {
       const name = String(t || "").trim();
       if (!name) return null;
-      if (existingTagIds.has(name)) return name;
-      const byName = existingTagByName.get(name.toLowerCase());
-      if (byName) return byName;
+      const inScope = tagsForOrg(existingTags, orgId);
       const id = tagSlug(name);
-      if (!id) return null;
-      if (existingTagIds.has(id)) return id;
+      const found = inScope.find((x) => x.id === name)
+        || inScope.find((x) => x.name.toLowerCase() === name.toLowerCase())
+        || inScope.find((x) => x.id === id);
+      if (found) return found.id;
+      if (!id || existingTagIds.has(name) || existingTagIds.has(id)) return null;
       const w = newTagWrites.find((x) => x.id === id) || newTagWrites[newTagWrites.push({ id, name, orgs: new Set() }) - 1];
       w.orgs.add(orgId || null);
       return id;

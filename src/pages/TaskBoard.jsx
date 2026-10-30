@@ -630,14 +630,27 @@ export default function TaskBoard() {
   const assigneeFilterValues = useMemo(() => {
     const pool = orgFilter === "all" ? people.list.filter((p) => p.assignable) : people.choicesFor(orgFilter);
     const assigned = new Set(allItems.flatMap((i) => i.assigneeIds || []));
-    const extra = [...assigned].map((id) => people.byId[id]).filter((p) => p && !pool.includes(p));
+    const extra = [...new Set([...assigned].map((id) => people.byId[id]))].filter((p) => p && !pool.includes(p));
     return [...pool, ...extra].map((p) => ({ value: p.id, label: personName(p), color: null }));
   }, [people, orgFilter, allItems]);
   // Categories are global: show ALL in the column-header popover so newly-
   // added values are immediately visible and editable. Tags: shared tags plus
   // the selected client's own; every tag on "All" (lib/tagScope.js).
   const categoryFilterValues = categories.map((c) => ({ value: c.id, label: c.name, color: c.color }));
-  const tagFilterValues = tagsForOrg(tags, orgFilter).map((t) => ({ value: t.id, label: t.name, color: t.color }));
+  const tagFilterValues = useMemo(() => {
+    // Plus any tag this client's items carry from elsewhere, so they stay filterable.
+    const carried = new Set(allItems.filter((i) => i.organizationId === orgFilter).flatMap((i) => i.tagIds || []));
+    const scoped = new Set(tagsForOrg(tags, orgFilter).map((t) => t.id));
+    return tags.filter((t) => scoped.has(t.id) || carried.has(t.id)).map((t) => ({ value: t.id, label: t.name, color: t.color }));
+  }, [tags, orgFilter, allItems]);
+  // A tag filter left over from another client would hide every row with no
+  // box to untick: keep only the tags this view offers.
+  useEffect(() => {
+    const allowed = new Set(tagFilterValues.map((v) => v.value));
+    const selected = columnFilters.tagIds || [];
+    if (selected.some((id) => !allowed.has(id))) handleFilterChange("tagIds", selected.filter((id) => allowed.has(id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reacts to the offered tags only
+  }, [tagFilterValues]);
 
   // Group renderer
   const renderGroup = (title, groupKey, groupItems, expanded, setExpanded, color) => (
@@ -1079,6 +1092,17 @@ export default function TaskBoard() {
             <MenuItem value="">Shared (all clients)</MenuItem>
             {sortedOrgs.map((o) => <MenuItem key={o.id} value={o.id}>{o.name || o.id} only</MenuItem>)}
           </TextField>
+          {(() => {
+            const owner = tagDialog?.organizationId;
+            if (tagDialog?.mode !== "edit" || !owner) return null;
+            const others = allItems.filter((i) => (i.tagIds || []).includes(tagDialog.id) && i.organizationId !== owner).length;
+            if (!others) return null;
+            return (
+              <Alert severity="warning" sx={{ mt: 1 }}>
+                {others} task{others === 1 ? "" : "s"} of other clients carry this tag. They keep it, but it won&apos;t be offered for their client anymore.
+              </Alert>
+            );
+          })()}
           <Box sx={{ mt: 2 }}>
             <ColorPicker
               color={tagDialog?.color || TAG_COLORS[0]}

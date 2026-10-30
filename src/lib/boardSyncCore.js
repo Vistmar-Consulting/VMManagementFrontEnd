@@ -5,6 +5,7 @@
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "./itemStatusMap.js";
 import { inferAssigneeIds } from "./syncMeeting.js";
+import { tagsForOrg } from "./tagScope.js";
 
 // Twin: api/ai/_handlers/syncBoard.js BOARD_SYNC_EMAIL (api/ can't import src/).
 // A test asserts the two match.
@@ -203,7 +204,9 @@ function resolveTagId(raw, tags) {
 
 // Initial review state for one create (spec 7, "Create mapping"): AI Gen status,
 // first resolvable category, known tags as ids, unknown tags kept to coin at apply.
-export function initPromotion(create, { categories, tags, users }) {
+// Tags and owners are limited to orgId's (shared + own tags; team + its
+// contacts); a name that is another org's tag is dropped, not coined.
+export function initPromotion(create, { categories, tags, users, orgId }) {
   const catIds = new Set((categories || []).map((c) => c.id));
   const catByName = new Map((categories || []).map((c) => [norm(c.name), c.id]));
   const categoryId = (create.categories || [])
@@ -211,14 +214,18 @@ export function initPromotion(create, { categories, tags, users }) {
     .find(Boolean) || null;
   const tagIds = [];
   const newTags = [];
+  const allTags = tags || [];
+  const inScope = tagsForOrg(allTags, orgId);
   for (const raw of create.tags || []) {
-    const id = resolveTagId(raw, tags || []);
+    const id = resolveTagId(raw, inScope);
     if (id) {
       if (!tagIds.includes(id)) tagIds.push(id);
+    } else if (resolveTagId(raw, allTags)) {
+      continue;
     } else if (tagSlug(raw) && !newTags.some((n) => tagSlug(n) === tagSlug(raw))) {
       newTags.push(String(raw).trim());
     }
   }
-  const assigneeIds = inferAssigneeIds(create.note, users || []);
+  const assigneeIds = inferAssigneeIds(create.note, users || [], orgId);
   return { statusId: AI_GEN_STATUS, categoryId, tagIds, newTags, ...(assigneeIds.length ? { assigneeIds } : {}) };
 }

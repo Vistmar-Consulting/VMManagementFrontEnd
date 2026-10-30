@@ -72,7 +72,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
       const bc = result.boardChanges;
       const valid = { creates: idxSet(bc.creates, new Set(v.acceptedCreates)), moves: idxSet(bc.moves, new Set(v.acceptedMoves)), notes: idxSet(bc.notes, new Set(v.acceptedNotes)) };
       const promotions = {};
-      valid.creates.forEach((i) => { promotions[i] = initPromotion(bc.creates[i], { categories, tags, users }); });
+      valid.creates.forEach((i) => { promotions[i] = initPromotion(bc.creates[i], { categories, tags, users, orgId: slug }); });
       setRuns((prev) => ({
         ...prev,
         [slug]: { status: "done", result, validation: v, valid, sel: { creates: new Set(valid.creates), moves: new Set(valid.moves), notes: new Set(valid.notes) }, promotions },
@@ -202,6 +202,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
                 onUpdatePromotion={updatePromotion(slug)}
                 itemsById={itemsById}
                 creates={bc.creates}
+                orgId={slug}
                 users={users || []}
                 categories={categories || []}
                 tags={tags || []}

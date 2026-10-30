@@ -23,7 +23,7 @@ import { firefliesQuery, GQL_MEETING_LIST, GQL_MEETING_DETAIL } from "./fireflie
 import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { resolvePrompt } from "./aiAgenda.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
-import { coinedTagOrg } from "./tagScope.js";
+import { coinedTagOrg, tagsForOrg } from "./tagScope.js";
 import {
   LOOKBACK_MS,
   bucketTranscripts,
@@ -136,7 +136,7 @@ export async function gatherBoardSyncInputs({ now = Date.now() } = {}) {
     lastSyncAt: lastLog?.at?.toDate ? lastLog.at.toDate() : null,
     agendasByOrg: Object.fromEntries(orgSlugs.map((s) => [s, agendas.filter((a) => a.org === s && !a.master).map((a) => ({ id: a.id, title: a.title }))])),
     categories: catSnap.docs.map((d) => ({ slug: d.id, name: d.data().name || d.id, description: d.data().description || "", sop: d.data().sop || "" })),
-    tagVocab: tagSnap.docs.map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null })),
+    tagVocab: tagSnap.docs.map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null, organizationId: d.data().organizationId || null })),
   };
 }
 
@@ -189,7 +189,8 @@ export async function runOrgSync(orgEntry, gathered, items, extraContext) {
       orgAgendas,
       extraContext: extraContext || undefined,
       categories: gathered.categories,
-      tagVocab: gathered.tagVocab,
+      // Shared tags and this org's own (lib/tagScope.js).
+      tagVocab: tagsForOrg(gathered.tagVocab, orgEntry.slug).map(({ name, layer }) => ({ name, layer })),
     }),
   });
   if (!res.ok) {

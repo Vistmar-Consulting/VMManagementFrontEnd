@@ -12,6 +12,8 @@ import Check from "@mui/icons-material/Check";
 import MemberAvatar from "./MemberAvatar.jsx";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
+import { assignableForOrg } from "../lib/people.js";
+import { tagsForOrg } from "../lib/tagScope.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 
 const STATUS_BY_ID = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id, s]));
@@ -26,6 +28,9 @@ export default function ProposedBoardRow({
   onUpdatePromotion,
   itemsById,
   creates,
+  // The org the task lands in: owners and tags offered are that org's (the
+  // team + its contacts; shared + its own tags), plus whatever is already set.
+  orgId,
   users = [],
   categories = [],
   tags = [],
@@ -49,6 +54,8 @@ export default function ProposedBoardRow({
   const category = categories.find((c) => c.id === promo.categoryId) || null;
   const selectedTagIds = promo.tagIds || [];
   const selectedTags = selectedTagIds.map((id) => tags.find((t) => t.id === id)).filter(Boolean);
+  const ownerChoices = [...new Set([...assignableForOrg(users, orgId), ...assignees])];
+  const tagChoices = [...new Set([...tagsForOrg(tags, orgId), ...selectedTags])];
   const isSubitem = Boolean(create.parentRef);
 
   let parentLabel = null;
@@ -207,7 +214,7 @@ export default function ProposedBoardRow({
         )}
         {isChecked && (
           <Menu anchorEl={assigneeAnchor} open={Boolean(assigneeAnchor)} onClose={() => setAssigneeAnchor(null)}>
-            {users.filter((u) => u.active !== false).map((u) => {
+            {ownerChoices.map((u) => {
               const sel = assigneeIds.includes(u.id);
               return (
                 <MenuItem
@@ -334,7 +341,7 @@ export default function ProposedBoardRow({
         )}
         {isChecked && (
           <Menu anchorEl={tagsAnchor} open={Boolean(tagsAnchor)} onClose={() => setTagsAnchor(null)}>
-            {tags.map((t) => {
+            {tagChoices.map((t) => {
               const sel = selectedTagIds.includes(t.id);
               return (
                 <MenuItem

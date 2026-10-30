@@ -185,6 +185,15 @@ export default function SyncMeetingDialog({
     return out;
   }, [proposal, validation]);
 
+  // The org a proposed task lands in, as applyUnified decides: the meeting's,
+  // or on the master agenda the create's own or its topic's. Scopes the
+  // owners and tags offered for it.
+  const orgOfCreate = (c, topicsById) => (master ? c.organizationId || topicsById[c.topicId]?.organizationId || orgSlug || null : orgSlug);
+  const proposalTopicsById = useMemo(
+    () => Object.fromEntries((proposal?.topics || []).map((t) => [t.topicId, t])),
+    [proposal],
+  );
+
   // Recompute validation; reset the board-change selections to "all valid
   // checked" and clear stale promotions. Used on receipt and after each refine.
   const applyValidation = (prop, tasks) => {
@@ -214,7 +223,7 @@ export default function SyncMeetingDialog({
     const topicsById = Object.fromEntries((prop.topics || []).map((t) => [t.topicId, t]));
     creates.forEach((c, i) => {
       if (accepted.has(c)) {
-        const assigneeIds = inferAssigneeIds(c.note, users);
+        const assigneeIds = inferAssigneeIds(c.note, users, orgOfCreate(c, topicsById));
         const { categoryId, tagIds } = inheritKeysForCreate(c, topicsById);
         initPromotions[i] = {
           statusId: AI_GEN_STATUS,
@@ -676,6 +685,7 @@ export default function SyncMeetingDialog({
                         onUpdatePromotion={updatePromotion}
                         itemsById={itemsById}
                         creates={creates}
+                        orgId={orgOfCreate(c, proposalTopicsById)}
                         users={users || []}
                         categories={_categories || []}
                         tags={_tags || []}

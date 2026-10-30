@@ -3,6 +3,7 @@
 // applyUnified (at apply). See spec section 5.1 / 5.2.
 import { MOVE_STATUSES } from "./itemStatusMap.js";
 import { sanitizeHtml } from "./agendaHtml.js";
+import { assignableForOrg } from "./people.js";
 
 // Assign stable, session-local topic ids (t0..tN) preserving array order.
 export function mintTopicIds(topics) {
@@ -175,8 +176,11 @@ export function planTopicWrites(currentTopics, proposalTopics, deleteTopicIds = 
 }
 
 // Parse "Owner: <name>" or "Action item for <name>" from a create note and
-// return the matching user's id, if found. Shared by Sync Meeting + Board Sync.
-export function inferAssigneeIds(note, users) {
+// return the matching person's id, if found. Shared by Sync Meeting + Board
+// Sync. With orgId, only people offered for that org's tasks can match
+// (lib/people.js: the team and that client's contacts).
+export function inferAssigneeIds(note, users, orgId) {
+  if (orgId !== undefined) users = assignableForOrg(users || [], orgId);
   if (!note || !users?.length) return [];
   const ownerMatch = note.match(/\bOwner:\s*([^;,.\n]+)/i);
   const actionMatch = note.match(/\bAction item for\s+([^;,.\n]+)/i);
