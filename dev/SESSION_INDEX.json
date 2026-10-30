@@ -544,6 +544,16 @@
       "commit_start": "4d97ccb",
       "summary": "Overnight: Attendees counts follow the Meeting Focus card; Board Chat conversation persists across visits; Meeting Chat (Claude chat on the agenda page that reads Fireflies and edits topics / Open Floor through a review).",
       "folder": "dev/sessions/v0_4_22_Andrew_MEETING_CHAT/",
+      "date_closed": "2026-10-29",
+      "status": "complete"
+    },
+    {
+      "session_id": "SES-20261029-Andrew-v0.4.23-overnight-batch",
+      "developer": "Andrew",
+      "date": "2026-10-29",
+      "commit_start": "faa995b",
+      "summary": "Saved chat history (Board Chat + Meeting Chat, Firestore, per user); agenda mini-board Notes/Files fix + Open in Task Board; agenda 'updated … ago' with avatar; client contacts + not-signed-in teammates assignable; Shared vs Client Tags; Thursday Platform Dev Fireflies guest removed.",
+      "folder": "dev/sessions/v0_4_23_Andrew_OVERNIGHT_BATCH/",
       "status": "active"
     }
   ]
