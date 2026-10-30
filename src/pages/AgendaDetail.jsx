@@ -59,7 +59,6 @@ import ScheduleCreateDialog from "../components/ScheduleCreateDialog.jsx";
 import SendInviteDialog from "../components/SendInviteDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
-import { useItemAttachmentCounts } from "../hooks/useItemAttachmentCounts.js";
 import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
 import TaskBoardModal from "../components/TaskBoardModal.jsx";
 import { format, formatDistanceToNow, parseISO, addDays } from "date-fns";
@@ -1703,9 +1702,8 @@ export default function AgendaDetail() {
   const { data: allItems } = useItems();
   const { data: categories } = useCollection("categories");
   const { data: tags } = useCollection("tags");
-  // Notes + Files on mini-board rows: badge counts, and the item whose modal
-  // is open (the same modals as the Task Board).
-  const { getCommentCount, getFileCount } = useItemAttachmentCounts();
+  // Notes + Files on mini-board rows: the item whose modal is open (the same
+  // modals as the Task Board). Compact rows show no count badges.
   const [notesModalItem, setNotesModalItem] = useState(null);
   const [filesModalItem, setFilesModalItem] = useState(null);
   // organizationId for "+ New Item" — read from the calendar_series doc since
@@ -2063,8 +2061,6 @@ export default function AgendaDetail() {
                                 attendeeFilter={attendeeFilter}
                                 onOpenComments={setNotesModalItem}
                                 onOpenFiles={setFilesModalItem}
-                                getCommentCount={getCommentCount}
-                                getFileCount={getFileCount}
                               />
                               {isMaster && topic.organizationId !== (topics[idx + 1]?.organizationId) && (
                                 <AddOrgTopicButton

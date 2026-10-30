@@ -318,7 +318,8 @@ export default function TaskBoard() {
   const [highlightId, setHighlightId] = useState(null);
   const [focusMissing, setFocusMissing] = useState(false);
   useEffect(() => {
-    if (!focusParam || itemsLoading) return;
+    // A failed load is shown by the board's own error, not as "deleted".
+    if (!focusParam || itemsLoading || itemsError) return;
     setSearchParams((p) => { p.delete(BOARD_FOCUS_PARAM); return p; }, { replace: true });
     const plan = planBoardFocus(allItems, focusParam, orgFilter);
     if (!plan) {
@@ -331,7 +332,7 @@ export default function TaskBoard() {
     if (plan.parentRow) setRowsExpanded([rowKey(plan.groupKey, plan.parentRow.id, plan.parentRow.ghost)], true);
     setHighlightId(focusParam);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per ?item= arrival
-  }, [focusParam, itemsLoading]);
+  }, [focusParam, itemsLoading, itemsError]);
   useEffect(() => {
     if (!highlightId) return undefined;
     // After the group's open animation (MUI Collapse), so the row is where it ends up.
@@ -670,7 +671,7 @@ export default function TaskBoard() {
                       item={item}
                       subitems={subitems}
                       ghost={ghost}
-                      dimmed={Boolean(selectedCard) && !selectedCard.match(item)}
+                      dimmed={Boolean(selectedCard) && !keptIds.has(item.id) && !selectedCard.match(item)}
                       users={users}
                       categories={categories}
                       tags={tags}
