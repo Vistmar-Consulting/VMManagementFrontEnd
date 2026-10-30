@@ -5,8 +5,11 @@ import { db } from "../firebase.js";
 
 // Subscribe to a single Firestore document via onSnapshot.
 //   path: string like "users/abc123" or "items/xyz". Falsy disables the subscription.
+//   serverTimestamps: how a timestamp still waiting on the server reads in the
+//     instant local snapshot after a write — "none" (null, Firestore's default)
+//     or "estimate" (the local clock), for display that shouldn't blink.
 // Returns { data, loading, error }. `data` includes `id` and is null when the doc is missing.
-export function useDoc(path) {
+export function useDoc(path, { serverTimestamps = "none" } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(Boolean(path));
   const [error, setError] = useState(null);
@@ -26,7 +29,7 @@ export function useDoc(path) {
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {
-        setData(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+        setData(snap.exists() ? { id: snap.id, ...snap.data({ serverTimestamps }) } : null);
         setLoading(false);
       },
       (err) => {
@@ -36,7 +39,7 @@ export function useDoc(path) {
     );
 
     return unsubscribe;
-  }, [path]);
+  }, [path, serverTimestamps]);
 
   return { data, loading, error };
 }

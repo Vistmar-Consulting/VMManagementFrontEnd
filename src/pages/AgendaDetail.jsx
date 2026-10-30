@@ -1132,6 +1132,12 @@ function AttendeesPanel({ attendees, userByEmail, taskCounts, value, onChange, o
 // did it (none for a sync made before syncs recorded who ran them).
 function AgendaStamp({ label, verb, at, user }) {
   const name = user ? memberName(user) : null;
+  // Re-render each minute so "… ago" stays true on an agenda nobody is editing.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
   return (
     <Tooltip title={`${label} ${format(at, "MMM d, yyyy · h:mm a")}${name ? ` by ${name}` : ""}`}>
       <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mr: 0.75 }}>
@@ -1647,8 +1653,11 @@ export default function AgendaDetail() {
     setCollapsedTopicIds(new Set());
   }
 
+  // Estimated pending timestamps: the header's "updated … ago" doesn't vanish
+  // between a save and the server confirming it.
   const { data: agenda, loading: agendaLoading, error: agendaError } = useDoc(
-    agendaId ? `agendas/${agendaId}` : null
+    agendaId ? `agendas/${agendaId}` : null,
+    { serverTimestamps: "estimate" },
   );
   const seriesPath = agenda?.calendarSeriesId ? `calendar_series/${agenda.calendarSeriesId}` : null;
   const { data: calendarSeries } = useDoc(seriesPath);
