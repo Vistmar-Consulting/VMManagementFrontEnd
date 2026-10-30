@@ -31,7 +31,7 @@ Every content edit (title, topics, bodies, Open Floor, topic categories/tags, Sy
 ### 2. Shared Tags vs Client Tags — `c70a3af`
 - `tags.organizationId`: null = shared, else that org's own. Pickers show shared + the item's client's tags; the Tags filter shows the same for the selected client, all tags on "All"; tag dialog "Used by".
 - Live data migrated 2026-10-30 (all 38 tags; before, none had the field):
-  - Shared: email, print, website, in-clinic, social-media, video, education, branding, outreach, events, specialty-services, acquisitions, provider-specific, location-specific, corporate, urgent, approval-needed, blocked, client-internal, reputation-management.
+  - Shared: email, print, website, in-clinic, social-media, video, education, branding, outreach, events, specialty-services, acquisitions, provider-specific, location-specific, corporate, approval-needed, client-internal, reputation-management. (urgent and blocked deleted 2026-10-30 at Andy's request; they duplicate the Critical priority and Blocked status.)
   - ID Care: careers, homepage, insurance, launch, leadership-awards, locations, navigation, partner-with-us, providers, site-wide, travel-vaccines, Links.
   - Unio: communications, provider-onboarding, patient-services.
   - Vistamar: hipaa, serp-data, sales-blocker.
@@ -43,10 +43,19 @@ Every content edit (title, topics, bodies, Open Floor, topic categories/tags, Sy
 - Friday Business Dev deliberately left unchanged as a comparison; Andy will report how Friday's meeting goes.
 - No meeting was deleted or recreated.
 
+### 7. Follow-ups (2026-10-30, commit `41bd0dd`)
+- Settings → Organizations → Members: the remove X now asks "Delete member?" before removing.
+- Tag lists are grouped: Shared tags first, a divider, then the client's tags (header filter, row tag menu, Sync review rows). On "All", each client's tags are grouped under its name. `lib/tagScope.js` `tagGroups`.
+- Deleting a tag (`lib/tagWrites.js`) now also removes it from agenda topics; restoring an agenda version drops tags deleted since.
+- AI prompts (prepare, generate, Sync Board) never coin urgency/blocked tags; AI Integration page updated.
+- Data: deleted tags `urgent` (6 tasks) and `blocked` (7 tasks) through the app. Removed 23 links to deleted Unio tags (strategic-marketing, location-provider-marketing, corporate-leadership) from 18 agenda topics; re-check found 0 left. Topics' last-edited stamps were not changed.
+- Calendar: removed `fred@fireflies.ai` from today's (Oct 30) VM – Weekly Business Dev occurrence only, in Teams and Google, so Andy can test seo@'s notetaker joining on its own. Later Fridays still invite fred@.
+
 ## Open
 
 - Thursday Nov 5: confirm seo@'s Fireflies joins on its own. If it doesn't, next step is recreating the series from meetings@.
-- Friday Business Dev still has fred@ on the invite.
+- Friday Business Dev: fred@ removed from Oct 30 only; Andy is testing whether seo@'s notetaker joins. Later Fridays still invite fred@.
+- Not checked on the deployed Vercel site after `41bd0dd` (built and tested locally only).
 - "Prepared by" on the agenda shows the current time, not a real date (pre-existing; not changed).
 - Vite's optimized-deps cache in the shared `node_modules` breaks ("styled_default is not a function") when several worktrees run dev servers; `--force` restart fixes it.
 - Client guest access (paused design): topic writes are now batched with an agenda-doc stamp, so guest rules would need agenda update rights too.
@@ -55,3 +64,8 @@ Every content edit (title, topics, bodies, Open Floor, topic categories/tags, Sy
 ## Deferred
 
 - **Trim candidate: not-signed-in teammate support.** Added so Bill Lewis (no app sign-in) can be assigned tasks. Andy wants it removed if it stays single-use. The Bill-specific parts are: the `organizations/vistamar/members` source in `src/lib/people.js` (directory teammates without a `users` doc) and `claimEmailAssignments` in `src/lib/itemWrites.js`, called from `AuthContext` at sign-in. Keep the email-id assignee path itself: client contacts never sign in and depend on it. Remove when Bill signs in or is no longer assigned work.
+- **Category delete leaves the category on agenda topics** (same gap as tag delete had). Not fixed; Andy has not asked for it.
+- **Agenda topic editor tag chips are not grouped** Shared/Client like the dropdowns. Left as is; they are chips, not a list.
+
+## Close (2026-10-30)
+All requested items shipped to `origin/dev`. Worktree `board-tags` dropped at close.

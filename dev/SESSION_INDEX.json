@@ -554,7 +554,8 @@
       "commit_start": "faa995b",
       "summary": "Saved chat history (Board Chat + Meeting Chat, Firestore, per user); agenda mini-board Notes/Files fix + Open in Task Board; agenda 'updated … ago' with avatar; client contacts + not-signed-in teammates assignable; Shared vs Client Tags; Thursday Platform Dev Fireflies guest removed.",
       "folder": "dev/sessions/v0_4_23_Andrew_OVERNIGHT_BATCH/",
-      "status": "active"
+      "date_closed": "2026-10-30",
+      "status": "complete"
     }
   ]
 }
