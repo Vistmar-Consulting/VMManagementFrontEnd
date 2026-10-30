@@ -47,11 +47,12 @@ export function turnDoc({ index, status, messages, entry }) {
 }
 
 // One exchange plus the chat summary, in one batch. The first save of a chat
-// (turn 0, at Send) also creates the summary.
+// (turn 0, at Send) creates the summary; every later save updates it, so a
+// chat deleted elsewhere fails to save instead of coming back without its
+// first exchange (which carries the board or agenda context).
 export async function saveTurn(uid, chatId, turn, summary) {
   const batch = writeBatch(db);
-  batch.set(turnRef(uid, chatId, turn.index), { ...turnDoc(turn), savedAt: serverTimestamp() });
-  batch.set(chatRef(uid, chatId), {
+  const fields = {
     kind: summary.kind,
     agendaId: summary.agendaId ?? null,
     title: summary.title,
@@ -60,8 +61,10 @@ export async function saveTurn(uid, chatId, turn, summary) {
     turnCount: summary.turnCount,
     seenJson: JSON.stringify(summary.seen),
     updatedAt: serverTimestamp(),
-    ...(turn.index === 0 && turn.status === "running" ? { createdAt: serverTimestamp() } : {}),
-  }, { merge: true });
+  };
+  if (turn.index === 0 && turn.status === "running") batch.set(chatRef(uid, chatId), { ...fields, createdAt: serverTimestamp() });
+  else batch.update(chatRef(uid, chatId), fields);
+  batch.set(turnRef(uid, chatId, turn.index), { ...turnDoc(turn), savedAt: serverTimestamp() });
   await batch.commit();
 }
 
@@ -73,11 +76,15 @@ export function restoreTurns(turns) {
   return {
     history: sorted.filter((t) => t.status !== "running").flatMap((t) => JSON.parse(t.messagesJson)),
     entries: sorted.map((t) => {
-      const entry = JSON.parse(t.entryJson);
+      const entry = { ...JSON.parse(t.entryJson), turnIndex: t.index };
       return t.status === "running" ? { ...entry, notice: INTERRUPTED_NOTICE } : entry;
     }),
   };
 }
+
+// Where the next exchange is stored: after the highest stored index, so a
+// missing turn never leads to an existing one being overwritten.
+export const nextTurnIndex = (entries) => entries.reduce((n, e) => Math.max(n, e.turnIndex + 1), 0);
 
 // Null when the chat no longer exists (deleted in another tab).
 export async function loadChat(uid, chatId) {

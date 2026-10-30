@@ -22,7 +22,7 @@ import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
 import { usePersistedDraft } from "../lib/boardChat/usePersistedChat.js";
 import { makeLookups } from "../lib/boardChat/snapshot.js";
-import { chatTitle } from "../lib/chatHistory/store.js";
+import { chatTitle, nextTurnIndex } from "../lib/chatHistory/store.js";
 import { useChatSession } from "../lib/chatHistory/useChatSession.js";
 import { applyAgendaPlan } from "../lib/meetingChat/apply.js";
 import { OPEN_FLOOR, buildAgendaContext, mergeSeen, seenOf } from "../lib/meetingChat/context.js";
@@ -83,12 +83,15 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
   });
   const currentTitle = session.chats.find((c) => c.id === session.chatId)?.title;
 
-  // One exchange, saved at Send ("running") and again when its turn ends.
-  const saveEntry = (index, status, messages) => {
+  // One exchange, saved at Send ("running") and again when its turn ends, to
+  // the chat it was sent in. The panel can't switch chats while a turn runs,
+  // so entriesRef still holds that chat.
+  const saveEntry = (chatId, index, status, messages) => {
     const all = entriesRef.current;
     const entry = all[index];
     session.save(
-      { index, status, messages: messages.slice(entry.historyStart), entry: storedEntry(entry) },
+      chatId,
+      { index: entry.turnIndex, status, messages: messages.slice(entry.historyStart), entry: storedEntry(entry) },
       {
         title: chatTitle(all[0].user),
         costUsd: all.reduce((s, e) => s + (e.costUsd || 0), 0),
@@ -234,7 +237,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
     return out;
   };
 
-  const runFrom = async (messages, entryIndex) => {
+  const runFrom = async (messages, entryIndex, chatId) => {
     setBusy(true);
     setRetry(null);
     patchEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, error: null, notice: null } : e)));
@@ -246,7 +249,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
       const out = await runTurn({ messages, post, executeTool, onUpdate: update });
       setHistory(out.messages);
       if (!out.done) patchEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, notice: `Stopped after ${MAX_CALLS_PER_TURN} model calls — ask again to continue.` } : e)));
-      saveEntry(entryIndex, "done", out.messages);
+      saveEntry(chatId, entryIndex, "done", out.messages);
     } catch (err) {
       setHistory(err.messages);
       patchEntries((prev) => prev.map((e, i) => {
@@ -255,8 +258,10 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
         const cost = (e.baseCost || 0) + (err.turn?.costUsd || 0);
         return { ...e, error: err.message, baseSteps: steps, steps, baseCost: cost, costUsd: cost, unpriced: e.unpriced || err.turn?.unpriced };
       }));
-      setRetry({ messages: err.messages, entryIndex });
-      saveEntry(entryIndex, "error", err.messages);
+      setRetry({ messages: err.messages, entryIndex, chatId });
+      // After leaving the page the exchange stays saved as "running", and
+      // comes back as interrupted with nothing added to the model history.
+      if (mountedRef.current) saveEntry(chatId, entryIndex, "error", err.messages);
     } finally {
       setBusy(false);
     }
@@ -264,8 +269,9 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
 
   const send = () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || session.loading) return;
     setInput("");
+    setShowHistory(false);
     let content = text;
     if (history.length === 0) {
       const live = latest.current;
@@ -273,11 +279,13 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
       seenRef.current = { ...ctx.seen };
       content = [{ type: "text", text: ctx.text }, { type: "text", text }];
     }
+    const chatId = session.claimId();
     const entryIndex = entriesRef.current.length;
+    const turnIndex = nextTurnIndex(entriesRef.current);
     const messages = [...history, { role: "user", content }];
-    patchEntries((prev) => [...prev, { user: text, reply: "", steps: [], costUsd: 0, historyStart: history.length }]);
-    saveEntry(entryIndex, "running", messages);
-    runFrom(messages, entryIndex);
+    patchEntries((prev) => [...prev, { user: text, reply: "", steps: [], costUsd: 0, historyStart: history.length, turnIndex }]);
+    saveEntry(chatId, entryIndex, "running", messages);
+    runFrom(messages, entryIndex, chatId);
   };
 
   const newChat = () => {
@@ -321,7 +329,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
 
       <Box ref={listRef} sx={{ flexGrow: 1, overflowY: "auto", px: 2, py: 1.5 }}>
         {showHistory && (
-          <ChatHistoryView chats={session.chats} currentId={session.chatId} onOpen={openChat} onDelete={deleteChat} />
+          <ChatHistoryView chats={session.chats} currentId={session.chatId} busy={busy} onOpen={openChat} onDelete={deleteChat} />
         )}
         {!showHistory && session.loading && <Typography variant="body2" color="text.secondary">Loading chat…</Typography>}
         {!showHistory && !session.loading && entries.length === 0 && (
@@ -345,7 +353,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
             {e.reply && <Typography variant="body2" sx={{ mt: 0.75, whiteSpace: "pre-wrap" }}>{e.reply}</Typography>}
             {e.notice && <Alert severity="warning" sx={{ mt: 1 }}>{e.notice}</Alert>}
             {e.error && (
-              <Alert severity="error" sx={{ mt: 1 }} action={retry?.entryIndex === i && !busy ? <Button size="small" onClick={() => runFrom(retry.messages, i)}>Retry</Button> : null}>
+              <Alert severity="error" sx={{ mt: 1 }} action={retry?.entryIndex === i && !busy ? <Button size="small" onClick={() => runFrom(retry.messages, i, retry.chatId)}>Retry</Button> : null}>
                 {e.error}
               </Alert>
             )}
@@ -359,11 +367,6 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
         {busy && !showHistory && <Typography variant="caption" color="text.secondary">Thinking…</Typography>}
       </Box>
 
-      {session.blocked && (
-        <Typography variant="caption" color="text.secondary" sx={{ px: 2 }}>
-          This chat can&apos;t be saved any further — start a New chat to keep the next one.
-        </Typography>
-      )}
 
       <Stack direction="row" spacing={1} sx={{ p: 1.5, borderTop: 1, borderColor: "divider" }}>
         <TextField
@@ -377,7 +380,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
           onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); } }}
           disabled={busy || session.loading}
         />
-        <IconButton onClick={send} disabled={busy || !input.trim()} aria-label="Send"><SendIcon /></IconButton>
+        <IconButton onClick={send} disabled={busy || session.loading || !input.trim()} aria-label="Send"><SendIcon /></IconButton>
       </Stack>
 
       {pending && (

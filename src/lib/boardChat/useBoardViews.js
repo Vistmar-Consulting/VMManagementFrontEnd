@@ -8,7 +8,8 @@
 //
 // A per-browser copy in localStorage lets the board restore an active view on
 // first render, before Firestore answers. Views saved by the earlier
-// browser-only version are uploaded once, as views with no chat.
+// browser-only version are uploaded once, as views with no chat, to the
+// account signed in on that browser (that list was never per user).
 import { useEffect, useRef, useState } from "react";
 import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../../firebase.js";
@@ -34,19 +35,31 @@ function legacyViews() {
 }
 
 const viewDoc = (uid, id) => doc(db, "users", uid, "boardViews", id);
-const toFirestore = (v) => ({ label: v.label, filtersJson: JSON.stringify(v.filters), chatId: v.chatId ?? null, createdAt: serverTimestamp() });
+// `order` is set by the browser that adds the view, so several views added in
+// one reply keep their order while their server timestamps are pending.
+const toFirestore = (v, order) => ({ label: v.label, filtersJson: JSON.stringify(v.filters), chatId: v.chatId ?? null, order, createdAt: serverTimestamp() });
 
-// Oldest first; a view still waiting on its server timestamp is the newest.
+// In the order they were added.
 export function viewsFromDocs(docs) {
-  const ms = (d) => (d.createdAt ? d.createdAt.toMillis() : Infinity);
   return [...docs]
-    .sort((a, b) => ms(a) - ms(b))
+    .sort((a, b) => a.order - b.order)
     .map((d) => ({ id: d.id, label: d.label, filters: JSON.parse(d.filtersJson), chatId: d.chatId ?? null }));
+}
+
+// The next list after a change the board made from `base` (the list it
+// rendered): `current` may already hold a view another tab added since, which
+// must not be dropped as if the board had removed it.
+export function applyViewChange(current, base, next) {
+  const removed = new Set(base.filter((v) => !next.some((n) => n.id === v.id)).map((v) => v.id));
+  const added = next.filter((n) => !base.some((v) => v.id === n.id));
+  return { removed, added, views: [...current.filter((v) => !removed.has(v.id) && !added.some((a) => a.id === v.id)), ...added] };
 }
 
 export function useBoardViews(uid) {
   const cacheKey = `vm-board-views:${uid}`;
-  const [views, setViewsState] = useState(() => readJson(cacheKey, []));
+  // Before the first snapshot: this browser's copy, or (the first visit after
+  // views moved to Firestore) the browser-only list being uploaded below.
+  const [views, setViewsState] = useState(() => readJson(cacheKey, null) ?? legacyViews());
   const [error, setError] = useState(null);
   const viewsRef = useRef(views);
 
@@ -61,7 +74,8 @@ export function useBoardViews(uid) {
   useEffect(() => {
     const legacy = legacyViews();
     if (legacy.length) {
-      Promise.all(legacy.map((v) => setDoc(viewDoc(uid, v.id), toFirestore(v))))
+      const start = Date.now();
+      Promise.all(legacy.map((v, i) => setDoc(viewDoc(uid, v.id), toFirestore(v, start + i))))
         .then(() => localStorage.removeItem(LEGACY_KEY))
         .catch(fail("move"));
     }
@@ -74,12 +88,12 @@ export function useBoardViews(uid) {
   }, [uid]);
 
   const setViews = (next) => {
-    const before = new Set(viewsRef.current.map((v) => v.id));
-    const after = new Set(next.map((v) => v.id));
-    commit(next);
+    const change = applyViewChange(viewsRef.current, views, next);
+    commit(change.views);
     setError(null);
-    next.filter((v) => !before.has(v.id)).forEach((v) => setDoc(viewDoc(uid, v.id), toFirestore(v)).catch(fail("save")));
-    [...before].filter((id) => !after.has(id)).forEach((id) => deleteDoc(viewDoc(uid, id)).catch(fail("delete")));
+    const start = Date.now();
+    change.added.forEach((v, i) => setDoc(viewDoc(uid, v.id), toFirestore(v, start + i)).catch(fail("save")));
+    change.removed.forEach((id) => deleteDoc(viewDoc(uid, id)).catch(fail("delete")));
   };
 
   return [views, setViews, error];

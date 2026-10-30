@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ChatTooLargeError, INTERRUPTED_NOTICE, MAX_TURN_BYTES, chatTitle, restoreTurns, sortChats, turnDoc } from "../store.js";
+import { ChatTooLargeError, INTERRUPTED_NOTICE, MAX_TURN_BYTES, chatTitle, nextTurnIndex, restoreTurns, sortChats, turnDoc } from "../store.js";
 
 const user = (text) => ({ role: "user", content: text });
 const assistant = (text) => ({ role: "assistant", content: [{ type: "text", text }] });
@@ -34,6 +34,12 @@ describe("chat history store", () => {
     expect(out.entries.map((e) => e.user)).toEqual(["a", "b", "c"]);
     expect(out.entries[2].notice).toBe(INTERRUPTED_NOTICE);
     expect(out.entries[1].error).toBe("Failed to fetch");
+    expect(out.entries.map((e) => e.turnIndex)).toEqual([0, 1, 2]);
+  });
+
+  it("numbers the next exchange after the highest stored one, even with a gap", () => {
+    expect(nextTurnIndex([])).toBe(0);
+    expect(nextTurnIndex([{ turnIndex: 0 }, { turnIndex: 1 }, { turnIndex: 3 }])).toBe(4);
   });
 
   it("lists chats newest first, a just-saved one on top", () => {

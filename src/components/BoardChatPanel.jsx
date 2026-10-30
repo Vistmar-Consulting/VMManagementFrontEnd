@@ -29,7 +29,7 @@ import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/convers
 import { buildReviewRows, toChangeSet } from "../lib/boardChat/proposal.js";
 import { buildBoardSnapshot, itemRef, makeLookups, memberName, toMillis } from "../lib/boardChat/snapshot.js";
 import { usePersistedDraft } from "../lib/boardChat/usePersistedChat.js";
-import { chatTitle } from "../lib/chatHistory/store.js";
+import { chatTitle, nextTurnIndex } from "../lib/chatHistory/store.js";
 import { useChatSession } from "../lib/chatHistory/useChatSession.js";
 import { runReadTool } from "../lib/boardChat/tools.js";
 import appTheme from "../theme/index.js";
@@ -102,12 +102,15 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
   });
   const currentTitle = session.chats.find((c) => c.id === session.chatId)?.title;
 
-  // One exchange, saved at Send ("running") and again when its turn ends.
-  const saveEntry = (index, status, messages) => {
+  // One exchange, saved at Send ("running") and again when its turn ends, to
+  // the chat it was sent in. The panel can't switch chats while a turn runs,
+  // so entriesRef still holds that chat.
+  const saveEntry = (chatId, index, status, messages) => {
     const all = entriesRef.current;
     const entry = all[index];
     session.save(
-      { index, status, messages: messages.slice(entry.historyStart), entry: storedEntry(entry) },
+      chatId,
+      { index: entry.turnIndex, status, messages: messages.slice(entry.historyStart), entry: storedEntry(entry) },
       {
         title: chatTitle(all[0].user),
         costUsd: all.reduce((s, e) => s + (e.costUsd || 0), 0),
@@ -226,7 +229,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
     if (name === "propose_changes") return proposeChanges(toolInput);
     const live = latest.current;
     if (name === "set_board_filter") {
-      const result = live.onApplyFilter(toolInput, session.idNow());
+      const result = live.onApplyFilter(toolInput, turnChatRef.current);
       return { result, step: result.view ? `Filtered board: ${result.view}` : "Cleared board filters" };
     }
     const out = await runReadTool(name, toolInput, { items: live.items, lookups: live.lookups });
@@ -238,7 +241,10 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
     return { result: out.result, step: STEP_LABEL[name](toolInput, { label: live.itemLabel }) };
   };
 
-  const runFrom = async (messages, entryIndex) => {
+  // The chat the running turn belongs to: a filter view it makes is that chat's.
+  const turnChatRef = useRef(null);
+  const runFrom = async (messages, entryIndex, chatId) => {
+    turnChatRef.current = chatId;
     setBusy(true);
     setRetry(null);
     patchEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, error: null, notice: null } : e)));
@@ -250,7 +256,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
       const out = await runTurn({ messages, post, executeTool, onUpdate: update });
       setHistory(out.messages);
       if (!out.done) patchEntries((prev) => prev.map((e, i) => (i === entryIndex ? { ...e, notice: `Stopped after ${MAX_CALLS_PER_TURN} model calls — ask again to continue.` } : e)));
-      saveEntry(entryIndex, "done", out.messages);
+      saveEntry(chatId, entryIndex, "done", out.messages);
     } catch (err) {
       setHistory(err.messages);
       // A retry starts a fresh turn, so this attempt's steps and cost become
@@ -261,8 +267,10 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
         const cost = (e.baseCost || 0) + (err.turn?.costUsd || 0);
         return { ...e, error: err.message, baseSteps: steps, steps, baseCost: cost, costUsd: cost, unpriced: e.unpriced || err.turn?.unpriced };
       }));
-      setRetry({ messages: err.messages, entryIndex });
-      saveEntry(entryIndex, "error", err.messages);
+      setRetry({ messages: err.messages, entryIndex, chatId });
+      // After leaving the page the exchange stays saved as "running", and
+      // comes back as interrupted with nothing added to the model history.
+      if (mountedRef.current) saveEntry(chatId, entryIndex, "error", err.messages);
     } finally {
       setBusy(false);
     }
@@ -270,19 +278,22 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
 
   const send = () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || session.loading) return;
     setInput("");
+    setShowHistory(false);
     let content = text;
     if (history.length === 0) {
       const snap = buildBoardSnapshot({ items, users, orgs, categories, tags });
       seenRef.current = { ...snap.seen };
       content = [{ type: "text", text: contextBlock(snap.text, user, users) }, { type: "text", text }];
     }
+    const chatId = session.claimId();
     const entryIndex = entriesRef.current.length;
+    const turnIndex = nextTurnIndex(entriesRef.current);
     const messages = [...history, { role: "user", content }];
-    patchEntries((prev) => [...prev, { user: text, reply: "", steps: [], costUsd: 0, historyStart: history.length }]);
-    saveEntry(entryIndex, "running", messages);
-    runFrom(messages, entryIndex);
+    patchEntries((prev) => [...prev, { user: text, reply: "", steps: [], costUsd: 0, historyStart: history.length, turnIndex }]);
+    saveEntry(chatId, entryIndex, "running", messages);
+    runFrom(messages, entryIndex, chatId);
   };
 
   const newChat = () => {
@@ -333,6 +344,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
           <ChatHistoryView
             chats={session.chats}
             currentId={session.chatId}
+            busy={busy}
             onOpen={openChat}
             onDelete={deleteChat}
             viewCount={(id) => views.filter((v) => v.chatId === id).length}
@@ -355,7 +367,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
             {e.reply && <Typography variant="body2" sx={{ mt: 0.75, whiteSpace: "pre-wrap" }}>{e.reply}</Typography>}
             {e.notice && <Alert severity="warning" sx={{ mt: 1 }}>{e.notice}</Alert>}
             {e.error && (
-              <Alert severity="error" sx={{ mt: 1 }} action={retry?.entryIndex === i && !busy ? <Button size="small" onClick={() => runFrom(retry.messages, i)}>Retry</Button> : null}>
+              <Alert severity="error" sx={{ mt: 1 }} action={retry?.entryIndex === i && !busy ? <Button size="small" onClick={() => runFrom(retry.messages, i, retry.chatId)}>Retry</Button> : null}>
                 {e.error}
               </Alert>
             )}
@@ -369,11 +381,6 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
         {busy && !showHistory && <Typography variant="caption" color="text.secondary">Thinking…</Typography>}
       </Box>
 
-      {session.blocked && (
-        <Typography variant="caption" color="text.secondary" sx={{ px: 2 }}>
-          This chat can&apos;t be saved any further — start a New chat to keep the next one.
-        </Typography>
-      )}
 
       <Stack direction="row" spacing={1} sx={{ p: 1.5, borderTop: 1, borderColor: "divider" }}>
         <TextField
@@ -387,7 +394,7 @@ export default function BoardChatPanel({ open, onClose, items, users, orgs, cate
           onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); } }}
           disabled={busy || session.loading}
         />
-        <IconButton onClick={send} disabled={busy || !input.trim()} aria-label="Send"><SendIcon /></IconButton>
+        <IconButton onClick={send} disabled={busy || session.loading || !input.trim()} aria-label="Send"><SendIcon /></IconButton>
       </Stack>
 
       {pending && (

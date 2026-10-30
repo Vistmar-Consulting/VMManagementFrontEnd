@@ -279,12 +279,31 @@ describe("BoardChatPanel", { timeout: 60000 }, () => {
     expect(screen.queryByText("an answer")).toBeNull();
   });
 
+  it("while an answer runs, History can't switch or delete chats; Send leaves History", async () => {
+    postChat.mockResolvedValueOnce(reply("old answer"));
+    renderPanel();
+    ask("old question");
+    expect(await screen.findByText("old answer")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+
+    let finish;
+    postChat.mockReturnValueOnce(new Promise((r) => { finish = r; }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat history" }));
+    ask("new question");
+    expect(screen.queryByRole("button", { name: "Delete chat old question" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Chat history" }).disabled).toBe(true);
+
+    finish(reply("new answer"));
+    await waitFor(() => expect(chats.get("chat-2")?.turns.get(0)?.status).toBe("done"));
+    expect(JSON.parse(chats.get("chat-1").turns.get(0).entryJson).reply).toBe("old answer");
+  });
+
   it("a chat that fails to save says so", async () => {
     saveTurn.mockRejectedValue(new Error("offline"));
     postChat.mockResolvedValueOnce(reply("an answer"));
     renderPanel();
     ask("q");
-    expect(await screen.findByText("Could not save this chat: offline")).toBeTruthy();
+    expect(await screen.findByText(/Could not save this chat \(offline\)/)).toBeTruthy();
     expect(await screen.findByText("an answer")).toBeTruthy();
   });
 });

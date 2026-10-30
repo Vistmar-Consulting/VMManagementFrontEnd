@@ -35,7 +35,7 @@ users/{uid}/chats/{chatId}
   createdAt, updatedAt: timestamp
   costUsd: number, unpriced: boolean
   turnCount: number
-  seen: { [id]: ms | string }      # what the model last read (staleness baseline)
+  seenJson: string                 # { [id]: ms | string } — what the model last read (staleness baseline)
 
 users/{uid}/chats/{chatId}/turns/{index, zero-padded}
   index: number
@@ -45,7 +45,7 @@ users/{uid}/chats/{chatId}/turns/{index, zero-padded}
   savedAt: timestamp
 
 users/{uid}/boardViews/{viewId}
-  label, filters, chatId: string | null, createdAt
+  label, filtersJson, chatId: string | null, order (browser ms, sort key), createdAt
 ```
 
 Messages are stored as JSON strings: Firestore rejects nested arrays and `undefined`, and the string length gives the exact size for the 1 MB check.
@@ -56,7 +56,10 @@ Queries are single-field equality (`kind == "board"`, `agendaId == X`) sorted in
 
 ## Behavior
 
-- **Send:** the turn doc is written with status `running` (question + model messages so far), then rewritten when the turn ends (`done` or `error`), together with the chat summary (updatedAt, cost, turnCount, seen) in one batch.
+- **Send:** claims the chat id (a new chat gets one here). The turn doc is written with status `running` (question + model messages so far), then rewritten when the turn ends (`done` or `error`), together with the chat summary (updatedAt, cost, turnCount, seen) in one batch — always to the chat id claimed at Send. The first save creates the summary; later saves update it, so a chat deleted in another tab fails to save rather than reappearing without its first exchange.
+- **Turn numbering:** the next exchange is stored after the highest stored index. After any failed save, the chat stops saving (and says so), so a later exchange is never stored with an earlier one missing.
+- **Leaving the page mid-answer** leaves the exchange `running`; it is not rewritten as an error.
+- **While an answer runs**, History, chat switching and delete are unavailable; Send closes History. Send is unavailable while a chat is loading, and only the most recent open() may restore.
 - **Load:** turns in index order. Model history = the messages of every turn that is not `running`. A `running` turn (the page was closed mid-answer) shows "Interrupted when you left the page — ask again" and contributes no messages, so the model never sees a half-finished exchange.
 - **Retry** rewrites the same turn doc.
 - **Too large:** a turn over ~1,000,000 bytes is not saved; the chat says "This chat can't be saved any further — start a new chat." The conversation on screen keeps working.

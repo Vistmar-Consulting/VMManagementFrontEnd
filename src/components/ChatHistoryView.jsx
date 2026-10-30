@@ -23,7 +23,9 @@ import { formatUsd } from "../lib/boardChat/conversation.js";
 
 const when = (c) => (c.updatedAt ? format(c.updatedAt.toDate(), "MMM d, h:mm a") : "Just now");
 
-export default function ChatHistoryView({ chats, currentId, onOpen, onDelete, viewCount = () => 0 }) {
+// While an answer is running nothing here is clickable: the turn is saved to
+// the chat it was sent in, and switching or deleting under it would mix chats.
+export default function ChatHistoryView({ chats, currentId, busy, onOpen, onDelete, viewCount = () => 0 }) {
   const [confirming, setConfirming] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -43,7 +45,7 @@ export default function ChatHistoryView({ chats, currentId, onOpen, onDelete, vi
     <Box>
       <List dense disablePadding>
         {chats.map((c) => (
-          <ListItemButton key={c.id} selected={c.id === currentId} onClick={() => onOpen(c.id)} sx={{ pr: 6, borderRadius: 1 }}>
+          <ListItemButton key={c.id} selected={c.id === currentId} disabled={busy} onClick={() => onOpen(c.id)} sx={{ pr: 6, borderRadius: 1 }}>
             <ListItemText
               primary={c.title || "(untitled)"}
               secondary={`${when(c)} · ${formatUsd(c.costUsd || 0)}${c.unpriced ? " + unpriced" : ""}`}
@@ -52,6 +54,7 @@ export default function ChatHistoryView({ chats, currentId, onOpen, onDelete, vi
             <IconButton
               size="small"
               edge="end"
+              disabled={busy}
               aria-label={`Delete chat ${c.title}`}
               onClick={(ev) => { ev.stopPropagation(); setConfirming(c); }}
               sx={{ position: "absolute", right: 8 }}
