@@ -59,6 +59,9 @@ import ScheduleCreateDialog from "../components/ScheduleCreateDialog.jsx";
 import SendInviteDialog from "../components/SendInviteDialog.jsx";
 import TopicEditDialog from "../components/TopicEditDialog.jsx";
 import { useItems } from "../hooks/useItems.js";
+import { useItemAttachmentCounts } from "../hooks/useItemAttachmentCounts.js";
+import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
+import TaskBoardModal from "../components/TaskBoardModal.jsx";
 import { format, formatDistanceToNow, parseISO, addDays } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { listMeetings } from "../lib/meetingsApi.js";
@@ -1700,6 +1703,11 @@ export default function AgendaDetail() {
   const { data: allItems } = useItems();
   const { data: categories } = useCollection("categories");
   const { data: tags } = useCollection("tags");
+  // Notes + Files on mini-board rows: badge counts, and the item whose modal
+  // is open (the same modals as the Task Board).
+  const { getCommentCount, getFileCount } = useItemAttachmentCounts();
+  const [notesModalItem, setNotesModalItem] = useState(null);
+  const [filesModalItem, setFilesModalItem] = useState(null);
   // organizationId for "+ New Item" — read from the calendar_series doc since
   // that's where reconciliation stamps the resolved Management slug.
   const organizationId = calendarSeries?.organizationId || agenda?.organizationId || null;
@@ -2053,6 +2061,10 @@ export default function AgendaDetail() {
                                 tags={tags}
                                 focusFilter={meetingFocusFilter}
                                 attendeeFilter={attendeeFilter}
+                                onOpenComments={setNotesModalItem}
+                                onOpenFiles={setFilesModalItem}
+                                getCommentCount={getCommentCount}
+                                getFileCount={getFileCount}
                               />
                               {isMaster && topic.organizationId !== (topics[idx + 1]?.organizationId) && (
                                 <AddOrgTopicButton
@@ -2128,6 +2140,18 @@ export default function AgendaDetail() {
           onClose={() => setSyncMeetingOpen(false)}
         />
       )}
+      <TaskBoardModal
+        open={Boolean(notesModalItem)}
+        onClose={() => setNotesModalItem(null)}
+        item={notesModalItem}
+        users={users}
+      />
+      <TaskBoardFilesModal
+        open={Boolean(filesModalItem)}
+        onClose={() => setFilesModalItem(null)}
+        item={filesModalItem}
+        users={users}
+      />
       {user && (
         <MeetingChatPanel
           // One conversation per agenda: remount when the route moves to another.

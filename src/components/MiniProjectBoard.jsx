@@ -31,7 +31,9 @@ import {
 import { generateKeyBetween } from "fractional-indexing";
 
 import { db } from "../firebase.js";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { boardItemPath } from "../lib/boardFocus.js";
 import TaskBoardRow from "./TaskBoardRow.jsx";
 import { filterMiniBoard } from "../lib/miniBoardFilter.js";
 
@@ -107,6 +109,8 @@ export default function MiniProjectBoard({
   scorecardKey = null,
 }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const openInBoard = (item) => navigate(boardItemPath(item.id));
   const topicCatIds = topic?.categoryIds || [];
   const topicTagIds = topic?.tagIds || [];
 
@@ -392,6 +396,7 @@ export default function MiniProjectBoard({
                       onNewSettled={handleNewSettled}
                       onOpenComments={onOpenComments}
                       onOpenFiles={onOpenFiles}
+                      onOpenInBoard={openInBoard}
                       getCommentCount={getCommentCount}
                       getFileCount={getFileCount}
                     />

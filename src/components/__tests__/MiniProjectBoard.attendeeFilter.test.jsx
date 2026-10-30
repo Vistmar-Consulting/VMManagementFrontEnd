@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { ThemeProvider, createTheme } from "@mui/material";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../../firebase.js", () => ({ db: {} }));
 vi.mock("../../contexts/AuthContext.jsx", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
@@ -47,7 +48,7 @@ function renderBoard(assigneeFilterId) {
       </LocalizationProvider>
     </ThemeProvider>
   );
-  const result = render(ui(assigneeFilterId));
+  const result = render(ui(assigneeFilterId), { wrapper: MemoryRouter });
   return { ...result, setFilter: (id) => result.rerender(ui(id)) };
 }
 
@@ -106,7 +107,7 @@ function renderFocus(scorecardKey, items = ITEMS) {
       </LocalizationProvider>
     </ThemeProvider>
   );
-  const result = render(ui(items));
+  const result = render(ui(items), { wrapper: MemoryRouter });
   return { ...result, setItems: (list) => result.rerender(ui(list)) };
 }
 

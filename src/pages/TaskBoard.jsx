@@ -9,7 +9,8 @@
 // per-org categories/tags scoped via subcollections. DnD reorder + comments
 // modal are follow-up slices.
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { flushSync } from "react-dom";
 import { useLocalStorage, useSessionStorage } from "@uidotdev/usehooks";
 import {
@@ -75,11 +76,12 @@ import { PRIORITY_LIST } from "../constants/itemPriorities.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { db } from "../firebase.js";
 import { useCollection } from "../hooks/useCollection.js";
-import { useCollectionGroup } from "../hooks/useCollectionGroup.js";
+import { useItemAttachmentCounts } from "../hooks/useItemAttachmentCounts.js";
 import { useItems } from "../hooks/useItems.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
+import { BOARD_FOCUS_PARAM, planBoardFocus } from "../lib/boardFocus.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
 import { planBoardFilter } from "../lib/boardChat/boardFilter.js";
 import { EMPTY_ACTIVE, activeView, addView, aiFilterOfView, isEdited, removeView, removeViews, resetViews, toggleView } from "../lib/boardChat/boardViews.js";
@@ -107,30 +109,8 @@ export default function TaskBoard() {
   const { data: categories } = useCollection("categories");
   const { data: tags } = useCollection("tags");
 
-  // All comments across all items — used to drive the notes badge count
-  // on every row without N per-item subscriptions. Each comment doc has
-  // a denormalized `itemId` field so we can group locally.
-  const { data: allComments } = useCollectionGroup("comments");
-  const commentCountByItemId = useMemo(() => {
-    const m = {};
-    for (const c of allComments) {
-      if (c.itemId) m[c.itemId] = (m[c.itemId] || 0) + 1;
-    }
-    return m;
-  }, [allComments]);
-  const getCommentCount = (itemId) => commentCountByItemId[itemId] || 0;
-
-  // Same shape for file links (URL links only in V1; file uploads land
-  // when Blaze enables Firebase Storage).
-  const { data: allFiles } = useCollectionGroup("files");
-  const fileCountByItemId = useMemo(() => {
-    const m = {};
-    for (const f of allFiles) {
-      if (f.itemId) m[f.itemId] = (m[f.itemId] || 0) + 1;
-    }
-    return m;
-  }, [allFiles]);
-  const getFileCount = (itemId) => fileCountByItemId[itemId] || 0;
+  // Notes + Files badge counts for every row.
+  const { getCommentCount, getFileCount } = useItemAttachmentCounts();
 
   // Notes + Files modal state — which item's modal is currently open.
   const [notesModalItem, setNotesModalItem] = useState(null);
@@ -329,6 +309,39 @@ export default function TaskBoard() {
       return { ...prev, open, closed };
     });
   };
+
+  // "Open in Task Board" from an agenda (lib/boardFocus.js): once the items
+  // load, bring ?item=<id> into view, scroll its row to the top (as far as the
+  // page can scroll) and tint it for a few seconds. The param is then dropped so a reload doesn't repeat it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusParam = searchParams.get(BOARD_FOCUS_PARAM);
+  const [highlightId, setHighlightId] = useState(null);
+  const [focusMissing, setFocusMissing] = useState(false);
+  useEffect(() => {
+    if (!focusParam || itemsLoading) return;
+    setSearchParams((p) => { p.delete(BOARD_FOCUS_PARAM); return p; }, { replace: true });
+    const plan = planBoardFocus(allItems, focusParam, orgFilter);
+    if (!plan) {
+      setFocusMissing(true);
+      return;
+    }
+    if (plan.orgFilter) setOrgFilter(plan.orgFilter);
+    keepInView(focusParam);
+    ({ active: setActiveExpanded, completed: setCompletedExpanded, archive: setArchiveExpanded })[plan.groupKey](true);
+    if (plan.parentRow) setRowsExpanded([rowKey(plan.groupKey, plan.parentRow.id, plan.parentRow.ghost)], true);
+    setHighlightId(focusParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per ?item= arrival
+  }, [focusParam, itemsLoading]);
+  useEffect(() => {
+    if (!highlightId) return undefined;
+    // After the group's open animation (MUI Collapse), so the row is where it ends up.
+    const scroll = setTimeout(() => {
+      document.querySelector(`[data-board-row="${CSS.escape(highlightId)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 400);
+    // Long enough to outlast the board's first paint of a big item list.
+    const clear = setTimeout(() => setHighlightId(null), 10000);
+    return () => { clearTimeout(scroll); clearTimeout(clear); };
+  }, [highlightId]);
 
   // The rows the header toggle acts on: rows with visible subitems, in the
   // group sections that are open.
@@ -673,6 +686,7 @@ export default function TaskBoard() {
                       onNewSettled={handleNewSettled}
                       onOpenComments={(it) => setNotesModalItem(it)}
                       onOpenFiles={(it) => setFilesModalItem(it)}
+                      highlightId={highlightId}
                     />
                   ))
                 )}
@@ -902,6 +916,9 @@ export default function TaskBoard() {
       </Stack>
 
       {viewsError && <Alert severity="error">{viewsError}</Alert>}
+      {focusMissing && (
+        <Alert severity="warning" onClose={() => setFocusMissing(false)}>That item no longer exists — it may have been deleted.</Alert>
+      )}
       {viewStore.views.length > 0 && (
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
           {viewStore.views.map((view) => {

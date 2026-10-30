@@ -33,6 +33,7 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FileIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
+import OpenInBoardIcon from "@mui/icons-material/OpenInNew";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 
 import MemberAvatar from "./MemberAvatar.jsx";
@@ -79,6 +80,10 @@ export default function TaskBoardRow({
   onAddSubitem,
   onOpenComments,
   onOpenFiles,
+  // Mini Project Board: "Open in Task Board" in the row menu.
+  onOpenInBoard,
+  // Task Board: the row just opened from an agenda, scrolled to and tinted.
+  highlightId = null,
 }) {
   const canUpdate = canUpdateProp;
   // Latched at mount: a title cleared later must never make an old item "new".
@@ -181,8 +186,10 @@ export default function TaskBoardRow({
   return (
     <>
       <TableRow
+        data-board-row={ghost ? undefined : item.id}
         sx={{
           "&:hover": { backgroundColor: "action.hover" },
+          ...(item.id === highlightId && !ghost && { backgroundColor: "action.selected", transition: "background-color 0.6s" }),
           ...(dimmed && { opacity: 0.5 }),
           // Compact (Mini Project Board): tight rows — minimal vertical padding
           // (chip height drives the ~22px row) so it reads as a dense list.
@@ -756,6 +763,11 @@ export default function TaskBoardRow({
                     <FileIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> Files
                   </MenuItem>
                 )}
+                {onOpenInBoard && (
+                  <MenuItem onClick={() => { setActionAnchor(null); onOpenInBoard(item); }}>
+                    <OpenInBoardIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> Open in Task Board
+                  </MenuItem>
+                )}
                 <MenuItem
                   onClick={() => { setActionAnchor(null); onRequestDelete?.(item, isSubitem); }}
                   sx={{ color: "error.main" }}
@@ -790,6 +802,8 @@ export default function TaskBoardRow({
           onRequestDelete={onRequestDelete}
           onOpenComments={onOpenComments}
           onOpenFiles={onOpenFiles}
+          onOpenInBoard={onOpenInBoard}
+          highlightId={highlightId}
         />
       ))}
 
