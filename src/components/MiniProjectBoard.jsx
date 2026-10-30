@@ -1,8 +1,10 @@
 // V2.2.2e — MiniProjectBoard inside an AgendaTopicCard.
 //
 // Per docs/AGENDA_DETAIL_PAGE_REFERENCE.md §4.4. A miniature version of the
-// main Task Board scoped to one topic — filters items where
-// `item.categoryId ∈ topic.categoryIds` OR `item.tagIds ∩ topic.tagIds ≠ ∅`.
+// main Task Board scoped to one topic. The card passes the topic's items
+// (lib/topicItems.js: its categories and tags, minus items removed from the
+// card); a row's ⋮ Remove from topic takes it off this card only, and the
+// Removed list under the board puts it back.
 // Reuses src/components/TaskBoardRow so inline editing (priority, status,
 // assignees, due date, etc.) comes for free.
 //
@@ -11,11 +13,10 @@
 // always collapsed by default.
 
 import { useMemo, useRef, useState } from "react";
-// (useState already imported above; this comment kept for diff clarity.)
 import {
   Box,
+  Button,
   Collapse,
-  IconButton,
   Typography,
 } from "@mui/material";
 import ExpandMore from "@mui/icons-material/ExpandMore";
@@ -26,7 +27,6 @@ import {
   runTransaction,
   serverTimestamp,
   updateDoc,
-  writeBatch,
 } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 
@@ -36,6 +36,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { boardItemPath } from "../lib/boardFocus.js";
 import TaskBoardRow from "./TaskBoardRow.jsx";
 import { filterMiniBoard } from "../lib/miniBoardFilter.js";
+import { deleteItemCascade } from "../lib/itemWrites.js";
 import { EMPTY_PEOPLE } from "../lib/people.js";
 
 const ACTIVE_STATUSES = new Set([1, 2, 4, 6, 8]);
@@ -91,11 +92,54 @@ function GroupHeader({ color, label, count, expanded, onToggle }) {
   );
 }
 
+// Removed from this card: each with Restore.
+function RemovedList({ items, allItems, onRestore }) {
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+  const ref = (it) => {
+    const own = `${it.parentId ? "SI" : "I"}-${it.itemNumber ?? "?"}`;
+    const parent = it.parentId && allItems.find((p) => p.id === it.parentId);
+    return parent ? `I-${parent.itemNumber ?? "?"}/${own}` : own;
+  };
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <Typography
+        component="button"
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        sx={{ fontSize: 11, color: "#6b6b8a", background: "none", border: 0, p: 0, cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
+      >
+        {`${items.length} removed from this topic · ${open ? "Hide" : "Show"}`}
+      </Typography>
+      <Collapse in={open} unmountOnExit>
+        <Box sx={{ mt: 0.5, pl: 1, borderLeft: "2px solid #e8e4dd" }}>
+          {items.map((it) => (
+            <Box key={it.id} sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.25 }}>
+              <Typography sx={{ fontSize: 11, color: "#6b6b8a", flexShrink: 0 }}>{ref(it)}</Typography>
+              <Typography noWrap sx={{ fontSize: 12, flex: 1, minWidth: 0 }}>{it.title || "Untitled"}</Typography>
+              <Button size="small" onClick={() => onRestore(it)} sx={{ fontSize: 11, minWidth: 0, py: 0 }}>
+                Restore
+              </Button>
+            </Box>
+          ))}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
 export default function MiniProjectBoard({
   topic,
   agendaId,
   organizationId,
   items,
+  // The topic's items (lib/topicItems.js topicTree) and those removed from it.
+  parents: matchedItems,
+  subitemsByParent,
+  removedItems = [],
+  onRemoveFromTopic,
+  onRestoreToTopic,
   people = EMPTY_PEOPLE,
   categories,
   tags,
@@ -114,44 +158,6 @@ export default function MiniProjectBoard({
   const openInBoard = (item) => navigate(boardItemPath(item.id));
   const topicCatIds = topic?.categoryIds || [];
   const topicTagIds = topic?.tagIds || [];
-
-  // Filter: scope to the agenda's organization FIRST so GV's biweekly never
-  // shows Bryn Mawr's items, even if both orgs use the same category. Then
-  // apply the topic's category/tag filter on top. Only PARENT items are
-  // matched directly; subitems surface under their matched parent via
-  // `subitemsByParent` below.
-  const matchedItems = useMemo(() => {
-    if (!organizationId) return [];
-    if (topicCatIds.length === 0 && topicTagIds.length === 0) return [];
-    const catSet = new Set(topicCatIds);
-    const tagSet = new Set(topicTagIds);
-    return (items || []).filter((it) => {
-      if (it.organizationId !== organizationId) return false;
-      if (it.parentId) return false;
-      if (it.categoryId && catSet.has(it.categoryId)) return true;
-      if (Array.isArray(it.tagIds) && it.tagIds.some((t) => tagSet.has(t))) return true;
-      return false;
-    });
-  }, [items, organizationId, topicCatIds, topicTagIds]);
-
-  // V2.2.2e.2: subitems by parentId. Built once across the full items list
-  // so each parent row gets its own child rows. Subitems inherit visibility
-  // from the parent — if the parent matches a topic's filter, ALL its
-  // subitems show under it (regardless of the subitem's own
-  // category/tag, since subitems often inherit context from the parent).
-  const subitemsByParent = useMemo(() => {
-    const map = {};
-    for (const it of items || []) {
-      if (!it.parentId) continue;
-      if (it.organizationId !== organizationId) continue;
-      if (!map[it.parentId]) map[it.parentId] = [];
-      map[it.parentId].push(it);
-    }
-    for (const k of Object.keys(map)) {
-      map[k].sort((a, b) => (a.order || "").localeCompare(b.order || ""));
-    }
-    return map;
-  }, [items, organizationId]);
 
   // The item the user just created, so only its row opens into title edit.
   const [newItemId, setNewItemId] = useState(null);
@@ -213,14 +219,13 @@ export default function MiniProjectBoard({
     await updateDoc(doc(db, "items", itemId), { ...patch, updatedAt: serverTimestamp() });
   };
 
-  // Cascading delete — matches TaskBoard.jsx pattern. The topic row's
-  // ⋮ Delete only deletes the topic doc; deleting an ITEM from inside the
-  // mini board still needs to handle subitems just like the main board.
+  // Cascading delete, as on the Task Board: a task's subtasks go with it
+  // (every one, including any removed from this card).
   const handleRequestDelete = async (item) => {
-    if (!window.confirm(`Delete "${item.title || "Untitled"}"?`)) return;
-    const batch = writeBatch(db);
-    batch.delete(doc(db, "items", item.id));
-    await batch.commit();
+    const subIds = item.parentId ? [] : (items || []).filter((it) => it.parentId === item.id).map((it) => it.id);
+    const also = subIds.length ? ` and its ${subIds.length} subtask${subIds.length === 1 ? "" : "s"}` : "";
+    if (!window.confirm(`Delete "${item.title || "Untitled"}"${also}?`)) return;
+    await deleteItemCascade(item.id, subIds);
   };
 
   const handleNewSettled = () => setNewItemId(null);
@@ -398,6 +403,7 @@ export default function MiniProjectBoard({
                       onOpenComments={onOpenComments}
                       onOpenFiles={onOpenFiles}
                       onOpenInBoard={openInBoard}
+                      onRemoveFromTopic={onRemoveFromTopic}
                       getCommentCount={getCommentCount}
                       getFileCount={getFileCount}
                     />
@@ -431,6 +437,7 @@ export default function MiniProjectBoard({
           </Box>
         );
       })}
+      <RemovedList items={removedItems} allItems={items || []} onRestore={onRestoreToTopic} />
     </Box>
   );
 }

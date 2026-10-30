@@ -1,6 +1,6 @@
 // Agenda version history — snapshot + restore of an agenda's CONTENT.
 // Content = title + openFloorHtml + a frozen copy of the topics
-// (id/name/bodyHtml/sortOrder/categoryIds/tagIds). NOT the meeting-binding
+// (id/name/bodyHtml/sortOrder/categoryIds/tagIds/excludedItemIds). NOT the meeting-binding
 // fields (graphEventId etc.) and NOT the Project Board items (live task state).
 //
 // Versions live at agendas/{id}/versions/{auto}. snapshotAgenda is reusable —
@@ -35,6 +35,8 @@ export async function snapshotAgenda(agendaId, { source = "manual", label = null
       sortOrder: t.sortOrder ?? 0,
       categoryIds: t.categoryIds ?? [],
       tagIds: t.tagIds ?? [],
+      // Items removed from the topic card by hand (lib/topicItems.js).
+      excludedItemIds: t.excludedItemIds ?? [],
       // The master agenda groups topics by organization.
       organizationId: t.organizationId ?? null,
     };
@@ -94,8 +96,10 @@ export async function restoreAgendaVersion(agendaId, versionId, { uid = null } =
         sortOrder: t.sortOrder ?? 0,
         categoryIds: t.categoryIds ?? [],
         tagIds: (t.tagIds ?? []).filter((id) => tagIds.has(id)),
-        // Versions saved before organizationId was captured leave it as is.
+        // Versions saved before organizationId / excludedItemIds were
+        // captured leave them as they are.
         ...(t.organizationId !== undefined ? { organizationId: t.organizationId } : {}),
+        ...(t.excludedItemIds !== undefined ? { excludedItemIds: t.excludedItemIds } : {}),
         updatedAt: serverTimestamp(),
         updatedByUid: uid,
       },

@@ -6,21 +6,16 @@
 import { STATUS } from "../../constants/itemStatuses.js";
 import { firefliesQuery, formatTimestamp, GQL_MEETING_DETAIL, GQL_MEETING_LIST, GQL_TRANSCRIPT_SENTENCES } from "../fireflies.js";
 import { itemRef, statusName, ymd } from "../boardChat/snapshot.js";
+import { topicTree } from "../topicItems.js";
 import { agendaView } from "./context.js";
 
-// Board items under a topic — the Working view's rule: a top-level item in the
-// topic's organization whose category is one of the topic's categories or
-// which carries one of its tags, plus that item's subtasks. Archived excluded.
+// Board items under a topic — what its Working view card shows
+// (lib/topicItems.js), archived tasks and their subtasks left out.
 export function topicTasks(topic, items, organizationId) {
-  const orgId = topic.organizationId || organizationId;
-  const cats = new Set(topic.categoryIds || []);
-  const tags = new Set(topic.tagIds || []);
-  if (!orgId || (cats.size === 0 && tags.size === 0)) return [];
-  const live = items.filter((it) => it.organizationId === orgId && it.statusId !== STATUS.ARCHIVE);
-  const parents = live.filter((it) => !it.parentId
-    && ((it.categoryId && cats.has(it.categoryId)) || (it.tagIds || []).some((t) => tags.has(t))));
-  const parentIds = new Set(parents.map((p) => p.id));
-  return [...parents, ...live.filter((it) => it.parentId && parentIds.has(it.parentId))];
+  const { parents, subitemsByParent } = topicTree(topic, items, organizationId);
+  return parents
+    .filter((p) => p.statusId !== STATUS.ARCHIVE)
+    .flatMap((p) => [p, ...(subitemsByParent[p.id] || []).filter((s) => s.statusId !== STATUS.ARCHIVE)]);
 }
 
 // Fireflies reads use the Past Meetings card's localStorage caches when they

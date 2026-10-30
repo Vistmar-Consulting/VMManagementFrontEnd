@@ -21,6 +21,8 @@ vi.mock("firebase/firestore", () => ({
 }));
 
 const { default: MiniProjectBoard } = await import("../MiniProjectBoard.jsx");
+const { topicTree } = await import("../../lib/topicItems.js");
+const TOPIC = { id: "t1", categoryIds: ["c1"], tagIds: [] };
 
 const ORG = "unio";
 const ITEMS = [
@@ -36,10 +38,11 @@ function renderBoard(assigneeFilterId) {
     <ThemeProvider theme={createTheme()}>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
         <MiniProjectBoard
-          topic={{ id: "t1", categoryIds: ["c1"], tagIds: [] }}
+          topic={TOPIC}
           agendaId="a1"
           organizationId={ORG}
           items={ITEMS}
+          {...topicTree(TOPIC, ITEMS, ORG)}
           users={[]}
           categories={[]}
           tags={[]}
@@ -95,10 +98,11 @@ function renderFocus(scorecardKey, items = ITEMS) {
     <ThemeProvider theme={createTheme()}>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
         <MiniProjectBoard
-          topic={{ id: "t1", categoryIds: ["c1"], tagIds: [] }}
+          topic={TOPIC}
           agendaId="a1"
           organizationId={ORG}
           items={list}
+          {...topicTree(TOPIC, list, ORG)}
           users={[]}
           categories={[]}
           tags={[]}
@@ -123,5 +127,45 @@ describe("MiniProjectBoard Meeting Focus filter", () => {
   it("offers + New Item when no row matches the selected status", () => {
     renderFocus("status-5");
     expect(screen.queryByText("+ New Item")).toBeTruthy();
+  }, 60000);
+});
+
+describe("MiniProjectBoard Remove from topic", () => {
+  const renderRemovable = (topic, handlers) => render(
+    <ThemeProvider theme={createTheme()}>
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <MiniProjectBoard
+          topic={topic}
+          agendaId="a1"
+          organizationId={ORG}
+          items={ITEMS}
+          {...topicTree(topic, ITEMS, ORG)}
+          removedItems={ITEMS.filter((it) => (topic.excludedItemIds || []).includes(it.id))}
+          categories={[]}
+          tags={[]}
+          {...handlers}
+        />
+      </LocalizationProvider>
+    </ThemeProvider>,
+    { wrapper: MemoryRouter },
+  );
+
+  it("removes a row from the topic through its menu", () => {
+    const onRemoveFromTopic = vi.fn();
+    renderRemovable(TOPIC, { onRemoveFromTopic, onRestoreToTopic: vi.fn() });
+    const buttons = rowOf("Parent Two").querySelectorAll("button");
+    fireEvent.click(buttons[buttons.length - 1]);
+    fireEvent.click(screen.getByText("Remove from topic"));
+    expect(onRemoveFromTopic).toHaveBeenCalledWith(expect.objectContaining({ id: "p2" }));
+  }, 60000);
+
+  it("hides a removed task and lists it with Restore", () => {
+    const onRestoreToTopic = vi.fn();
+    renderRemovable({ ...TOPIC, excludedItemIds: ["p2"] }, { onRemoveFromTopic: vi.fn(), onRestoreToTopic });
+    expect(screen.queryByText("Parent Two")).toBeNull();
+    fireEvent.click(screen.getByText("1 removed from this topic · Show"));
+    expect(screen.getByText("Parent Two")).toBeTruthy();
+    fireEvent.click(screen.getByText("Restore"));
+    expect(onRestoreToTopic).toHaveBeenCalledWith(expect.objectContaining({ id: "p2" }));
   }, 60000);
 });

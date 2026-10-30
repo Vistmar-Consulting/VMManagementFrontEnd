@@ -36,6 +36,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FileIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import OpenInBoardIcon from "@mui/icons-material/OpenInNew";
+import RemoveFromTopicIcon from "@mui/icons-material/RemoveCircleOutline";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 
 import MemberAvatar from "./MemberAvatar.jsx";
@@ -85,8 +86,9 @@ export default function TaskBoardRow({
   onAddSubitem,
   onOpenComments,
   onOpenFiles,
-  // Mini Project Board: "Open in Task Board" in the row menu.
+  // Mini Project Board: "Open in Task Board" and "Remove from topic" in the row menu.
   onOpenInBoard,
+  onRemoveFromTopic,
   // Task Board: the row just opened from an agenda, scrolled to and tinted.
   highlightId = null,
 }) {
@@ -792,6 +794,12 @@ export default function TaskBoardRow({
                     <OpenInBoardIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} /> Open in Task Board
                   </MenuItem>
                 )}
+                {onRemoveFromTopic && (
+                  <MenuItem onClick={() => { setActionAnchor(null); onRemoveFromTopic(item); }}>
+                    <RemoveFromTopicIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} />
+                    Remove from topic
+                  </MenuItem>
+                )}
                 <MenuItem
                   onClick={() => { setActionAnchor(null); onRequestDelete?.(item, isSubitem); }}
                   sx={{ color: "error.main" }}
@@ -827,6 +835,7 @@ export default function TaskBoardRow({
           onOpenComments={onOpenComments}
           onOpenFiles={onOpenFiles}
           onOpenInBoard={onOpenInBoard}
+          onRemoveFromTopic={onRemoveFromTopic}
           highlightId={highlightId}
         />
       ))}

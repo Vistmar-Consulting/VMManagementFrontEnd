@@ -62,6 +62,7 @@ import { useItems } from "../hooks/useItems.js";
 import { usePeople } from "../hooks/usePeople.js";
 import { EMPTY_PEOPLE } from "../lib/people.js";
 import { tagsForOrg } from "../lib/tagScope.js";
+import { agendaTree, removedFromTopic, topicOrgId, topicTree } from "../lib/topicItems.js";
 import { addTopic, deleteTopic, editAgenda, editTopic } from "../lib/agendaEdits.js";
 import { memberName } from "../lib/boardChat/snapshot.js";
 import TaskBoardFilesModal from "../components/TaskBoardFilesModal.jsx";
@@ -70,6 +71,8 @@ import { format, formatDistanceToNow, parseISO, addDays } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { listMeetings } from "../lib/meetingsApi.js";
 import {
+  arrayRemove,
+  arrayUnion,
   doc,
   orderBy,
   query,
@@ -1282,39 +1285,25 @@ export function AgendaTopicCard({
   // from page-level meetingFocusFilter (the sidebar's Meeting Focus panel).
   const [topicKpiFilter, setTopicKpiFilter] = useState(null);
 
-  // Compute the matched items for this topic so the KPI strip + the
-  // MiniProjectBoard render off the same filter. Must match the org filter
-  // used in MiniProjectBoard (same shape) so the counts and the visible
-  // rows can't diverge.
-  const matchedItems = useMemo(() => {
-    if (!organizationId) return [];
-    const cats = topic.categoryIds || [];
-    const tgs = topic.tagIds || [];
-    if (cats.length === 0 && tgs.length === 0) return [];
-    const catSet = new Set(cats);
-    const tagSet = new Set(tgs);
-    return (items || []).filter((it) => {
-      if (it.organizationId !== organizationId) return false;
-      if (it.parentId) return false;
-      if (it.categoryId && catSet.has(it.categoryId)) return true;
-      if (Array.isArray(it.tagIds) && it.tagIds.some((t) => tagSet.has(t))) return true;
-      return false;
-    });
-  }, [items, organizationId, topic.categoryIds, topic.tagIds]);
+  // The topic's items (lib/topicItems.js) — one source for the KPI strip, the
+  // Mini Project Board and the filter coupling below, so they can't diverge.
+  // On the master agenda a topic's items are its own organization's.
+  const topicOrg = topicOrgId(topic, organizationId);
+  const tree = useMemo(() => topicTree(topic, items, organizationId), [topic, items, organizationId]);
+  const matchedItems = tree.parents;
+  const removedItems = useMemo(() => removedFromTopic(topic, items, organizationId), [topic, items, organizationId]);
 
-  // Subitems whose parent matched this topic, mirroring MiniProjectBoard's
-  // subitem surfacing. The Meeting Focus / Attendees filter-coupling below
-  // must see these — Done/Review/overdue work lives mostly at the subitem
-  // level, so matching only on parents leaves every card collapsed when a
-  // focus cell is clicked.
-  const filterScopeItems = useMemo(() => {
-    if (matchedItems.length === 0) return matchedItems;
-    const ids = new Set(matchedItems.map((it) => it.id));
-    const subs = (items || []).filter(
-      (it) => it.parentId && it.organizationId === organizationId && ids.has(it.parentId)
-    );
-    return subs.length ? [...matchedItems, ...subs] : matchedItems;
-  }, [matchedItems, items, organizationId]);
+  // The topic's tasks and subtasks. The Meeting Focus / Attendees
+  // filter-coupling below must see subtasks — Done/Review/overdue work lives
+  // mostly at the subitem level, so matching only on parents leaves every
+  // card collapsed when a focus cell is clicked.
+  const filterScopeItems = useMemo(
+    () => tree.parents.flatMap((p) => [p, ...(tree.subitemsByParent[p.id] || [])]),
+    [tree],
+  );
+
+  const removeFromTopic = (item) => editTopic(agendaId, topic.id, { excludedItemIds: arrayUnion(item.id) }, user?.uid);
+  const restoreToTopic = (item) => editTopic(agendaId, topic.id, { excludedItemIds: arrayRemove(item.id) }, user?.uid);
 
   // Assignee id of the sidebar-selected attendee (uid, or email for a client
   // contact / not-signed-in teammate); also filters the Mini Project Board.
@@ -1511,8 +1500,13 @@ export function AgendaTopicCard({
           <MiniProjectBoard
             topic={topic}
             agendaId={agendaId}
-            organizationId={organizationId}
+            organizationId={topicOrg}
             items={items}
+            parents={tree.parents}
+            subitemsByParent={tree.subitemsByParent}
+            removedItems={removedItems}
+            onRemoveFromTopic={removeFromTopic}
+            onRestoreToTopic={restoreToTopic}
             people={people}
             categories={categories}
             tags={tags}
@@ -1532,7 +1526,7 @@ export function AgendaTopicCard({
           agendaId={agendaId}
           categories={categories}
           // Shared tags and the topic's client's own, plus any it already has.
-          tags={(tags || []).filter((tg) => tagsForOrg([tg], topic.organizationId || organizationId).length || (topic.tagIds || []).includes(tg.id))}
+          tags={(tags || []).filter((tg) => tagsForOrg([tg], topicOrg).length || (topic.tagIds || []).includes(tg.id))}
           onClose={() => setEditOpen(false)}
         />
       )}
@@ -1708,52 +1702,10 @@ export default function AgendaDetail() {
   const isMaster = !!(calendarSeries?.masterAgenda || agenda?.masterAgenda);
   const orgById = useMemo(() => Object.fromEntries((orgs || []).map((o) => [o.id, o])), [orgs]);
 
-  // V2.2.2e.2: aggregate matched items across every topic's category/tag
-  // filter, deduplicated. Drives the sidebar Meeting Focus + Attendees
-  // counts that were placeholder dashes through V2.2.2e.
-  const allMatchedItems = useMemo(() => {
-    if (!organizationId || !allItems || !topics) return [];
-    const orgScoped = allItems.filter(
-      (it) => it.organizationId === organizationId && !it.parentId
-    );
-    const seen = new Set();
-    const out = [];
-    for (const topic of topics) {
-      const catSet = new Set(topic.categoryIds || []);
-      const tagSet = new Set(topic.tagIds || []);
-      if (catSet.size === 0 && tagSet.size === 0) continue;
-      for (const it of orgScoped) {
-        if (seen.has(it.id)) continue;
-        const matchCat = it.categoryId && catSet.has(it.categoryId);
-        const matchTag = Array.isArray(it.tagIds) && it.tagIds.some((t) => tagSet.has(t));
-        if (matchCat || matchTag) {
-          seen.add(it.id);
-          out.push(it);
-        }
-      }
-    }
-    // Include subitems whose parent matched (mirrors MiniProjectBoard, where
-    // subitems inherit their parent's topic visibility). Done/Review/overdue
-    // work often lives at the subitem level, so the Meeting Focus counts must
-    // reach into children — otherwise the card reads as all-dashes even when
-    // the board has completed/in-review subitems.
-    for (const it of allItems) {
-      if (it.parentId && it.organizationId === organizationId && seen.has(it.parentId)) {
-        out.push(it);
-      }
-    }
-    return out;
-  }, [allItems, organizationId, topics]);
-
-  const matchedTree = useMemo(() => {
-    const parents = [];
-    const subitemsByParent = {};
-    for (const it of allMatchedItems) {
-      if (!it.parentId) parents.push(it);
-      else (subitemsByParent[it.parentId] ||= []).push(it);
-    }
-    return { parents, subitemsByParent };
-  }, [allMatchedItems]);
+  // Every item any topic card shows, once each (lib/topicItems.js), subtasks
+  // included — Done/Review/overdue work often lives at the subitem level.
+  // Drives the sidebar Meeting Focus + Attendees counts.
+  const matchedTree = useMemo(() => agendaTree(topics, allItems, organizationId), [topics, allItems, organizationId]);
 
   // Meeting Focus sidebar counts — the Task Board's scorecard counts over this
   // agenda's items, narrowed to the selected attendee.
