@@ -78,7 +78,7 @@ export function itemRow(item, L, items) {
 
 // People come from lib/people.js: Vistamar team, a client's contact, or an
 // account that can't be assigned (seo@ and other bots).
-function memberRole(u, L) {
+function memberKind(u, L) {
   if (u.assignable === false) return "not assignable";
   if (u.kind === "client") return `client contact, ${u.orgIds.map(L.orgName).join(" / ")}`;
   return "Vistamar team";
@@ -88,8 +88,8 @@ export function buildBoardSnapshot({ items, users, orgs, categories, tags }) {
   const L = makeLookups({ users, orgs, categories, tags });
   const live = items.filter((i) => i.statusId !== STATUS.ARCHIVE);
   const text = [
-    "MEMBERS (id | name | email | who)",
-    ...users.map((u) => `${u.id} | ${memberName(u)} | ${u.email || ""} | ${memberRole(u, L)}`),
+    "MEMBERS (id | name | email | who | role)",
+    ...users.map((u) => `${u.id} | ${memberName(u)} | ${u.email || ""} | ${memberKind(u, L)} | ${u.memberRole || ""}`),
     "",
     "ORGANIZATIONS (id | name)",
     ...orgs.map((o) => `${o.id} | ${o.name || o.id}`),

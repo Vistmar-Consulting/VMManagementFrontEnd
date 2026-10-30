@@ -46,10 +46,16 @@ export function buildPeople({ users = [], membersByOrg = {} } = {}) {
     const email = memberIdFromEmail(u.email);
     add({ ...u, email, kind: "team", orgIds: [], assignable: u.active !== false && isVistamarTeamEmail(email) });
   }
+  // memberRole: the job a member directory gives the person ("CEO", "Doctor"),
+  // kept apart from a users doc's `role` (the app's admin gate).
   for (const m of membersByOrg[VISTAMAR_ORG_ID] || []) {
     const email = memberIdFromEmail(m.email);
-    if (!email || byEmail[email] || !isVistamarTeamEmail(email)) continue;
-    add({ id: email, email, displayName: m.name || email, kind: "team", orgIds: [], assignable: true });
+    if (!email || !isVistamarTeamEmail(email)) continue;
+    if (byEmail[email]) {
+      if (m.role) byEmail[email].memberRole = m.role;
+      continue;
+    }
+    add({ id: email, email, displayName: m.name || email, kind: "team", orgIds: [], assignable: true, ...(m.role ? { memberRole: m.role } : {}) });
   }
   const clientsByOrg = {};
   for (const [orgId, members] of Object.entries(membersByOrg)) {
@@ -58,6 +64,7 @@ export function buildPeople({ users = [], membersByOrg = {} } = {}) {
       const email = memberIdFromEmail(m.email);
       if (!email || !isClientEmail(email)) continue;
       const p = byEmail[email] || add({ id: email, email, displayName: m.name || email, kind: "client", orgIds: [], assignable: true });
+      if (m.role && !p.memberRole) p.memberRole = m.role;
       if (!p.orgIds.includes(orgId)) p.orgIds.push(orgId);
       (clientsByOrg[orgId] ||= []).push(p);
     }

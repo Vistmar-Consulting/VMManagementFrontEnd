@@ -21,11 +21,24 @@ import EditOutlined from "@mui/icons-material/EditOutlined";
 import { useOrgMembers } from "../hooks/useOrgMembers.js";
 import { isClientEmail, memberIdFromEmail, removeOrgMember, upsertOrgMember } from "../lib/orgMembers.js";
 
+// Name / Email / Role inputs, labeled, shared by the add row and the edit row.
+// Stacked on narrow screens.
+function MemberFields({ name, email, role, onName, onEmail, onRole, disabled, emailPlaceholder, autoFocus = false }) {
+  return (
+    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+      <TextField size="small" label="Name" value={name} onChange={(e) => onName(e.target.value)} disabled={disabled} sx={{ flex: 1 }} autoFocus={autoFocus} />
+      <TextField size="small" label="Email" type="email" placeholder={emailPlaceholder} value={email} onChange={(e) => onEmail(e.target.value)} disabled={disabled} sx={{ flex: 1.3 }} />
+      <TextField size="small" label="Role" placeholder="e.g. CEO, Doctor" value={role} onChange={(e) => onRole(e.target.value)} disabled={disabled} sx={{ flex: 1 }} />
+    </Stack>
+  );
+}
+
 export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
   const { data: members, loading, error: loadError } = useOrgMembers(orgSlug);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState("");
   const [busy, setBusy] = useState(false);
   const [addError, setAddError] = useState(null);
 
@@ -33,6 +46,7 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [editRole, setEditRole] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState(null);
 
@@ -57,9 +71,10 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
     }
     setBusy(true);
     try {
-      await upsertOrgMember(orgSlug, { name: name.trim(), email: trimmedEmail, source: "manual", allowVMDomain });
+      await upsertOrgMember(orgSlug, { name: name.trim(), email: trimmedEmail, role, source: "manual", allowVMDomain });
       setName("");
       setEmail("");
+      setRole("");
     } catch (err) {
       setAddError(err.message || "Add failed");
     } finally {
@@ -83,6 +98,7 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
     setEditingId(member.id);
     setEditName(member.name || "");
     setEditEmail(member.email || "");
+    setEditRole(member.role || "");
     setEditError(null);
   };
 
@@ -108,7 +124,7 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
         // Email changed — delete old doc, create new one.
         await removeOrgMember(orgSlug, member.id);
       }
-      await upsertOrgMember(orgSlug, { name: editName.trim(), email: trimmedEmail, source: member.source || "manual", allowVMDomain });
+      await upsertOrgMember(orgSlug, { name: editName.trim(), email: trimmedEmail, role: editRole, source: member.source || "manual", allowVMDomain });
       setEditingId(null);
     } catch (err) {
       setEditError(err.message || "Save failed");
@@ -149,31 +165,22 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
           <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1.5 }}>
             {sorted.length === 0 ? (
               <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                No members yet — added automatically when you schedule meetings, or add one above.
+                No members yet — added automatically when you schedule meetings, or add one below.
               </Typography>
             ) : (
               sorted.map((member) =>
                 editingId === member.id ? (
-                  <Box key={member.id} sx={{ display: "flex", flexDirection: "column", gap: 0.75, py: 0.5 }}>
-                    <Stack direction="row" spacing={1}>
-                      <TextField
-                        size="small"
-                        placeholder="Name"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        disabled={editBusy}
-                        sx={{ flex: 1 }}
-                        autoFocus
-                      />
-                      <TextField
-                        size="small"
-                        placeholder="Email"
-                        value={editEmail}
-                        onChange={(e) => { setEditEmail(e.target.value); if (editError) setEditError(null); }}
-                        disabled={editBusy}
-                        sx={{ flex: 1 }}
-                      />
-                    </Stack>
+                  <Box key={member.id} sx={{ display: "flex", flexDirection: "column", gap: 0.75, py: 1 }}>
+                    <MemberFields
+                      name={editName}
+                      email={editEmail}
+                      role={editRole}
+                      onName={setEditName}
+                      onEmail={(v) => { setEditEmail(v); if (editError) setEditError(null); }}
+                      onRole={setEditRole}
+                      disabled={editBusy}
+                      autoFocus
+                    />
                     <Stack direction="row" spacing={1}>
                       <Button size="small" variant="contained" onClick={() => handleSaveEdit(member)} disabled={editBusy || !editEmail.trim()}>
                         {editBusy ? "Saving…" : "Save"}
@@ -190,6 +197,9 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography sx={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>
                         {member.name || member.email}
+                        {member.role && (
+                          <Box component="span" sx={{ fontWeight: 400, color: "text.secondary" }}>{` · ${member.role}`}</Box>
+                        )}
                       </Typography>
                       {member.name && (
                         <Typography sx={{ fontSize: 12, color: "text.secondary", lineHeight: 1.3 }}>
@@ -210,31 +220,28 @@ export default function OrgMembersCard({ orgSlug, allowVMDomain = false }) {
           </Box>
         )}
 
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+          Add a member
+        </Typography>
         <Stack direction="row" spacing={1} alignItems="flex-start">
-          <TextField
-            size="small"
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={busy}
-            sx={{ flex: 1 }}
-          />
-          <TextField
-            size="small"
-            placeholder={allowVMDomain ? "name@vistamarconsulting.com" : "email@client.com"}
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
+          <MemberFields
+            name={name}
+            email={email}
+            role={role}
+            onName={setName}
+            onEmail={(v) => {
+              setEmail(v);
               if (addError) setAddError(null);
             }}
+            onRole={setRole}
             disabled={busy}
-            sx={{ flex: 1 }}
+            emailPlaceholder={allowVMDomain ? "name@vistamarconsulting.com" : "email@client.com"}
           />
           <Button
-            size="small"
             variant="outlined"
             onClick={handleAdd}
             disabled={busy || !email.trim()}
+            sx={{ height: 40, flexShrink: 0 }}
           >
             {busy ? "Adding…" : "Add"}
           </Button>

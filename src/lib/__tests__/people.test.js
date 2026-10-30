@@ -53,6 +53,19 @@ describe("buildPeople", () => {
     expect(ids(two.choicesFor("b"))).toEqual(["x@client.com"]);
   });
 
+  it("carries a directory role as memberRole, never over a user's admin role", () => {
+    const withRoles = buildPeople({
+      users: [{ id: "uAndy", email: "adeemer@vistamarconsulting.com", role: "admin" }],
+      membersByOrg: {
+        vistamar: [{ email: "adeemer@vistamarconsulting.com", role: "Founder" }, { email: "blewis@vistamarconsulting.com", role: "Web developer" }],
+        unio: [{ email: "tate.robinson@uniohp.com", role: "CEO" }],
+      },
+    });
+    expect(withRoles.byId.uAndy).toMatchObject({ role: "admin", memberRole: "Founder" });
+    expect(withRoles.byId["blewis@vistamarconsulting.com"].memberRole).toBe("Web developer");
+    expect(withRoles.byId["tate.robinson@uniohp.com"].memberRole).toBe("CEO");
+  });
+
   it("anyone else is assigned by lowercased email", () => {
     expect(people.idForEmail("BLewis@vistamarconsulting.com")).toBe("blewis@vistamarconsulting.com");
     expect(people.idForEmail("someone@elsewhere.com")).toBe("someone@elsewhere.com");

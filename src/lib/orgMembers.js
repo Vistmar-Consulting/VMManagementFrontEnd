@@ -1,5 +1,5 @@
 // Org client-member directory helpers. The pure functions (memberIdFromEmail,
-// isClientEmail, deliverablesSummary) are unit-tested in __tests__/orgMembers.test.js.
+// isClientEmail, deliverablesSummary, memberFields) are unit-tested in __tests__/orgMembers.test.js.
 // The Firestore helpers (upsertOrgMember, removeOrgMember) are verified live.
 import { doc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
@@ -93,16 +93,28 @@ export function deliverablesSummary(deliverables) {
   return labels.length ? labels.join(" · ") : "—";
 }
 
+// The fields an upsert writes. `role` (the person's job, e.g. "CEO" or
+// "Doctor") is written only when given — "" clears it — so the scheduler's
+// auto-capture, which knows no role, never wipes one set in Settings.
+export function memberFields({ name, email, source, role }) {
+  return {
+    name: name || email,
+    email: memberIdFromEmail(email),
+    source,
+    ...(role !== undefined ? { role: String(role).trim() } : {}),
+  };
+}
+
 // Upsert a client member into organizations/{slug}/members, keyed by email.
 // Merge so re-adding an existing person updates the name without clobbering
 // createdAt. No-op (returns false) for non-client / malformed emails.
-export async function upsertOrgMember(orgSlug, { name, email, source = "manual", allowVMDomain = false }) {
+export async function upsertOrgMember(orgSlug, { name, email, source = "manual", role, allowVMDomain = false }) {
   const id = memberIdFromEmail(email);
   if (!orgSlug || !id) return false;
   if (!allowVMDomain && !isClientEmail(email)) return false;
   await setDoc(
     doc(db, "organizations", orgSlug, "members", id),
-    { name: name || email, email: id, source, createdAt: serverTimestamp() },
+    { ...memberFields({ name, email, source, role }), createdAt: serverTimestamp() },
     { merge: true },
   );
   return true;

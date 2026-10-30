@@ -5,7 +5,21 @@ import {
   isVistamarTeamEmail,
   vistamarTeamChoices,
   deliverablesSummary,
+  memberFields,
 } from "../orgMembers.js";
+
+describe("memberFields", () => {
+  it("writes a trimmed role when given", () => {
+    expect(memberFields({ name: "Dr. Lee", email: "Lee@Clinic.com", source: "manual", role: "  Doctor " }))
+      .toEqual({ name: "Dr. Lee", email: "lee@clinic.com", source: "manual", role: "Doctor" });
+  });
+  it("clears the role with an empty string", () => {
+    expect(memberFields({ name: "A", email: "a@x.com", source: "manual", role: "" }).role).toBe("");
+  });
+  it("leaves the role alone when none is given (scheduler auto-capture)", () => {
+    expect(memberFields({ name: "A", email: "a@x.com", source: "scheduler" })).not.toHaveProperty("role");
+  });
+});
 
 describe("memberIdFromEmail", () => {
   it("lowercases and trims a valid email", () => {
