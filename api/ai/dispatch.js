@@ -29,7 +29,7 @@
 // ordered before the /(.*) SPA catch-all, or the SPA swallows it again).
 
 import chat, { makeChatHandler } from "./_handlers/chat.js";
-import { MEETING_CHAT_SYSTEM_PROMPT, MEETING_CHAT_TOOLS } from "./_handlers/meetingChatTools.js";
+import { AGENDA_CHAT_SYSTEM_PROMPT, AGENDA_CHAT_TOOLS } from "./_handlers/agendaChatTools.js";
 import generate from "./_handlers/generate.js";
 import prepare from "./_handlers/prepare.js";
 import refine from "./_handlers/refine.js";
@@ -40,10 +40,10 @@ import syncBoard from "./_handlers/syncBoard.js";
 // genuinely needs it; chat shares the same ceiling.
 export const config = { maxDuration: 300 };
 
-// Meeting Chat (agenda page) shares Board Chat's handler with its own prompt + tools.
-const meetingChat = makeChatHandler({ system: MEETING_CHAT_SYSTEM_PROMPT, tools: MEETING_CHAT_TOOLS });
+// Agenda Chat (agenda page) shares Board Chat's handler with its own prompt + tools.
+const agendaChat = makeChatHandler({ system: AGENDA_CHAT_SYSTEM_PROMPT, tools: AGENDA_CHAT_TOOLS });
 
-const ROUTES = { chat, generate, prepare, refine, "sync-board": syncBoard, "meeting-chat": meetingChat };
+const ROUTES = { chat, generate, prepare, refine, "sync-board": syncBoard, "agenda-chat": agendaChat };
 
 export default async function handler(req, res) {
   // Vercel populates req.query.action from the [action] path segment.

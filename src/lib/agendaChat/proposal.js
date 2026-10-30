@@ -1,4 +1,4 @@
-// src/lib/meetingChat/proposal.js
+// src/lib/agendaChat/proposal.js
 //
 // propose_agenda_changes → review rows (validated, with before/after) → the
 // Firestore writes for the rows the user kept. Pure; no Firebase imports.

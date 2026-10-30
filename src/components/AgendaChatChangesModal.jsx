@@ -1,4 +1,4 @@
-// Meeting Chat's confirm step: every proposed agenda change, one row each with
+// Agenda Chat's confirm step: every proposed agenda change, one row each with
 // a checkbox and a redline of any body it rewrites. Invalid ops can't be
 // ticked; ops on topics changed since Claude last read them start unticked.
 // Nothing writes until Apply. No Escape / backdrop close: leaving is Cancel.
@@ -57,7 +57,7 @@ function redlineOf(r) {
   return null;
 }
 
-export default function MeetingChatChangesModal({ summary, rows, initialChecked, orgName, othersCount = 0, onApply, onCancel, applying = false, error = null }) {
+export default function AgendaChatChangesModal({ summary, rows, initialChecked, orgName, othersCount = 0, onApply, onCancel, applying = false, error = null }) {
   const [checked, setChecked] = useState(() => initialChecked ?? new Set(rows.filter((r) => r.ok && !r.stale).map((r) => r.index)));
   const toggle = (i) => setChecked((prev) => {
     const next = new Set(prev);

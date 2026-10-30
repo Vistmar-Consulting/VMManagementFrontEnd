@@ -1,6 +1,6 @@
 // src/components/ChatHistoryView.jsx
 //
-// The History view of a chat panel (Board Chat, Meeting Chat): saved chats,
+// The History view of a chat panel (Board Chat, Agenda Chat): saved chats,
 // newest first, to open or delete. Deleting asks first; a Board Chat chat that
 // made filter views also asks whether to delete them.
 import { useState } from "react";

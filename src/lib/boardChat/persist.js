@@ -30,7 +30,7 @@ export function loadChat(key, now = Date.now()) {
   return record.state;
 }
 
-// Removes every expired record whose key starts with `prefix`. Meeting Chat
+// Removes every expired record whose key starts with `prefix`. Agenda Chat
 // keeps one record per agenda, and one never reopened would otherwise stay
 // in storage for good.
 export function purgeExpiredChats(prefix, now = Date.now()) {

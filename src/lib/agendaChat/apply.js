@@ -1,4 +1,4 @@
-// src/lib/meetingChat/apply.js
+// src/lib/agendaChat/apply.js
 //
 // Writes a planAgendaWrites plan in one batch, after snapshotting the agenda
 // into Version history so the apply can be reverted. Returns the new topic ids.
@@ -8,7 +8,7 @@ import { agendaEditStamp } from "../agendaEdits.js";
 import { snapshotAgenda } from "../agendaVersions.js";
 
 export async function applyAgendaPlan(agendaId, plan, uid) {
-  await snapshotAgenda(agendaId, { source: "meeting-chat", uid });
+  await snapshotAgenda(agendaId, { source: "agenda-chat", uid });
   const batch = writeBatch(db);
   const stamp = { updatedAt: serverTimestamp(), updatedByUid: uid };
   const created = plan.creates.map((c) => {

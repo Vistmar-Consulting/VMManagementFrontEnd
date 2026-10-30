@@ -1,6 +1,6 @@
-// src/lib/meetingChat/__tests__/tools.test.js
+// src/lib/agendaChat/__tests__/tools.test.js
 import { describe, expect, it, vi } from "vitest";
-import { runMeetingReadTool, topicTasks, transcriptText } from "../tools.js";
+import { runAgendaReadTool, topicTasks, transcriptText } from "../tools.js";
 
 const items = [
   { id: "p1", itemNumber: 1, organizationId: "bmd", categoryId: "web", statusId: 2, title: "Site", assigneeIds: ["u1"] },
@@ -30,7 +30,7 @@ describe("transcriptText", () => {
   });
 });
 
-describe("runMeetingReadTool", () => {
+describe("runAgendaReadTool", () => {
   const source = {
     list: vi.fn().mockResolvedValue({ transcripts: [
       { id: "m1", title: "BMD - Biweekly", date: Date.UTC(2026, 9, 1), duration: 30 },
@@ -47,18 +47,18 @@ describe("runMeetingReadTool", () => {
   };
 
   it("lists only linked meetings, newest first", async () => {
-    const { result } = await runMeetingReadTool("list_past_meetings", {}, ctx);
+    const { result } = await runAgendaReadTool("list_past_meetings", {}, ctx);
     expect(result.meetings.map((m) => m.meetingId)).toEqual(["m2", "m1"]);
   });
 
   it("reads a linked meeting's summary and refuses an unlinked one", async () => {
-    const { result } = await runMeetingReadTool("get_meeting_summary", { meetingId: "m1" }, ctx);
+    const { result } = await runAgendaReadTool("get_meeting_summary", { meetingId: "m1" }, ctx);
     expect(result.summary.overview).toBe("We decided X");
-    await expect(runMeetingReadTool("get_meeting_summary", { meetingId: "m3" }, ctx)).rejects.toThrow("not one of this agenda's linked meetings");
+    await expect(runAgendaReadTool("get_meeting_summary", { meetingId: "m3" }, ctx)).rejects.toThrow("not one of this agenda's linked meetings");
   });
 
   it("lists a topic's tasks with owners", async () => {
-    const { result } = await runMeetingReadTool("list_topic_tasks", { topicId: "t1" }, ctx);
+    const { result } = await runAgendaReadTool("list_topic_tasks", { topicId: "t1" }, ctx);
     expect(result.tasks).toEqual([
       { ref: "I-1", title: "Site", status: "In Progress", owners: ["Andy"], due: null },
       { ref: "I-1/SI-1", title: "Copy", status: "Assigned", owners: [], due: null },
@@ -66,7 +66,7 @@ describe("runMeetingReadTool", () => {
   });
 
   it("get_agenda returns the live topics", async () => {
-    const { result } = await runMeetingReadTool("get_agenda", {}, ctx);
+    const { result } = await runAgendaReadTool("get_agenda", {}, ctx);
     expect(result.topics).toEqual([{ topicId: "t1", title: "Website", bodyHtml: "" }]);
   });
 });

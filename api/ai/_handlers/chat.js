@@ -1,6 +1,6 @@
 // api/ai/_handlers/chat.js
 //
-// Board Chat and Meeting Chat — ONE model call per request. The browser owns the tool loop: it
+// Board Chat and Agenda Chat — ONE model call per request. The browser owns the tool loop: it
 // runs the tools, appends tool_result blocks and POSTs again. Stateless; the
 // browser sends the full append-only history every call (thinking blocks
 // included, unchanged — required for preserved thinking on current models).

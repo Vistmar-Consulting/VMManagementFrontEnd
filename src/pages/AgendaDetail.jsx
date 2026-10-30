@@ -47,7 +47,7 @@ import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 import AgendaHistoryDialog from "../components/AgendaHistoryDialog.jsx";
 import { getContrastText, getTextColor, hexToRgba } from "../theme/pillColors.js";
 import SyncMeetingDialog from "../components/SyncMeetingDialog.jsx";
-import MeetingChatPanel, { MEETING_CHAT_WIDTH } from "../components/MeetingChatPanel.jsx";
+import AgendaChatPanel, { AGENDA_CHAT_WIDTH } from "../components/AgendaChatPanel.jsx";
 import CancelAgendaDialog from "../components/CancelAgendaDialog.jsx";
 import CancelMeetingDialog from "../components/CancelMeetingDialog.jsx";
 import ManageGuestsDialog from "../components/ManageGuestsDialog.jsx";
@@ -1643,8 +1643,8 @@ export default function AgendaDetail() {
   const [manageGuestsOpen, setManageGuestsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [syncMeetingOpen, setSyncMeetingOpen] = useState(false);
-  // Meeting Chat stays open across agendas and visits, like Board Chat.
-  const [meetingChatOpen, setMeetingChatOpen] = useLocalStorage("vm-meeting-chat-open", false);
+  // Agenda Chat stays open across agendas and visits, like Board Chat.
+  const [agendaChatOpen, setAgendaChatOpen] = useLocalStorage("vm-agenda-chat-open", false);
   // Overview topics this viewer has collapsed. Window-local by design: never
   // persisted, never shared, so everything opens expanded on load.
   const [collapsedTopicIds, setCollapsedTopicIds] = useState(() => new Set());
@@ -1855,8 +1855,8 @@ export default function AgendaDetail() {
         maxWidth: 1280,
         mx: "auto",
         pb: 8,
-        // The Meeting Chat drawer overlays the right edge; keep the agenda clear of it.
-        pr: meetingChatOpen ? { md: `${MEETING_CHAT_WIDTH}px` } : 0,
+        // The Agenda Chat drawer overlays the right edge; keep the agenda clear of it.
+        pr: agendaChatOpen ? { md: `${AGENDA_CHAT_WIDTH}px` } : 0,
         transition: "padding 0.2s",
         ...presentationModeSx,
       }}
@@ -1890,12 +1890,12 @@ export default function AgendaDetail() {
           />
           <Button
             size="small"
-            variant={meetingChatOpen ? "contained" : "text"}
+            variant={agendaChatOpen ? "contained" : "text"}
             startIcon={<ForumOutlined fontSize="small" />}
-            sx={{ textTransform: "none", ...(meetingChatOpen ? {} : { color: t.ink3 }) }}
-            onClick={() => setMeetingChatOpen(!meetingChatOpen)}
+            sx={{ textTransform: "none", ...(agendaChatOpen ? {} : { color: t.ink3 }) }}
+            onClick={() => setAgendaChatOpen(!agendaChatOpen)}
           >
-            Meeting Chat
+            Agenda Chat
           </Button>
           {isRoleAdmin && <SyncMeetingHeaderButton onOpen={() => setSyncMeetingOpen(true)} />}
           <Tooltip title="Version history">
@@ -2137,11 +2137,11 @@ export default function AgendaDetail() {
         users={users}
       />
       {user && (
-        <MeetingChatPanel
+        <AgendaChatPanel
           // One conversation per agenda: remount when the route moves to another.
           key={agendaId}
-          open={meetingChatOpen}
-          onClose={() => setMeetingChatOpen(false)}
+          open={agendaChatOpen}
+          onClose={() => setAgendaChatOpen(false)}
           agendaId={agendaId}
           agenda={agenda}
           topics={topics}

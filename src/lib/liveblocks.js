@@ -54,7 +54,7 @@ const authEndpoint = async (room) => {
 
 // Wrap any subtree that uses Liveblocks (RoomProvider must be inside this).
 // The "Powered by Liveblocks" badge sits bottom-left (over the sidebar):
-// bottom-right it covered the Meeting Chat drawer's Send button.
+// bottom-right it covered the Agenda Chat drawer's Send button.
 export function LiveblocksRoot({ children }) {
   return createElement(LiveblocksProvider, { authEndpoint, badgeLocation: "bottom-left" }, children);
 }

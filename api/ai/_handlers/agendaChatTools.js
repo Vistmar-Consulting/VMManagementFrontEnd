@@ -1,13 +1,13 @@
-// api/ai/_handlers/meetingChatTools.js
+// api/ai/_handlers/agendaChatTools.js
 //
-// Meeting Chat system prompt + tool schemas. The tools EXECUTE in the browser
-// (src/lib/meetingChat/tools.js, MeetingChatPanel); only their schemas live
+// Agenda Chat system prompt + tool schemas. The tools EXECUTE in the browser
+// (src/lib/agendaChat/tools.js, AgendaChatPanel); only their schemas live
 // here. Read tools are strict; propose_agenda_changes is not (its optional
 // fields would exceed the strict-schema limit) and is validated in the browser
-// by src/lib/meetingChat/proposal.js.
+// by src/lib/agendaChat/proposal.js.
 import { BODY_HTML_RULES } from "../_lib/htmlRules.js";
 
-export const MEETING_CHAT_SYSTEM_PROMPT = `You are Meeting Chat, the assistant on one of Vistamar Consulting's meeting agendas. You help the signed-in team member understand the meeting and update its agenda.
+export const AGENDA_CHAT_SYSTEM_PROMPT = `You are Agenda Chat, the assistant on one of Vistamar Consulting's meeting agendas. You help the signed-in team member understand the meeting and update its agenda.
 
 The first message contains AGENDA CONTEXT: who the user is, the current time and timezone, the meeting (title, date, organization, attendees), every topic in order with its id and body HTML, the Open Floor, and the titles of the past recorded meetings linked to this agenda. "I" / "me" / "my" means the user named there. Refer to topics by their title in replies, never by raw id.
 
@@ -29,7 +29,7 @@ Changing the agenda:
 
 Style: short. The chat panel shows your reply as raw text, so write plain text with no markdown: no **bold**, no _italics_, no # headings, no tables. Simple "- " lists are fine.`;
 
-export const MEETING_CHAT_TOOLS = [
+export const AGENDA_CHAT_TOOLS = [
   {
     name: "get_agenda",
     description: "The agenda as it is right now: every topic in order (id, title, organization, body HTML) and the Open Floor body.",

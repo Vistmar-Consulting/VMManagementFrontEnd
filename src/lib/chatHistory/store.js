@@ -1,6 +1,6 @@
 // src/lib/chatHistory/store.js
 //
-// Board Chat / Meeting Chat history in Firestore (spec 2026-10-29-chat-history-design).
+// Board Chat / Agenda Chat history in Firestore (spec 2026-10-29-chat-history-design).
 //   users/{uid}/chats/{chatId}               summary: kind, agendaId, title, cost, seen
 //   users/{uid}/chats/{chatId}/turns/{index} one exchange: status, messagesJson, entryJson
 // Private to the owner (firestore.rules). Messages are stored as JSON strings:

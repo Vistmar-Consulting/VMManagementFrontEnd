@@ -1,8 +1,8 @@
-// src/components/MeetingChatPanel.jsx
+// src/components/AgendaChatPanel.jsx
 //
-// Meeting Chat drawer on an agenda page (spec 2026-10-28-meeting-chat-design).
+// Agenda Chat drawer on an agenda page (spec 2026-10-28-agenda-chat-design).
 // Same loop as Board Chat: the agenda goes in the first message, tools run
-// here, propose_agenda_changes opens MeetingChatChangesModal and waits for
+// here, propose_agenda_changes opens AgendaChatChangesModal and waits for
 // Apply / Cancel. Chats are saved per user in Firestore until deleted
 // (lib/chatHistory); History lists this agenda's chats. The unsent draft stays
 // in localStorage. Rendered inside the agenda's RoomProvider: Apply
@@ -14,7 +14,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import SendIcon from "@mui/icons-material/Send";
 import { getYjsProviderForRoom } from "@liveblocks/yjs";
 import ChatHistoryView from "./ChatHistoryView.jsx";
-import MeetingChatChangesModal from "./MeetingChatChangesModal.jsx";
+import AgendaChatChangesModal from "./AgendaChatChangesModal.jsx";
 import { useCollabFlushRegistry } from "./editor/CollabFlushRegistry.jsx";
 import { writeTopicBodies } from "./editor/topicBodyYjs.js";
 import { useOthers, useRoom } from "../lib/liveblocks.js";
@@ -24,13 +24,13 @@ import { usePersistedDraft } from "../lib/boardChat/usePersistedChat.js";
 import { makeLookups } from "../lib/boardChat/snapshot.js";
 import { chatTitle, nextTurnIndex } from "../lib/chatHistory/store.js";
 import { useChatSession } from "../lib/chatHistory/useChatSession.js";
-import { applyAgendaPlan } from "../lib/meetingChat/apply.js";
-import { OPEN_FLOOR, buildAgendaContext, mergeSeen, seenOf } from "../lib/meetingChat/context.js";
-import { buildReviewRows, planAgendaWrites, restale } from "../lib/meetingChat/proposal.js";
-import { firefliesSource, runMeetingReadTool } from "../lib/meetingChat/tools.js";
+import { applyAgendaPlan } from "../lib/agendaChat/apply.js";
+import { OPEN_FLOOR, buildAgendaContext, mergeSeen, seenOf } from "../lib/agendaChat/context.js";
+import { buildReviewRows, planAgendaWrites, restale } from "../lib/agendaChat/proposal.js";
+import { firefliesSource, runAgendaReadTool } from "../lib/agendaChat/tools.js";
 import appTheme from "../theme/index.js";
 
-export const MEETING_CHAT_WIDTH = 420;
+export const AGENDA_CHAT_WIDTH = 420;
 const TOP = appTheme.appBar.height;
 // What a saved exchange keeps of a panel entry (retry bookkeeping is dropped:
 // a reopened chat has no Retry).
@@ -44,7 +44,7 @@ const EXAMPLES = [
   "Which tasks under Content are blocked?",
 ];
 
-export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topics, isMaster, orgs, orgName, organizationId, items, users, user }) {
+export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topics, isMaster, orgs, orgName, organizationId, items, users, user }) {
   const [history, setHistory] = useState([]);
   const [entries, setEntries] = useState([]);
   // Mirrors `entries` synchronously: a turn saves the entry it just finished.
@@ -53,7 +53,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
     entriesRef.current = fn(entriesRef.current);
     setEntries(entriesRef.current);
   };
-  const [input, setInput] = usePersistedDraft(`vm-meeting-chat:${user.uid}:${agendaId}`, "vm-meeting-chat:");
+  const [input, setInput] = usePersistedDraft(`vm-agenda-chat:${user.uid}:${agendaId}`, "vm-agenda-chat:");
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(null);
   const [pending, setPending] = useState(null);
@@ -75,9 +75,9 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
   useEffect(() => { if (open) setEverOpened(true); }, [open]);
   const session = useChatSession({
     uid: user.uid,
-    kind: "meeting",
+    kind: "agenda",
     agendaId,
-    pointerKey: `vm-meeting-chat-current:${user.uid}:${agendaId}`,
+    pointerKey: `vm-agenda-chat-current:${user.uid}:${agendaId}`,
     enabled: everOpened,
     onRestore: resetTo,
   });
@@ -124,7 +124,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
     return () => { mountedRef.current = false; };
   }, []);
   const post = (messages) => (mountedRef.current
-    ? postChat(messages, "meeting-chat")
+    ? postChat(messages, "agenda-chat")
     : Promise.reject(new Error("Stopped — you left the agenda.")));
 
   // A null updatedAt is a write still waiting on its server timestamp.
@@ -232,7 +232,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
 
   const executeTool = async (name, toolInput) => {
     if (name === "propose_agenda_changes") return proposeChanges(toolInput);
-    const out = await runMeetingReadTool(name, toolInput, latest.current);
+    const out = await runAgendaReadTool(name, toolInput, latest.current);
     if (name === "get_agenda") seenRef.current = mergeSeen(seenRef.current, seenOf(latest.current));
     return out;
   };
@@ -309,10 +309,10 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
       anchor="right"
       variant="persistent"
       open={open}
-      PaperProps={{ sx: { width: MEETING_CHAT_WIDTH, top: TOP, height: `calc(100% - ${TOP}px)` } }}
+      PaperProps={{ sx: { width: AGENDA_CHAT_WIDTH, top: TOP, height: `calc(100% - ${TOP}px)` } }}
     >
       <Stack direction="row" alignItems="center" sx={{ px: 2, py: 1, borderBottom: 1, borderColor: "divider" }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>Meeting Chat</Typography>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>Agenda Chat</Typography>
         <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }} aria-label="Conversation cost">
           {formatUsd(total)}{anyUnpriced ? " + unpriced" : ""}
         </Typography>
@@ -320,7 +320,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
           <HistoryIcon fontSize="small" />
         </IconButton>
         <Button size="small" onClick={newChat} disabled={busy}>New chat</Button>
-        <IconButton size="small" onClick={onClose} aria-label="Close Meeting Chat"><CloseIcon fontSize="small" /></IconButton>
+        <IconButton size="small" onClick={onClose} aria-label="Close Agenda Chat"><CloseIcon fontSize="small" /></IconButton>
       </Stack>
       {currentTitle && !showHistory && (
         <Typography variant="caption" color="text.secondary" noWrap sx={{ px: 2, pt: 0.5 }}>{currentTitle}</Typography>
@@ -374,7 +374,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
           fullWidth
           multiline
           maxRows={8}
-          placeholder="Ask Meeting Chat…"
+          placeholder="Ask Agenda Chat…"
           value={input}
           onChange={(ev) => setInput(ev.target.value)}
           onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); } }}
@@ -384,7 +384,7 @@ export default function MeetingChatPanel({ open, onClose, agendaId, agenda, topi
       </Stack>
 
       {pending && (
-        <MeetingChatChangesModal
+        <AgendaChatChangesModal
           key={pending.id}
           summary={pending.summary}
           rows={pending.rows}

@@ -1,7 +1,7 @@
 // src/lib/boardChat/api.js
 import { auth } from "../../firebase.js";
 
-// POST /api/ai/chat (Board Chat) or /api/ai/meeting-chat. Errors carry
+// POST /api/ai/chat (Board Chat) or /api/ai/agenda-chat. Errors carry
 // costUsd/model when the server billed the call anyway (refusal, cut-off), so
 // the cost tracker stays honest.
 export async function postChat(messages, route = "chat") {

@@ -1,6 +1,6 @@
 // src/lib/boardChat/usePersistedChat.js
 //
-// Board Chat / Meeting Chat unsent draft, kept per user (see persist.js).
+// Board Chat / Agenda Chat unsent draft, kept per user (see persist.js).
 // `prefix` covers every record of this chat, for the expiry purge. The
 // conversation record this key held before chats moved to Firestore is removed.
 import { useEffect, useState } from "react";

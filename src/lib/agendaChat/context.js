@@ -1,6 +1,6 @@
-// src/lib/meetingChat/context.js
+// src/lib/agendaChat/context.js
 //
-// Agenda → the AGENDA CONTEXT text Meeting Chat sends once per conversation,
+// Agenda → the AGENDA CONTEXT text Agenda Chat sends once per conversation,
 // the live agenda view get_agenda returns, and `seen`: the updatedAt (ms) of
 // every topic plus the agenda (Open Floor) the model was shown — the staleness
 // baseline for the review.

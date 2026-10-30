@@ -1,4 +1,4 @@
-# Chat history — Board Chat and Meeting Chat
+# Chat history — Board Chat and Agenda Chat
 
 **Date:** 2026-10-29 · **Approved by:** Andy (design in session, 2026-10-29) · **Replaces:** the 12-hour localStorage conversation persistence from v0.4.22.
 
@@ -10,7 +10,7 @@ Chats work like ordinary chat apps: every conversation is kept until its owner d
 
 1. Chats live in Firestore, private to their owner. No other user — admins included — can read them in the app. (The Firebase console, as project owner, can.)
 2. Board Chat views remember the chat that made them. Every view stays in the chip row whichever chat is open. Deleting a chat asks whether to delete its views too.
-3. Meeting Chat lists only the open agenda's chats. Andy may later want chats from earlier meetings of the same series; not in scope now.
+3. Agenda Chat lists only the open agenda's chats. Andy may later want chats from earlier meetings of the same series; not in scope now.
 4. Board Chat lists all of the user's Board Chat chats.
 5. Any chat can be continued. The first message in an old chat costs more (cache expired) — accepted.
 6. Storage: one small summary doc per chat plus one doc per exchange (Firestore 1 MB doc limit).
@@ -20,7 +20,7 @@ Chats work like ordinary chat apps: every conversation is kept until its owner d
 
 - **Title** = the first question, trimmed to 60 characters. No rename.
 - **History** opens in the panel itself (replaces the message list); each row shows title, last used, cost and a delete icon. The panel header shows the open chat's title.
-- **On return** the panel opens the chat last open on that page (pointer in localStorage, per user; per user + agenda for Meeting Chat). If it was deleted elsewhere, a new chat opens.
+- **On return** the panel opens the chat last open on that page (pointer in localStorage, per user; per user + agenda for Agenda Chat). If it was deleted elsewhere, a new chat opens.
 - A chat doc is created at the first Send, not on New chat.
 - Delete confirm is an in-app dialog, never `window.confirm`.
 - Existing localStorage views are uploaded once per browser as views with no chat. Old localStorage conversations are not migrated (they expire within 12 hours).
@@ -29,7 +29,7 @@ Chats work like ordinary chat apps: every conversation is kept until its owner d
 
 ```
 users/{uid}/chats/{chatId}
-  kind: "board" | "meeting"
+  kind: "board" | "agenda"   (renamed from "meeting" with Meeting Chat → Agenda Chat, 2026-10-30)
   agendaId: string | null
   title: string
   createdAt, updatedAt: timestamp
@@ -69,10 +69,10 @@ Queries are single-field equality (`kind == "board"`, `agendaId == X`) sorted in
 
 ## Out of scope
 
-Renaming chats; sharing chats; searching chats; showing Meeting Chat chats from earlier meetings of a series.
+Renaming chats; sharing chats; searching chats; showing Agenda Chat chats from earlier meetings of a series.
 
 ## Testing
 
 - Unit: the chat store (turn save/load, running-turn handling, size check, delete batching) and the views store (migration, diff writes).
 - Component: panel opens the last chat, lists history, deletes (with and without views).
-- Live, deployed site, as Andy: Board Chat chat survives a reload and is continued; delete with and without views; a Meeting Chat chat on one agenda does not show on another; reading another user's chats is refused by the rules.
+- Live, deployed site, as Andy: Board Chat chat survives a reload and is continued; delete with and without views; a Agenda Chat chat on one agenda does not show on another; reading another user's chats is refused by the rules.

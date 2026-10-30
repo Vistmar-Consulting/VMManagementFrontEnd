@@ -33,7 +33,7 @@ const SOURCE_LABEL = {
   manual: "Saved",
   "pre-ai-gen": "Before AI Gen",
   "pre-restore": "Before restore",
-  "meeting-chat": "Before Meeting Chat",
+  "agenda-chat": "Before Agenda Chat",
 };
 
 function genSummary(g) {

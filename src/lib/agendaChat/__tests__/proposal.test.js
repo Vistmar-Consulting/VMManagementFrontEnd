@@ -1,4 +1,4 @@
-// src/lib/meetingChat/__tests__/proposal.test.js
+// src/lib/agendaChat/__tests__/proposal.test.js
 import { describe, expect, it } from "vitest";
 import { buildReviewRows, planAgendaWrites, restale } from "../proposal.js";
 

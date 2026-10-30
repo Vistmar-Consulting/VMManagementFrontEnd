@@ -39,12 +39,12 @@ describe("chat persistence", () => {
   });
 
   it("purges expired records under a prefix, leaving live ones and other keys", () => {
-    saveChat("vm-meeting-chat:u:a1", { draft: "old" }, 0);
-    saveChat("vm-meeting-chat:u:a2", { draft: "new" }, CHAT_TTL_MS);
-    localStorage.setItem("vm-meeting-chat:u:a3", "garbage");
+    saveChat("vm-agenda-chat:u:a1", { draft: "old" }, 0);
+    saveChat("vm-agenda-chat:u:a2", { draft: "new" }, CHAT_TTL_MS);
+    localStorage.setItem("vm-agenda-chat:u:a3", "garbage");
     saveChat("other", { draft: "x" }, 0);
-    purgeExpiredChats("vm-meeting-chat:", CHAT_TTL_MS + 1);
-    expect([...store.keys()].sort()).toEqual(["other", "vm-meeting-chat:u:a2"]);
+    purgeExpiredChats("vm-agenda-chat:", CHAT_TTL_MS + 1);
+    expect([...store.keys()].sort()).toEqual(["other", "vm-agenda-chat:u:a2"]);
   });
 
   it("clears", () => {

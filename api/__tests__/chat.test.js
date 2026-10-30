@@ -80,26 +80,26 @@ describe("TOOLS", () => {
   });
 });
 
-describe("Meeting Chat route", () => {
+describe("Agenda Chat route", () => {
   it("every schema is closed; only the read tools are strict", async () => {
-    const { MEETING_CHAT_TOOLS } = await import("../ai/_handlers/meetingChatTools.js");
-    const strict = MEETING_CHAT_TOOLS.filter((t) => t.strict).map((t) => t.name);
+    const { AGENDA_CHAT_TOOLS } = await import("../ai/_handlers/agendaChatTools.js");
+    const strict = AGENDA_CHAT_TOOLS.filter((t) => t.strict).map((t) => t.name);
     expect(strict).toEqual(["get_agenda", "list_topic_tasks", "list_past_meetings", "get_meeting_summary", "get_meeting_transcript"]);
-    for (const t of MEETING_CHAT_TOOLS) expect(t.input_schema.additionalProperties).toBe(false);
+    for (const t of AGENDA_CHAT_TOOLS) expect(t.input_schema.additionalProperties).toBe(false);
   });
 
-  it("/api/ai/meeting-chat calls the model with Meeting Chat's prompt and tools", async () => {
+  it("/api/ai/agenda-chat calls the model with Agenda Chat's prompt and tools", async () => {
     const { default: dispatch } = await import("../ai/dispatch.js");
-    const { MEETING_CHAT_SYSTEM_PROMPT, MEETING_CHAT_TOOLS } = await import("../ai/_handlers/meetingChatTools.js");
+    const { AGENDA_CHAT_SYSTEM_PROMPT, AGENDA_CHAT_TOOLS } = await import("../ai/_handlers/agendaChatTools.js");
     create.mockResolvedValue({
       model: "claude-sonnet-5-5", stop_reason: "end_turn",
       content: [{ type: "text", text: "Hi" }], usage: { input_tokens: 1, output_tokens: 1 },
     });
     const res = fakeRes();
-    await dispatch({ ...req({ messages: [{ role: "user", content: "hi" }] }), query: { action: "meeting-chat" } }, res);
+    await dispatch({ ...req({ messages: [{ role: "user", content: "hi" }] }), query: { action: "agenda-chat" } }, res);
     expect(res.statusCode).toBe(200);
-    expect(create.mock.calls[0][0].system).toBe(MEETING_CHAT_SYSTEM_PROMPT);
-    expect(create.mock.calls[0][0].tools).toBe(MEETING_CHAT_TOOLS);
+    expect(create.mock.calls[0][0].system).toBe(AGENDA_CHAT_SYSTEM_PROMPT);
+    expect(create.mock.calls[0][0].tools).toBe(AGENDA_CHAT_TOOLS);
   });
 });
 

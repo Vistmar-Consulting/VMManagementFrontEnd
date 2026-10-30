@@ -16,7 +16,7 @@ const writePointer = (key, id) => (id ? localStorage.setItem(key, id) : localSto
 
 export function useChatSession({ uid, kind, agendaId = null, pointerKey, enabled, onRestore }) {
   const constraints = useMemo(
-    () => [kind === "meeting" ? where("agendaId", "==", agendaId) : where("kind", "==", "board")],
+    () => [kind === "agenda" ? where("agendaId", "==", agendaId) : where("kind", "==", "board")],
     [kind, agendaId],
   );
   const { data, error: listError } = useCollection(enabled ? `users/${uid}/chats` : null, constraints);

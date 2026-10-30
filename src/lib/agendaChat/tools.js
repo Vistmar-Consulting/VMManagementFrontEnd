@@ -1,8 +1,8 @@
-// src/lib/meetingChat/tools.js
+// src/lib/agendaChat/tools.js
 //
-// Meeting Chat's read tools. Run in the browser against the live agenda, the
+// Agenda Chat's read tools. Run in the browser against the live agenda, the
 // Task Board items and Fireflies. propose_agenda_changes is handled by
-// MeetingChatPanel (it needs the review modal).
+// AgendaChatPanel (it needs the review modal).
 import { STATUS } from "../../constants/itemStatuses.js";
 import { firefliesQuery, formatTimestamp, GQL_MEETING_DETAIL, GQL_MEETING_LIST, GQL_TRANSCRIPT_SENTENCES } from "../fireflies.js";
 import { itemRef, statusName, ymd } from "../boardChat/snapshot.js";
@@ -79,7 +79,7 @@ export function transcriptText(sentences, query) {
 const meetingDate = (m) => (m?.date ? ymd(new Date(m.date)) : "");
 
 // ctx: { agenda, topics, orgs, isMaster, items, organizationId, lookups, source }
-export async function runMeetingReadTool(name, input, ctx) {
+export async function runAgendaReadTool(name, input, ctx) {
   if (name === "get_agenda") {
     return { result: agendaView(ctx), step: "Read the agenda" };
   }
