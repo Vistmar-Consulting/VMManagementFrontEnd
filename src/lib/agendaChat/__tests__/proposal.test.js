@@ -138,3 +138,61 @@ describe("planAgendaWrites", () => {
     expect(p.creates[0]).toMatchObject({ organizationId: "o1", sortOrder: 2.5 });
   });
 });
+
+describe("topic cards and their tasks", () => {
+  const cardTopics = [
+    { ...topics[0], categoryIds: ["web"], tagIds: [], organizationId: null, excludedItemIds: ["i9"] },
+    topics[1],
+  ];
+  const items = [
+    { id: "i1", organizationId: "bmd", categoryId: "web" },
+    { id: "i9", organizationId: "bmd", categoryId: "web" },
+    { id: "i5", organizationId: "bmd", categoryId: "seo" },
+  ];
+  const board = {
+    items,
+    agendaOrgId: "bmd",
+    categoryIds: new Set(["web", "seo", "newCat"]),
+    tagsFor: (org) => new Set(org === "bmd" ? ["shared", "bmdTag", "newTag"] : ["shared"]),
+  };
+  const bctx = { ...ctx, topics: cardTopics, board };
+
+  it("changes a topic's categories and tags, checking each id and its organization", () => {
+    const rows = buildReviewRows([
+      { op: "update_topic", topicId: "a", categoryIds: ["web", "newCat"], tagIds: ["newTag"], reason: "r" },
+      { op: "update_topic", topicId: "b", tagIds: ["otherOrg"], reason: "r" },
+      { op: "update_topic", topicId: "c", categoryIds: ["nope"], reason: "r" },
+    ], { ...bctx, topics: [...cardTopics, topics[2]] });
+    expect(rows[0].keys).toEqual({ categoryIds: { before: ["web"], after: ["web", "newCat"] }, tagIds: { before: [], after: ["newTag"] } });
+    expect(rows[1].error).toMatch(/not a shared tag or this topic's organization's own/);
+    expect(rows[2].error).toMatch(/Unknown category nope/);
+    const p = planAgendaWrites(rows, new Set([0]), { ...bctx, newIds: { newCat: "realCat", newTag: "realTag" } });
+    expect(p.updates).toEqual([{ id: "a", patch: { categoryIds: ["web", "realCat"], tagIds: ["realTag"] } }]);
+    expect(p.liveBodies).toEqual({});
+  });
+
+  it("removes a task shown on the card and restores one removed by hand, in one patch", () => {
+    const rows = buildReviewRows([
+      { op: "remove_task", topicId: "a", itemId: "i1", reason: "r" },
+      { op: "restore_task", topicId: "a", itemId: "i9", reason: "r" },
+      { op: "remove_task", topicId: "a", itemId: "i5", reason: "r" },
+      { op: "restore_task", topicId: "a", itemId: "i1", reason: "r" },
+      { op: "update_topic", topicId: "a", name: "Web", reason: "r" },
+    ], bctx);
+    expect(rows.map((r) => r.ok)).toEqual([true, true, false, false, true]);
+    expect(rows[2].error).toBe("That task isn't on this topic card");
+    expect(rows[3].error).toMatch(/already has a change on this topic in change 1/);
+    const p = planAgendaWrites(rows, all(rows), bctx);
+    expect(p.updates).toEqual([{ id: "a", patch: { excludedItemIds: ["i1"], name: "Web" } }]);
+  });
+
+  it("a topic whose card tasks change can't be deleted in the same proposal; without the board, card ops are refused", () => {
+    const rows = buildReviewRows([
+      { op: "remove_task", topicId: "a", itemId: "i1", reason: "r" },
+      { op: "delete_topic", topicId: "a", reason: "r" },
+    ], bctx);
+    expect(rows[1].error).toMatch(/changed by change 1/);
+    const [noBoard] = buildReviewRows([{ op: "remove_task", topicId: "a", itemId: "i1", reason: "r" }], ctx);
+    expect(noBoard.error).toBe("Topic cards' tasks can't be changed here");
+  });
+});

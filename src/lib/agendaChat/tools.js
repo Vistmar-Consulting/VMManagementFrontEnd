@@ -1,13 +1,14 @@
 // src/lib/agendaChat/tools.js
 //
 // Agenda Chat's read tools. Run in the browser against the live agenda, the
-// Task Board items and Fireflies. propose_agenda_changes is handled by
+// Task Board items and Fireflies. propose_changes is handled by
 // AgendaChatPanel (it needs the review modal).
 import { STATUS } from "../../constants/itemStatuses.js";
 import { firefliesQuery, formatTimestamp, GQL_MEETING_DETAIL, GQL_MEETING_LIST, GQL_TRANSCRIPT_SENTENCES } from "../fireflies.js";
 import { itemRef, statusName, ymd } from "../boardChat/snapshot.js";
 import { topicTree } from "../topicItems.js";
-import { agendaView } from "./context.js";
+import { runReadTool } from "../boardChat/tools.js";
+import { agendaView, boardItemsFor } from "./context.js";
 
 // Board items under a topic — what its Working view card shows
 // (lib/topicItems.js), archived tasks and their subtasks left out.
@@ -73,15 +74,25 @@ export function transcriptText(sentences, query) {
 
 const meetingDate = (m) => (m?.date ? ymd(new Date(m.date)) : "");
 
-// ctx: { agenda, topics, orgs, isMaster, items, organizationId, lookups, source }
+// ctx: { agenda, topics, orgs, isMaster, items, organizationId, categories,
+//        tags, lookups, source }. get_item / search_items are Board Chat's
+// (lib/boardChat/tools.js) over the board items Agenda Chat sees; their
+// result carries `seen`, the items' staleness baseline.
 export async function runAgendaReadTool(name, input, ctx) {
   if (name === "get_agenda") {
-    return { result: agendaView(ctx), step: "Read the agenda" };
+    return { result: agendaView({ ...ctx, board: { items: ctx.items, categories: ctx.categories, tags: ctx.tags, organizationId: ctx.organizationId } }), step: "Read the agenda" };
+  }
+  if (name === "get_item" || name === "search_items") {
+    const items = boardItemsFor(ctx.items, ctx);
+    const out = await runReadTool(name, input, { items, lookups: ctx.lookups });
+    const label = name === "get_item" ? `Read ${out.result.ref} ${out.result.title}` : `Searched "${input.query}"`;
+    return { result: out.result, seen: out.seen, step: label };
   }
   if (name === "list_topic_tasks") {
     const topic = ctx.topics.find((tp) => tp.id === input.topicId);
     if (!topic) throw new Error(`No topic ${input.topicId} on this agenda`);
     const tasks = topicTasks(topic, ctx.items, ctx.organizationId).map((it) => ({
+      id: it.id,
       ref: itemRef(it, ctx.items),
       title: it.title || "(untitled)",
       status: statusName(it.statusId),

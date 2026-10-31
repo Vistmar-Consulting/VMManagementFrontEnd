@@ -1,13 +1,17 @@
 // src/components/AgendaChatPanel.jsx
 //
 // Agenda Chat drawer on an agenda page (spec 2026-10-28-agenda-chat-design).
-// Same loop as Board Chat: the agenda goes in the first message, tools run
-// here, propose_agenda_changes opens AgendaChatChangesModal and waits for
-// Apply / Cancel. Chats are saved per user in Firestore until deleted
-// (lib/chatHistory); History lists this agenda's chats. The unsent draft stays
-// in localStorage. Rendered inside the agenda's RoomProvider: Apply
-// writes rewritten bodies into the live editor, as Sync Meeting does.
+// Same loop as Board Chat: the agenda and its Task Board items go in the
+// first message, tools run here, propose_changes opens AgendaChatChangesModal
+// and waits for Apply / Cancel. A proposal has an agenda half and a Task
+// Board half (Board Chat's ops: tasks, subtasks, tags, categories); Apply
+// writes the board half first, so topics can use a tag or category it
+// creates, then the agenda half. Chats are saved per user in Firestore until
+// deleted (lib/chatHistory); History lists this agenda's chats. The unsent
+// draft stays in localStorage. Rendered inside the agenda's RoomProvider:
+// Apply writes rewritten bodies into the live editor, as Sync Meeting does.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { serverTimestamp } from "firebase/firestore";
 import { Alert, Box, Button, Drawer, IconButton, Stack, TextField, Typography } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import HistoryIcon from "@mui/icons-material/History";
@@ -21,7 +25,12 @@ import { useOthers, useRoom } from "../lib/liveblocks.js";
 import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
 import { usePersistedDraft } from "../lib/boardChat/usePersistedChat.js";
-import { makeLookups } from "../lib/boardChat/snapshot.js";
+import { itemRef, makeLookups, toMillis } from "../lib/boardChat/snapshot.js";
+import { applyBoardProposal } from "../lib/boardChat/apply.js";
+import { boardProposalContext, buildReviewRows as buildBoardRows } from "../lib/boardChat/proposal.js";
+import { taxonomyAfter } from "../lib/boardChat/taxonomy.js";
+import { tagsForOrg } from "../lib/tagScope.js";
+import { EMPTY_PEOPLE } from "../lib/people.js";
 import { chatTitle, nextTurnIndex } from "../lib/chatHistory/store.js";
 import { useChatSession } from "../lib/chatHistory/useChatSession.js";
 import { applyAgendaPlan } from "../lib/agendaChat/apply.js";
@@ -29,6 +38,18 @@ import { OPEN_FLOOR, buildAgendaContext, mergeSeen, seenOf } from "../lib/agenda
 import { buildReviewRows, planAgendaWrites, restale } from "../lib/agendaChat/proposal.js";
 import { firefliesSource, runAgendaReadTool } from "../lib/agendaChat/tools.js";
 import appTheme from "../theme/index.js";
+
+// A chat's saved baseline: { agenda, board }. Chats saved before Agenda Chat
+// read the board hold the agenda's map alone.
+const splitSeen = (seen) => (seen && typeof seen.agenda === "object" && typeof seen.board === "object" ? seen : { agenda: seen || {}, board: {} });
+
+// The board tempIds an agenda row's topic categories / tags use, as the
+// indexes of the board rows that create them.
+function boardNeeds(row, after) {
+  if (!row.ok || !row.keys) return [];
+  const ids = [...(row.keys.categoryIds?.after || []), ...(row.keys.tagIds?.after || [])];
+  return ids.flatMap((id) => [after.pendingTags.get(id), after.pendingCategories.get(id)]).filter((i) => i !== undefined);
+}
 
 export const AGENDA_CHAT_WIDTH = 420;
 const TOP = appTheme.appBar.height;
@@ -41,10 +62,15 @@ const EXAMPLES = [
   "What did we decide about the website last meeting?",
   "Update the Website topic with this body: …",
   "Move the Tools topic to the Open Floor.",
-  "Which tasks under Content are blocked?",
+  "Move the GBP audit task from Website to the SEO card.",
+  "Take the duplicate tasks off the Content card.",
+  "Make a launch tag, put it on the homepage tasks and add it to the Website topic.",
 ];
 
-export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topics, isMaster, orgs, orgName, organizationId, items, users, user }) {
+// people: the people directory (lib/people.js) — who can be assigned and
+// everyone an id may name.
+export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topics, isMaster, orgs, orgName, organizationId, items, people = EMPTY_PEOPLE, categories = [], tags = [], user }) {
+  const users = people.list;
   const [history, setHistory] = useState([]);
   const [entries, setEntries] = useState([]);
   // Mirrors `entries` synchronously: a turn saves the entry it just finished.
@@ -58,8 +84,13 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
   const [retry, setRetry] = useState(null);
   const [pending, setPending] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  // Staleness baselines: topics + Open Floor (seenRef) and board items
+  // (boardSeenRef), each with the ids whose own writes await their server
+  // timestamp.
   const seenRef = useRef({});
   const pendingSeenRef = useRef(new Set());
+  const boardSeenRef = useRef({});
+  const pendingBoardSeenRef = useRef(new Set());
   const listRef = useRef(null);
   const proposalCount = useRef(0);
 
@@ -67,8 +98,11 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
     setHistory(h);
     patchEntries(() => e);
     setRetry(null);
-    seenRef.current = { ...seen };
+    const both = splitSeen(seen);
+    seenRef.current = { ...both.agenda };
+    boardSeenRef.current = { ...both.board };
     pendingSeenRef.current = new Set();
+    pendingBoardSeenRef.current = new Set();
   };
   // Saved chats are read once the panel is first opened.
   const [everOpened, setEverOpened] = useState(open);
@@ -97,7 +131,7 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
         costUsd: all.reduce((s, e) => s + (e.costUsd || 0), 0),
         unpriced: all.some((e) => e.unpriced),
         turnCount: all.length,
-        seen: seenRef.current,
+        seen: { agenda: seenRef.current, board: boardSeenRef.current },
       },
     );
   };
@@ -107,11 +141,15 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
   const others = useOthers();
   const { flushAll } = useCollabFlushRegistry();
 
-  const lookups = makeLookups({ users, orgs, categories: [], tags: [] });
+  const lookups = makeLookups({ users, orgs, categories, tags });
+  const itemLabel = (id) => {
+    const it = (items || []).find((i) => i.id === id);
+    return it ? `${itemRef(it, items)} ${it.title || "(untitled)"}` : id;
+  };
   // A turn runs for many renders; tools read the agenda through this ref so
-  // each call sees the live topics, not those from when the user hit Send.
+  // each call sees the live topics and items, not those from when the user hit Send.
   const latest = useRef(null);
-  latest.current = { agenda, topics: topics || [], orgs, isMaster, items, organizationId, lookups, source: firefliesSource };
+  latest.current = { agenda, topics: topics || [], orgs, isMaster, items: items || [], organizationId, people, users, categories, tags, lookups, itemLabel, source: firefliesSource };
   const total = entries.reduce((s, e) => s + (e.costUsd || 0), 0);
   const anyUnpriced = entries.some((e) => e.unpriced);
 
@@ -141,29 +179,57 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
   };
   useEffect(settleSeen, [topics, agenda]);
 
+  // Same for board items this chat wrote.
+  useEffect(() => {
+    if (pendingBoardSeenRef.current.size === 0) return;
+    for (const id of [...pendingBoardSeenRef.current]) {
+      const it = (items || []).find((i) => i.id === id);
+      const ms = it ? toMillis(it.updatedAt) : null;
+      if (!it || ms != null) {
+        if (ms != null) boardSeenRef.current[id] = ms;
+        pendingBoardSeenRef.current.delete(id);
+      }
+    }
+  }, [items]);
+
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [entries, busy]);
 
+  // The board half is checked first: the agenda half may use a tag or
+  // category it creates, and may not use one it deletes.
   const proposeChanges = (toolInput) => new Promise((resolve, reject) => {
     const live = latest.current;
-    const rows = buildReviewRows(toolInput.ops, {
+    const boardRows = buildBoardRows(toolInput.boardOps || [], boardProposalContext({ ...live, seen: boardSeenRef.current, now: serverTimestamp() }));
+    const after = taxonomyAfter(boardRows, live);
+    const rows = buildReviewRows(toolInput.agendaOps || [], {
       topics: live.topics,
       agenda: live.agenda,
       isMaster: live.isMaster,
       orgIds: new Set(live.orgs.map((o) => o.id)),
       seen: seenRef.current,
+      board: {
+        items: live.items,
+        agendaOrgId: live.organizationId,
+        categoryIds: after.categoryIds,
+        tagsFor: (orgId) => new Set(tagsForOrg(after.tags, orgId).map((tg) => tg.id)),
+      },
+    }).map((r) => {
+      const needs = boardNeeds(r, after);
+      return needs.length ? { ...r, boardNeeds: needs } : r;
     });
     proposalCount.current += 1;
-    setPending({ id: proposalCount.current, summary: toolInput.summary, rows, resolve, reject, applying: false, error: null });
+    setPending({ id: proposalCount.current, summary: toolInput.summary, rows, boardRows, resolve, reject, applying: false, error: null });
   });
 
-  const handleApply = async (checked) => {
-    const { rows, resolve } = pending;
+  const handleApply = async (checked, boardChecked) => {
+    const { rows, boardRows, resolve } = pending;
+    const ticked = (list, set) => list.some((r) => r.ok && set.has(r.index));
+    const anyAgenda = ticked(rows, checked);
     // Updated bodies are written into the live editor after the commit; refuse
     // before writing anything if it isn't connected.
-    if (!yProvider.synced) {
+    if (anyAgenda && !yProvider.synced) {
       setPending((p) => ({ ...p, error: "Live editor not connected — reload the agenda and retry." }));
       return;
     }
@@ -179,31 +245,69 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
         rows: fresh,
         // Keep the user's other choices; only the newly stale rows untick.
         checked: new Set([...checked].filter((i) => !newlyStale.some((r) => r.index === i))),
+        boardChecked,
         error: `Changed by someone else while you were reviewing: ${newlyStale.map((r) => r.topicName || "the Open Floor").join(", ")}. Now unticked — tick to replace their edit, then Apply.`,
       }));
       return;
     }
     setPending((p) => ({ ...p, applying: true, error: null }));
+
+    // 1. The Task Board half: nothing is written if it fails.
+    let board = null;
+    if (ticked(boardRows, boardChecked)) {
+      const live = latest.current;
+      try {
+        board = await applyBoardProposal(boardRows, boardChecked, { uid: user.uid, items: live.items, tags: live.tags, categories: live.categories, itemLabel: live.itemLabel });
+      } catch (err) {
+        setPending((p) => ({ ...p, applying: false, error: err.message }));
+        return;
+      }
+      board.touchedItemIds.forEach((id) => pendingBoardSeenRef.current.add(id));
+    }
+    const boardResult = board?.result ?? { applied: [], declined: boardRows.map((r) => ({ index: r.index, op: r.op, why: r.error || "unticked by the user" })) };
+
+    // 2. The agenda half, without rows that need a tag or category the board
+    // half didn't create.
+    const boardApplied = new Set(boardResult.applied.map((a) => a.index));
+    const agendaChecked = new Set([...checked].filter((i) => (rows[i].boardNeeds || []).every((n) => boardApplied.has(n))));
+    const why = (r) => r.error || (checked.has(r.index) ? "a new tag or category it uses was not applied" : "unticked by the user");
+    const declined = rows.filter((r) => !(r.ok && agendaChecked.has(r.index))).map((r) => ({ index: r.index, op: r.op, why: why(r) }));
+    const n = (list) => list.length;
+    if (!ticked(rows, agendaChecked)) {
+      setPending(null);
+      resolve({ result: { agenda: { applied: [], declined }, board: boardResult }, step: `Applied ${n(boardResult.applied)} change${n(boardResult.applied) === 1 ? "" : "s"}` });
+      return;
+    }
     let plan;
     let createdIds;
     try {
       // Pending debounced edits land first, so they can't save over the new bodies.
       await flushAll();
-      plan = planAgendaWrites(rows, checked, { topics: latest.current.topics, isMaster: latest.current.isMaster, orgs: latest.current.orgs });
+      plan = planAgendaWrites(rows, agendaChecked, { topics: latest.current.topics, isMaster: latest.current.isMaster, orgs: latest.current.orgs, newIds: board?.newIds });
       createdIds = await applyAgendaPlan(agendaId, plan, user.uid);
     } catch (err) {
-      setPending((p) => ({ ...p, applying: false, error: err.message }));
+      if (!board) {
+        setPending((p) => ({ ...p, applying: false, error: err.message }));
+        return;
+      }
+      // The board half is already written: report both halves and close the review.
+      setPending(null);
+      resolve({
+        result: { board: boardResult, agenda: { applied: [], declined: "all", error: `The agenda changes failed: ${err.message}` } },
+        step: "Board changes applied; agenda changes failed",
+      });
       return;
     }
     // plan.creates (and so createdIds) follow the kept create rows in order.
-    const keptCreates = rows.filter((r) => r.op === "create_topic" && r.ok && checked.has(r.index)).map((r) => r.index);
-    const applied = rows.filter((r) => r.ok && checked.has(r.index)).map((r) => ({
+    const keptCreates = rows.filter((r) => r.op === "create_topic" && r.ok && agendaChecked.has(r.index)).map((r) => r.index);
+    const applied = rows.filter((r) => r.ok && agendaChecked.has(r.index)).map((r) => ({
       index: r.index,
       op: r.op,
       topic: r.topicName || r.name || "Open Floor",
       ...(r.op === "create_topic" ? { topicId: createdIds[keptCreates.indexOf(r.index)] } : {}),
+      ...(r.itemId ? { item: latest.current.itemLabel(r.itemId) } : {}),
     }));
-    const declined = rows.filter((r) => !(r.ok && checked.has(r.index))).map((r) => ({ index: r.index, op: r.op, why: r.error || "unticked by the user" }));
+    const step = `Applied ${n(applied) + n(boardResult.applied)} change${n(applied) + n(boardResult.applied) === 1 ? "" : "s"}`;
     // Committed: once the listener delivers their server timestamps, what the
     // model wrote becomes what it has "seen" (its own changes aren't stale).
     plan.updates.forEach((u) => pendingSeenRef.current.add(u.id));
@@ -214,13 +318,13 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
     } catch (err) {
       setPending(null);
       resolve({
-        result: { applied, declined, warning: `Saved, but the live editor update failed (${err.message}). The user must reload the agenda before editing.` },
-        step: `Applied ${applied.length} change${applied.length === 1 ? "" : "s"} — reload needed`,
+        result: { agenda: { applied, declined, warning: `Saved, but the live editor update failed (${err.message}). The user must reload the agenda before editing.` }, board: boardResult },
+        step: `${step} — reload needed`,
       });
       return;
     }
     setPending(null);
-    resolve({ result: { applied, declined }, step: `Applied ${applied.length} change${applied.length === 1 ? "" : "s"}` });
+    resolve({ result: { agenda: { applied, declined }, board: boardResult }, step });
   };
 
   const handleCancel = () => {
@@ -231,10 +335,13 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
   };
 
   const executeTool = async (name, toolInput) => {
-    if (name === "propose_agenda_changes") return proposeChanges(toolInput);
+    if (name === "propose_changes") return proposeChanges(toolInput);
     const out = await runAgendaReadTool(name, toolInput, latest.current);
     if (name === "get_agenda") seenRef.current = mergeSeen(seenRef.current, seenOf(latest.current));
-    return out;
+    // A null updatedAt is a write still waiting on its server timestamp; it
+    // must not replace a baseline the model already has.
+    if (out.seen) boardSeenRef.current = mergeSeen(boardSeenRef.current, out.seen);
+    return { result: out.result, step: out.step };
   };
 
   const runFrom = async (messages, entryIndex, chatId) => {
@@ -275,8 +382,9 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
     let content = text;
     if (history.length === 0) {
       const live = latest.current;
-      const ctx = buildAgendaContext({ agenda: live.agenda, topics: live.topics, orgs: live.orgs, orgName, isMaster: live.isMaster, user, users });
+      const ctx = buildAgendaContext({ agenda: live.agenda, topics: live.topics, orgs: live.orgs, orgName, isMaster: live.isMaster, user, users, board: { items: live.items, categories: live.categories, tags: live.tags, organizationId: live.organizationId } });
       seenRef.current = { ...ctx.seen };
+      boardSeenRef.current = { ...ctx.boardSeen };
       content = [{ type: "text", text: ctx.text }, { type: "text", text }];
     }
     const chatId = session.claimId();
@@ -335,7 +443,7 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
         {!showHistory && !session.loading && entries.length === 0 && (
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Ask about this meeting and its past recordings, or ask for agenda changes — you review every change before it&apos;s made, and the agenda is saved to Version history first.
+              Ask about this meeting and its past recordings, or ask for changes to the agenda and its Task Board items — moving tasks between topic cards, tags and categories included. You review every change before it&apos;s made, and the agenda is saved to Version history first.
             </Typography>
             {EXAMPLES.map((ex) => (
               <Typography key={ex} variant="caption" component="div" color="text.disabled" sx={{ mb: 0.5 }}>“{ex}”</Typography>
@@ -389,6 +497,10 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
           summary={pending.summary}
           rows={pending.rows}
           initialChecked={pending.checked}
+          boardRows={pending.boardRows}
+          initialBoardChecked={pending.boardChecked}
+          lookups={lookups}
+          itemLabel={itemLabel}
           orgName={(id) => lookups.orgName(id)}
           othersCount={others.length}
           applying={pending.applying}

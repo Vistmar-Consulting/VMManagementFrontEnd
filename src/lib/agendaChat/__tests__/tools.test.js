@@ -1,6 +1,8 @@
 // src/lib/agendaChat/__tests__/tools.test.js
 import { describe, expect, it, vi } from "vitest";
-import { runAgendaReadTool, topicTasks, transcriptText } from "../tools.js";
+
+vi.mock("../../../firebase.js", () => ({ db: {} }));
+const { runAgendaReadTool, topicTasks, transcriptText } = await import("../tools.js");
 
 const items = [
   { id: "p1", itemNumber: 1, organizationId: "bmd", categoryId: "web", statusId: 2, title: "Site", assigneeIds: ["u1"] },
@@ -43,6 +45,7 @@ describe("runAgendaReadTool", () => {
   const ctx = {
     agenda: { firefliesTitles: ["BMD - Biweekly"], openFloorHtml: "" },
     topics: [topic], orgs: [], isMaster: false, items, organizationId: "bmd",
+    categories: [{ id: "web", name: "Website" }], tags: [{ id: "seo", name: "seo" }],
     lookups: { userName: (id) => (id === "u1" ? "Andy" : id) }, source,
   };
 
@@ -60,13 +63,21 @@ describe("runAgendaReadTool", () => {
   it("lists a topic's tasks with owners", async () => {
     const { result } = await runAgendaReadTool("list_topic_tasks", { topicId: "t1" }, ctx);
     expect(result.tasks).toEqual([
-      { ref: "I-1", title: "Site", status: "In Progress", owners: ["Andy"], due: null },
-      { ref: "I-1/SI-1", title: "Copy", status: "Assigned", owners: [], due: null },
+      { id: "p1", ref: "I-1", title: "Site", status: "In Progress", owners: ["Andy"], due: null },
+      { id: "s1", ref: "I-1/SI-1", title: "Copy", status: "Assigned", owners: [], due: null },
     ]);
   });
 
   it("get_agenda returns the live topics", async () => {
     const { result } = await runAgendaReadTool("get_agenda", {}, ctx);
-    expect(result.topics).toEqual([{ topicId: "t1", title: "Website", bodyHtml: "" }]);
+    expect(result.topics).toEqual([{
+      topicId: "t1", title: "Website", bodyHtml: "",
+      categories: ["Website (web)"], tags: ["seo (seo)"],
+      tasksOnCard: ["I-1 Site [p1]", "I-2 Archived [p2]"], removedFromCard: [],
+    }]);
+  });
+
+  it("get_item reads only the agenda organization's items", async () => {
+    await expect(runAgendaReadTool("get_item", { itemId: "p3" }, ctx)).rejects.toThrow("No item with id p3");
   });
 });

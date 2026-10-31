@@ -84,7 +84,7 @@ describe("Agenda Chat route", () => {
   it("every schema is closed; only the read tools are strict", async () => {
     const { AGENDA_CHAT_TOOLS } = await import("../ai/_handlers/agendaChatTools.js");
     const strict = AGENDA_CHAT_TOOLS.filter((t) => t.strict).map((t) => t.name);
-    expect(strict).toEqual(["get_agenda", "list_topic_tasks", "list_past_meetings", "get_meeting_summary", "get_meeting_transcript"]);
+    expect(strict).toEqual(["get_agenda", "list_topic_tasks", "get_item", "search_items", "list_past_meetings", "get_meeting_summary", "get_meeting_transcript"]);
     for (const t of AGENDA_CHAT_TOOLS) expect(t.input_schema.additionalProperties).toBe(false);
   });
 

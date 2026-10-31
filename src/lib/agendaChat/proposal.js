@@ -1,22 +1,62 @@
 // src/lib/agendaChat/proposal.js
 //
-// propose_agenda_changes → review rows (validated, with before/after) → the
-// Firestore writes for the rows the user kept. Pure; no Firebase imports.
+// The agenda half of an Agenda Chat proposal (agendaOps) → review rows
+// (validated, with before/after) → the Firestore writes for the rows the user
+// kept. Pure; no Firebase imports.
+//
+// Besides topic text and order, an op can change which Task Board items a
+// topic card shows: update_topic's categoryIds / tagIds (replacing the
+// topic's lists), and remove_task / restore_task (the card's hand-removed
+// items, lib/topicItems.js). Those use the board ctx; a tag or category the
+// board half of the same proposal creates is named by its tempId and given
+// its real id when the plan is made (planAgendaWrites' newIds).
 import { sanitizeHtml } from "../agendaHtml.js";
 import { toMillis } from "../boardChat/snapshot.js";
+import { topicItems, topicOrgId } from "../topicItems.js";
 import { OPEN_FLOOR } from "./context.js";
 
 // The Open Floor's baseline is its content (see context.js seenOf).
 const openFloorStale = (seen, currentHtml) => typeof seen[OPEN_FLOOR] === "string" && seen[OPEN_FLOOR] !== currentHtml;
 
-const OPS = new Set(["create_topic", "update_topic", "delete_topic", "move_topic", "set_open_floor"]);
+const OPS = new Set(["create_topic", "update_topic", "delete_topic", "move_topic", "set_open_floor", "remove_task", "restore_task"]);
 const START = "start";
 
-// ctx: { topics (agenda order), agenda, isMaster, orgIds: Set, seen }
-export function buildReviewRows(ops, { topics, agenda, isMaster, orgIds, seen = {} }) {
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+
+// A topic's new categories and tags, checked against what exists once the
+// proposal's board half applies (board.categoryIds / board.tagsFor). A tag
+// the topic already has may stay even if no longer offered for its org.
+function topicKeys(raw, topic, board) {
+  const out = {};
+  for (const field of ["categoryIds", "tagIds"]) {
+    if (raw[field] === undefined) continue;
+    const ids = raw[field];
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) throw new Error(`${field} must be an array of ids`);
+    const unique = [...new Set(ids)];
+    const current = topic[field] || [];
+    if (field === "categoryIds") {
+      const bad = unique.filter((id) => !board.categoryIds.has(id));
+      if (bad.length) throw new Error(`Unknown category ${bad.join(", ")}`);
+    } else {
+      const allowed = board.tagsFor(topicOrgId(topic, board.agendaOrgId));
+      const bad = unique.filter((id) => !current.includes(id) && !allowed.has(id));
+      if (bad.length) throw new Error(`Tag ${bad.join(", ")} is not a shared tag or this topic's organization's own`);
+    }
+    if (!sameSet(unique, current)) out[field] = { before: current, after: unique };
+  }
+  return out;
+}
+
+// ctx: { topics (agenda order), agenda, isMaster, orgIds: Set, seen,
+//        board?: { items, agendaOrgId, categoryIds: Set, tagsFor(orgId) → Set } }
+export function buildReviewRows(ops, { topics, agenda, isMaster, orgIds, seen = {}, board = null }) {
   const byId = new Map((topics || []).map((tp) => [tp.id, tp]));
   const deletedBy = new Map();
   const changedBy = new Map();
+  // Items whose place on a topic card a remove_task / restore_task changes.
+  const linkedBy = new Map();
+  const linkedTopics = new Map();
+  const itemsById = new Map((board?.items || []).map((it) => [it.id, it]));
   let openFloorBy = null;
   const stale = (id, live) => seen[id] != null && toMillis(live) != null && toMillis(live) > seen[id];
 
@@ -58,21 +98,47 @@ export function buildReviewRows(ops, { topics, agenda, isMaster, orgIds, seen = 
     const base = { ...row, topicId: topic.id, topicName: topic.name || "(untitled)", stale: stale(topic.id, topic.updatedAt) };
 
     if (op === "delete_topic") {
-      if (changedBy.has(topic.id)) return fail(`That topic is changed by change ${changedBy.get(topic.id) + 1}`);
+      const by = changedBy.get(topic.id) ?? linkedTopics.get(topic.id);
+      if (by !== undefined) return fail(`That topic is changed by change ${by + 1}`);
       deletedBy.set(topic.id, index);
       return { ...base, beforeHtml: sanitizeHtml(topic.bodyHtml || "") };
     }
     if (op === "update_topic") {
       const hasName = typeof raw.name === "string" && raw.name.trim() !== "";
       const hasBody = typeof raw.bodyHtml === "string";
-      if (!hasName && !hasBody) return fail("update_topic needs a name or bodyHtml");
+      const hasKeys = raw.categoryIds !== undefined || raw.tagIds !== undefined;
+      if (!hasName && !hasBody && !hasKeys) return fail("update_topic needs a name, bodyHtml, categoryIds or tagIds");
+      if (hasKeys && !board) return fail("Topic categories and tags can't be changed here");
       if (changedBy.has(topic.id)) return fail(`That topic is already changed by change ${changedBy.get(topic.id) + 1}`);
+      let keys = {};
+      try {
+        keys = hasKeys ? topicKeys(raw, topic, board) : {};
+      } catch (err) {
+        return fail(err.message);
+      }
+      const renamed = hasName && raw.name.trim() !== topic.name;
+      if (!renamed && !hasBody && Object.keys(keys).length === 0) return fail("No change from the topic as it is");
       changedBy.set(topic.id, index);
       return {
         ...base,
-        ...(hasName && raw.name.trim() !== topic.name ? { name: raw.name.trim() } : {}),
+        ...(renamed ? { name: raw.name.trim() } : {}),
         ...(hasBody ? { beforeHtml: sanitizeHtml(topic.bodyHtml || ""), afterHtml: sanitizeHtml(raw.bodyHtml) } : {}),
+        ...(Object.keys(keys).length ? { keys } : {}),
       };
+    }
+    if (op === "remove_task" || op === "restore_task") {
+      if (!board) return fail("Topic cards' tasks can't be changed here");
+      const item = itemsById.get(raw.itemId);
+      if (!item) return fail(`Item ${raw.itemId || "(none)"} not found`);
+      if (linkedBy.has(`${topic.id}:${item.id}`)) return fail(`That task already has a change on this topic in change ${linkedBy.get(`${topic.id}:${item.id}`) + 1}`);
+      const removed = topic.excludedItemIds || [];
+      if (op === "remove_task" && !topicItems(topic, board.items, board.agendaOrgId).some((it) => it.id === item.id)) {
+        return fail("That task isn't on this topic card");
+      }
+      if (op === "restore_task" && !removed.includes(item.id)) return fail("That task wasn't removed from this topic card");
+      linkedBy.set(`${topic.id}:${item.id}`, index);
+      if (!linkedTopics.has(topic.id)) linkedTopics.set(topic.id, index);
+      return { ...base, itemId: item.id };
     }
     // move_topic
     const after = raw.afterTopicId;
@@ -108,7 +174,11 @@ export function restale(rows, { topics, agenda, seen = {} }) {
 //           updates: [{ id, patch }], deletes: [id], openFloorHtml: string|null,
 //           liveBodies: { [topicId | "openFloor"]: html } } — liveBodies are
 // the bodies of EXISTING fragments to write into the live editor.
-export function planAgendaWrites(rows, checked, { topics, isMaster, orgs = [] }) {
+// newIds maps a board tempId (a tag or category the proposal created) to
+// its real id.
+export function planAgendaWrites(rows, checked, { topics, isMaster, orgs = [], newIds = {} }) {
+  const real = (id) => newIds[id] || id;
+  const removals = new Map();
   // Master agenda org groups run clients by sortOrder, then Vistamar (internal)
   // last — Sync Meeting's order. Used to slot a topic whose org has no group yet.
   const orgRank = (id) => {
@@ -174,6 +244,13 @@ export function planAgendaWrites(rows, checked, { topics, isMaster, orgs = [] })
         patch(r.topicId, { bodyHtml: r.afterHtml });
         liveBodies[r.topicId] = r.afterHtml;
       }
+      for (const [field, { after }] of Object.entries(r.keys || {})) patch(r.topicId, { [field]: after.map(real) });
+    } else if (r.op === "remove_task" || r.op === "restore_task") {
+      const topic = topics.find((tp) => tp.id === r.topicId);
+      const list = removals.get(r.topicId) || new Set(topic.excludedItemIds || []);
+      if (r.op === "remove_task") list.add(r.itemId); else list.delete(r.itemId);
+      removals.set(r.topicId, list);
+      patch(r.topicId, { excludedItemIds: [...list] });
     } else if (r.op === "move_topic") {
       const [entry] = order.splice(indexOf(r.topicId), 1);
       entry.placed = true;

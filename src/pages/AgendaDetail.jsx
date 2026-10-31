@@ -2102,7 +2102,9 @@ export default function AgendaDetail() {
           orgName={orgById[organizationId]?.name || organizationId}
           organizationId={organizationId}
           items={allItems || []}
-          users={people.list}
+          people={people}
+          categories={categories || []}
+          tags={tags || []}
           user={user}
         />
       )}
