@@ -43,7 +43,7 @@ export default function RefreshViewDialog({ view, initialRequest, loadingRequest
       <DialogContent>
         <Typography variant="body2" sx={{ mb: 2 }}>
           Board Chat reruns <strong>{view.label}</strong> against the board as it is now and updates the view. Your other
-          views and filters are not changed. This is one Board Chat run (usually a few cents).
+          views and filters are not changed. This is one Board Chat run (about $0.10–$0.20; it reads the whole board).
         </Typography>
         <TextField
           label="What this view shows"
