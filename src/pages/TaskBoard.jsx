@@ -91,6 +91,12 @@ import { buildItemMatcher } from "../lib/boardFilters.js";
 import { planBoardFilter } from "../lib/boardChat/boardFilter.js";
 import { EMPTY_ACTIVE, activeView, addView, aiFilterOfView, isEdited, removeView, removeViews, resetViews, toggleView } from "../lib/boardChat/boardViews.js";
 import { useBoardViews } from "../lib/boardChat/useBoardViews.js";
+import { refreshView, requestFromChat } from "../lib/boardChat/refreshView.js";
+import { postChat } from "../lib/boardChat/api.js";
+import { formatUsd } from "../lib/boardChat/conversation.js";
+import { loadChat } from "../lib/chatHistory/store.js";
+import BoardViewsBar from "../components/BoardViewsBar.jsx";
+import RefreshViewDialog from "../components/RefreshViewDialog.jsx";
 import { canBoardSync } from "../lib/boardSyncCore.js";
 import { applySort, removeSort, sortItems } from "../lib/boardSort.js";
 import { SCORECARDS, countScorecards } from "../lib/scorecards.js";
@@ -133,7 +139,7 @@ export default function TaskBoard() {
   // re-applies its filters on load. The saved views are the user's, in
   // Firestore (useBoardViews); which one is on (and the filters to restore) is
   // per tab, since each tab keeps its own filters.
-  const [views, setStoredViews, viewsError] = useBoardViews(user.uid);
+  const [views, setStoredViews, viewsError, saveRefreshedView] = useBoardViews(user.uid);
   const [storedActive, setStoredActive] = useSessionStorage("vm-board-chat-active", EMPTY_ACTIVE);
   const activeId = views.some((v) => v.id === storedActive?.activeId) ? storedActive.activeId : null;
   const viewStore = { views, activeId, before: activeId ? storedActive.before : null };
@@ -412,13 +418,55 @@ export default function TaskBoard() {
       });
       return { applied: true, view: null };
     }
-    flushSync(() => runViewChange(addView(viewStore, { id: crypto.randomUUID(), label: plan.label, filters: plan.filters, chatId }, ownFilters)));
+    flushSync(() => runViewChange(addView(viewStore, { id: crypto.randomUUID(), label: plan.label, request: plan.request, filters: plan.filters, chatId }, ownFilters)));
     return { applied: true, view: plan.label, itemCount: plan.filters.aiFilter?.itemIds.length ?? null };
   };
 
   // A deleted chat's views, when the user chose to delete them too.
   const deleteChatViews = (chatId) => {
     runViewChange(removeViews(viewStore, viewStore.views.filter((v) => v.chatId === chatId).map((v) => v.id)));
+  };
+
+  // Refresh a view (lib/boardChat/refreshView.js): confirm, rerun its request
+  // on the board as it is now, keep the view's place, and show the new
+  // filters at once if it is on. A view saved before requests were stored
+  // takes its request from the chat message that made it.
+  const [refreshTarget, setRefreshTarget] = useState(null);
+  const [refreshNotice, setRefreshNotice] = useState(null);
+  const viewItemCount = (view) => {
+    const ids = view.filters.aiFilter && new Set(view.filters.aiFilter.itemIds);
+    return ids ? allItems.filter((i) => ids.has(i.id)).length : null;
+  };
+  const openRefresh = async (view) => {
+    setRefreshNotice(null);
+    if (view.request || !view.chatId) {
+      setRefreshTarget({ view, request: view.request || view.label, loading: false });
+      return;
+    }
+    setRefreshTarget({ view, request: "", loading: true });
+    let request = view.label;
+    try {
+      request = requestFromChat((await loadChat(user.uid, view.chatId))?.entries, view.label) || view.label;
+    } finally {
+      setRefreshTarget((t) => (t?.view.id === view.id ? { ...t, request, loading: false } : t));
+    }
+  };
+  const confirmRefresh = async (request) => {
+    const { view } = refreshTarget;
+    const before = viewItemCount(view);
+    const out = await refreshView({
+      label: view.label,
+      request,
+      board: { items: allItems, users: people.list, orgs, categories, tags },
+      user,
+      post: (messages) => postChat(messages),
+    });
+    await saveRefreshedView(view.id, { filters: out.filters, request });
+    if (viewStore.activeId === view.id) applyFilters(out.filters);
+    const after = out.filters.aiFilter ? out.filters.aiFilter.itemIds.filter((id) => allItems.some((i) => i.id === id)).length : null;
+    const counts = after == null ? "" : ` — ${after} item${after === 1 ? "" : "s"}${before != null && before !== after ? ` (was ${before})` : ""}`;
+    setRefreshNotice(`Refreshed “${view.label}”${counts}. ${formatUsd(out.costUsd)}${out.unpriced ? " + unpriced" : ""}${out.reply ? ` · ${out.reply}` : ""}`);
+    setRefreshTarget(null);
   };
 
   // Reset: every view off (none deleted), search / column / scorecard
@@ -909,7 +957,7 @@ export default function TaskBoard() {
       {/* Search bar — matches title + description across items AND subtasks.
           Cascades the same way other filters do: if a subtask's text matches
           but the parent's doesn't, the parent surfaces and auto-expands. */}
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
         <TextField
           size="small"
           placeholder="Search items and subtasks…"
@@ -937,32 +985,32 @@ export default function TaskBoard() {
         >
           Reset
         </Button>
+        <BoardViewsBar
+          views={viewStore.views}
+          activeId={viewStore.activeId}
+          edited={Boolean(activeView(viewStore)) && isEdited(activeView(viewStore), ownFilters)}
+          itemCount={viewItemCount}
+          onToggle={(id) => runViewChange(toggleView(viewStore, id, ownFilters))}
+          onDelete={(id) => runViewChange(removeView(viewStore, id))}
+          onRefresh={openRefresh}
+          refreshingId={refreshTarget?.view.id ?? null}
+        />
       </Stack>
 
+      {refreshNotice && <Alert severity="success" onClose={() => setRefreshNotice(null)}>{refreshNotice}</Alert>}
       {viewsError && <Alert severity="error">{viewsError}</Alert>}
       {focusMissing && (
         <Alert severity="warning" onClose={() => setFocusMissing(false)}>That item no longer exists — it may have been deleted.</Alert>
       )}
-      {viewStore.views.length > 0 && (
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-          {viewStore.views.map((view) => {
-            const ids = view.filters.aiFilter && new Set(view.filters.aiFilter.itemIds);
-            const count = ids ? ` (${allItems.filter((i) => ids.has(i.id)).length})` : "";
-            const active = view.id === viewStore.activeId;
-            const edited = active && isEdited(view, ownFilters) ? " · edited" : "";
-            return (
-              <Chip
-                key={view.id}
-                color="secondary"
-                variant={active ? "filled" : "outlined"}
-                label={`AI: ${view.label}${count}${edited}`}
-                aria-pressed={active}
-                onClick={() => runViewChange(toggleView(viewStore, view.id, ownFilters))}
-                onDelete={() => runViewChange(removeView(viewStore, view.id))}
-              />
-            );
-          })}
-        </Stack>
+      {refreshTarget && (
+        <RefreshViewDialog
+          key={`${refreshTarget.view.id}:${refreshTarget.loading}`}
+          view={refreshTarget.view}
+          initialRequest={refreshTarget.request}
+          loadingRequest={refreshTarget.loading}
+          onConfirm={confirmRefresh}
+          onClose={() => setRefreshTarget(null)}
+        />
       )}
 
       {itemsLoading && (

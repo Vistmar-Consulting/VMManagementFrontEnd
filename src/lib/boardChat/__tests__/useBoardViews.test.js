@@ -7,10 +7,10 @@ describe("viewsFromDocs", () => {
     const out = viewsFromDocs([
       { id: "third", label: "C", filtersJson: "{}", chatId: "c2", order: 3, createdAt: null },
       { id: "second", label: "B", filtersJson: "{}", order: 2, createdAt: null },
-      { id: "first", label: "A", filtersJson: JSON.stringify(filters), chatId: "c1", order: 1, createdAt: {} },
+      { id: "first", label: "A", filtersJson: JSON.stringify(filters), chatId: "c1", order: 1, createdAt: { toMillis: () => 5 }, request: "A tasks" },
     ]);
     expect(out.map((v) => v.id)).toEqual(["first", "second", "third"]);
-    expect(out[0]).toEqual({ id: "first", label: "A", filters, chatId: "c1" });
+    expect(out[0]).toEqual({ id: "first", label: "A", request: "A tasks", filters, chatId: "c1", createdAtMs: 5, refreshedAtMs: null });
     expect(out[1].chatId).toBeNull();
   });
 });

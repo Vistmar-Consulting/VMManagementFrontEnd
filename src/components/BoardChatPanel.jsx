@@ -27,7 +27,7 @@ import { applyBoardProposal } from "../lib/boardChat/apply.js";
 import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
 import { boardProposalContext, buildReviewRows } from "../lib/boardChat/proposal.js";
-import { buildBoardSnapshot, itemRef, makeLookups, memberName, toMillis } from "../lib/boardChat/snapshot.js";
+import { boardContextText, buildBoardSnapshot, itemRef, makeLookups, toMillis } from "../lib/boardChat/snapshot.js";
 import { usePersistedDraft } from "../lib/boardChat/usePersistedChat.js";
 import { chatTitle, nextTurnIndex } from "../lib/chatHistory/store.js";
 import { useChatSession } from "../lib/chatHistory/useChatSession.js";
@@ -45,18 +45,6 @@ const STEP_LABEL = {
   search_items: (input) => `Searched "${input.query}"`,
   list_meetings: (input) => `Checked meetings ${input.startDate}${input.endDate !== input.startDate ? ` – ${input.endDate}` : ""}`,
 };
-
-function contextBlock(snapshotText, user, users) {
-  const me = users.find((u) => u.id === user.uid);
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return [
-    "BOARD CONTEXT",
-    `User: ${me ? memberName(me) : user.email} (id ${user.uid})`,
-    `Now: ${new Date().toString()} (timezone ${tz})`,
-    "",
-    snapshotText,
-  ].join("\n");
-}
 
 // What a saved exchange keeps of a panel entry (retry bookkeeping is dropped:
 // a reopened chat has no Retry).
@@ -254,7 +242,7 @@ export default function BoardChatPanel({ open, onClose, items, users, people = n
     if (history.length === 0) {
       const snap = buildBoardSnapshot({ items, users, orgs, categories, tags });
       seenRef.current = { ...snap.seen };
-      content = [{ type: "text", text: contextBlock(snap.text, user, users) }, { type: "text", text }];
+      content = [{ type: "text", text: boardContextText(snap.text, user, users) }, { type: "text", text }];
     }
     const chatId = session.claimId();
     const entryIndex = entriesRef.current.length;

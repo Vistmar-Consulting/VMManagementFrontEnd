@@ -76,9 +76,10 @@ describe("planBoardFilter", () => {
   const current = { orgFilter: "vistamar", titleSearch: "", columnFilters: {}, scorecardFilter: null, aiFilter: null };
 
   it("makes a view of the merged filters, named by the call's label", () => {
-    expect(planBoardFilter({ label: "Appt work", aiFilter: { itemIds: ["p1"] } }, ctx, current)).toEqual({
+    expect(planBoardFilter({ label: "Appt work", request: " Appt work due soon ", aiFilter: { itemIds: ["p1"] } }, ctx, current)).toEqual({
       kind: "view",
       label: "Appt work",
+      request: "Appt work due soon",
       filters: { ...current, aiFilter: { itemIds: ["p1"] } },
     });
   });

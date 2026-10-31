@@ -2,7 +2,7 @@
 //
 // The user's Board Chat filter views, saved in Firestore (users/{uid}/boardViews,
 // private to the owner) so they follow the user and can be deleted with the
-// chat that made them. Returns [views, setViews, error] like a state hook:
+// chat that made them. Returns [views, setViews, error, refreshView] like a state hook:
 // setViews updates the board at once (the board applies a view in the same
 // tick) and writes only the views added or removed.
 //
@@ -11,7 +11,7 @@
 // browser-only version are uploaded once, as views with no chat, to the
 // account signed in on that browser (that list was never per user).
 import { useEffect, useRef, useState } from "react";
-import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase.js";
 
 const LEGACY_KEY = "vm-board-chat-views";
@@ -37,13 +37,24 @@ function legacyViews() {
 const viewDoc = (uid, id) => doc(db, "users", uid, "boardViews", id);
 // `order` is set by the browser that adds the view, so several views added in
 // one reply keep their order while their server timestamps are pending.
-const toFirestore = (v, order) => ({ label: v.label, filtersJson: JSON.stringify(v.filters), chatId: v.chatId ?? null, order, createdAt: serverTimestamp() });
+// `request` is the request the view answers, rerun by Refresh.
+const toFirestore = (v, order) => ({ label: v.label, request: v.request ?? null, filtersJson: JSON.stringify(v.filters), chatId: v.chatId ?? null, order, createdAt: serverTimestamp() });
 
-// In the order they were added.
+const ms = (ts) => (ts?.toMillis ? ts.toMillis() : null);
+
+// In the order they were added. Times as ms, so the per-browser copy is plain JSON.
 export function viewsFromDocs(docs) {
   return [...docs]
     .sort((a, b) => a.order - b.order)
-    .map((d) => ({ id: d.id, label: d.label, filters: JSON.parse(d.filtersJson), chatId: d.chatId ?? null }));
+    .map((d) => ({
+      id: d.id,
+      label: d.label,
+      request: d.request ?? null,
+      filters: JSON.parse(d.filtersJson),
+      chatId: d.chatId ?? null,
+      createdAtMs: ms(d.createdAt),
+      refreshedAtMs: ms(d.refreshedAt),
+    }));
 }
 
 // The next list after a change the board made from `base` (the list it
@@ -96,5 +107,18 @@ export function useBoardViews(uid) {
     change.removed.forEach((id) => deleteDoc(viewDoc(uid, id)).catch(fail("delete")));
   };
 
-  return [views, setViews, error];
+  // A refreshed view keeps its id, place and chat; its filters and request
+  // are replaced. Resolves once saved, so the caller can report a failure.
+  const refreshView = async (id, { filters, request }) => {
+    commit(viewsRef.current.map((v) => (v.id === id ? { ...v, filters, request, refreshedAtMs: Date.now() } : v)));
+    setError(null);
+    try {
+      await updateDoc(viewDoc(uid, id), { filtersJson: JSON.stringify(filters), request, refreshedAt: serverTimestamp() });
+    } catch (err) {
+      fail("refresh")(err);
+      throw err;
+    }
+  };
+
+  return [views, setViews, error, refreshView];
 }

@@ -61,7 +61,8 @@ vi.mock("../../lib/boardChat/useBoardViews.js", async () => {
         localStorage.setItem("test-board-views", JSON.stringify(next));
         setViews(next);
       };
-      return [views, set, null];
+      const refresh = async (id, { filters, request }) => set(views.map((v) => (v.id === id ? { ...v, filters, request } : v)));
+      return [views, set, null, refresh];
     },
   };
 });
@@ -98,7 +99,12 @@ const seed = ({ views, activeId, before }) => {
   localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
   sessionStorage.setItem(ACTIVE_KEY, JSON.stringify({ activeId, before }));
 };
-const chip = (label) => screen.getByRole("button", { name: new RegExp(label) });
+// The saved views list (the AI views menu), opened on demand; a view row by label.
+const viewRow = (label) => {
+  if (!document.querySelector(".MuiPopover-root")) fireEvent.click(screen.getByText("AI views"));
+  return screen.getByText(label, { selector: ".MuiListItemText-primary" }).closest("[aria-pressed]");
+};
+const pill = (label) => screen.queryByLabelText(`View on: ${label}`);
 const stored = () => ({
   views: JSON.parse(localStorage.getItem(VIEWS_KEY)),
   ...JSON.parse(sessionStorage.getItem(ACTIVE_KEY)),
@@ -110,26 +116,29 @@ describe("TaskBoard Board Chat views and Reset", () => {
     renderBoard();
     expect(screen.queryByText("Parent One")).toBeTruthy();
     expect(screen.queryByText("Parent Two")).toBeNull();
-    expect(chip("AI: Parent one work \\(1\\)").getAttribute("aria-pressed")).toBe("true");
+    expect(pill("Parent one work").textContent).toContain("· 1 item");
+    expect(viewRow("Parent one work").getAttribute("aria-pressed")).toBe("true");
 
-    fireEvent.click(chip("AI: Parent two work"));
+    fireEvent.click(viewRow("Parent two work"));
     expect(screen.queryByText("Parent One")).toBeNull();
     expect(screen.queryByText("Parent Two")).toBeTruthy();
     expect(stored().activeId).toBe("vb");
+    expect(pill("Parent two work")).toBeTruthy();
 
-    fireEvent.click(chip("AI: Parent two work"));
+    fireEvent.click(viewRow("Parent two work"));
     expect(screen.queryByText("Parent One")).toBeTruthy();
     expect(screen.queryByText("Parent Two")).toBeTruthy();
     expect(stored().activeId).toBeNull();
+    expect(pill("Parent two work")).toBeNull();
   }, 60000);
 
   it("turning a view off restores the search the user had before", () => {
     seed({ views: [viewA], activeId: null, before: null });
     renderBoard();
     fireEvent.change(screen.getByPlaceholderText("Search items and subtasks…"), { target: { value: "Three" } });
-    fireEvent.click(chip("AI: Parent one work"));
+    fireEvent.click(viewRow("Parent one work"));
     expect(screen.getByPlaceholderText("Search items and subtasks…").value).toBe("");
-    fireEvent.click(chip("AI: Parent one work"));
+    fireEvent.click(screen.getByLabelText("Turn off view Parent one work"));
     expect(screen.getByPlaceholderText("Search items and subtasks…").value).toBe("Three");
   }, 60000);
 
@@ -137,9 +146,9 @@ describe("TaskBoard Board Chat views and Reset", () => {
     seed({ views: [viewA], activeId: "va", before: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null } });
     renderBoard();
     fireEvent.change(screen.getByPlaceholderText("Search items and subtasks…"), { target: { value: "Three" } });
-    expect(chip("AI: Parent one work \\(1\\) · edited").getAttribute("aria-pressed")).toBe("true");
+    expect(pill("Parent one work").textContent).toContain("· 1 item · edited");
 
-    fireEvent.click(chip("AI: Parent one work"));
+    fireEvent.click(screen.getByLabelText("Reapply view Parent one work"));
     expect(screen.getByPlaceholderText("Search items and subtasks…").value).toBe("");
     expect(screen.queryByText(/· edited/)).toBeNull();
     expect(stored().activeId).toBe("va");
@@ -160,7 +169,7 @@ describe("TaskBoard Board Chat views and Reset", () => {
   it("which view is on is kept per tab, apart from the shared views list", () => {
     seed({ views: [viewA], activeId: null, before: null });
     renderBoard();
-    fireEvent.click(chip("AI: Parent one work"));
+    fireEvent.click(viewRow("Parent one work"));
     expect(JSON.parse(localStorage.getItem(VIEWS_KEY))).toEqual([viewA]);
     expect(JSON.parse(sessionStorage.getItem(ACTIVE_KEY)).activeId).toBe("va");
   }, 60000);
@@ -169,8 +178,8 @@ describe("TaskBoard Board Chat views and Reset", () => {
     seed({ views: [viewB], activeId: "va", before: { orgFilter: "all", titleSearch: "x", columnFilters: {}, scorecardFilter: null } });
     renderBoard();
     expect(screen.queryByText("Parent One")).toBeTruthy();
-    expect(chip("AI: Parent two work").getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("button", { name: "Reset" }).disabled).toBe(true);
+    expect(viewRow("Parent two work").getAttribute("aria-pressed")).toBe("false");
   }, 60000);
 
   it("on load an active view brings its own org, not the last org picked elsewhere", () => {
@@ -178,17 +187,17 @@ describe("TaskBoard Board Chat views and Reset", () => {
     seed({ views: [unioView], activeId: "va", before: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null } });
     localStorage.setItem("vm-board-org-filter", JSON.stringify("all"));
     renderBoard();
-    expect(chip("AI: Parent one work").getAttribute("aria-pressed")).toBe("true");
+    expect(pill("Parent one work")).toBeTruthy();
     expect(screen.queryByText(/· edited/)).toBeNull();
   }, 60000);
 
-  it("x deletes a view", () => {
+  it("Delete in the views list deletes a view", () => {
     seed({ views: [viewA, viewB], activeId: null, before: null });
     renderBoard();
-    const del = within(chip("AI: Parent two work")).getByTestId("CancelIcon");
-    fireEvent.click(del);
+    viewRow("Parent two work");
+    fireEvent.click(screen.getByLabelText("Delete Parent two work"));
     expect(stored().views.map((v) => v.id)).toEqual(["va"]);
-    expect(screen.queryByText(/AI: Parent two work/)).toBeNull();
+    expect(screen.queryByText("Parent two work", { selector: ".MuiListItemText-primary" })).toBeNull();
   }, 60000);
 
   it("two filter calls in one Claude reply each build on the one before", async () => {
@@ -217,6 +226,30 @@ describe("TaskBoard Board Chat views and Reset", () => {
     expect(stored().views[0].filters).toMatchObject({ titleSearch: "", aiFilter: { itemIds: ["p2"] } });
     expect(stored().views[1].filters).toMatchObject({ titleSearch: "", aiFilter: { itemIds: ["p2"] }, columnFilters: { statusId: [5] } });
     expect(stored().before).toMatchObject({ titleSearch: "", orgFilter: "all" });
+  }, 60000);
+
+  it("Refresh confirms, reruns the view's request and updates the view in place", async () => {
+    seed({ views: [{ ...viewA, request: "Parent one and its work" }, viewB], activeId: "va", before: { orgFilter: "all", titleSearch: "", columnFilters: {}, scorecardFilter: null } });
+    renderBoard();
+    postChat.mockReset();
+    postChat
+      .mockResolvedValueOnce({
+        content: [{ type: "tool_use", id: "r", name: "set_board_filter", input: { clear: true, label: "Parent one work", request: "x", aiFilter: { itemIds: ["p1", "p2"] } } }],
+        stopReason: "tool_use", costUsd: 0.02, model: "m",
+      })
+      .mockResolvedValueOnce({ content: [{ type: "text", text: "Added Parent Two." }], stopReason: "end_turn", costUsd: 0.01, model: "m" });
+
+    fireEvent.click(screen.getByLabelText("Refresh view Parent one work"));
+    expect(screen.getByText("Refresh this view?")).toBeTruthy();
+    expect(screen.getByLabelText("What this view shows").value).toBe("Parent one and its work");
+    fireEvent.click(screen.getByText("Refresh", { selector: "button" }));
+
+    expect(await screen.findByText(/Refreshed “Parent one work” — 2 items \(was 1\)/)).toBeTruthy();
+    expect(postChat.mock.calls[0][0][0].content[1].text).toContain("What it shows: Parent one and its work");
+    expect(stored().views.map((v) => v.id)).toEqual(["va", "vb"]);
+    expect(stored().views[0].filters.aiFilter.itemIds).toEqual(["p1", "p2"]);
+    expect(stored().views[0].request).toBe("Parent one and its work");
+    expect(screen.queryByText("Parent Two")).toBeTruthy();
   }, 60000);
 });
 

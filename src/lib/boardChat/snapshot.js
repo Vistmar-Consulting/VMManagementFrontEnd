@@ -109,3 +109,16 @@ export function buildBoardSnapshot({ items, users, orgs, categories, tags }) {
   const seen = Object.fromEntries(live.map((i) => [i.id, toMillis(i.updatedAt)]));
   return { text, seen };
 }
+
+// The first message's BOARD CONTEXT: who is asking, when, then the snapshot.
+export function boardContextText(snapshotText, user, users) {
+  const me = users.find((u) => u.id === user.uid);
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return [
+    "BOARD CONTEXT",
+    `User: ${me ? memberName(me) : user.email} (id ${user.uid})`,
+    `Now: ${new Date().toString()} (timezone ${tz})`,
+    "",
+    snapshotText,
+  ].join("\n");
+}

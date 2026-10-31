@@ -9,9 +9,9 @@ const HINTS = [
   ["Ask anything about the board", "\"What do I need to get done today?\", \"Has Andy finished the appointment import?\", \"What's blocked for Unio?\""],
   ["What it can see", "Every task and subtask on the board (archived ones on request), item comments, and the meeting calendar. It does not read Fireflies transcripts."],
   ["Filtering the board", "Say show, list or filter: \"Show me everything related to appointment data.\" A plain question gets an answer in the chat and leaves the board as it is."],
-  ["Filter views", "Each filter becomes an AI chip above the board. Click a chip to turn it on or off, or click another chip to switch views. Turning a view off brings back the filters you had before. The x deletes a view."],
+  ["Filter views", "Each filter is saved under AI views beside the search box. Pick one to show it; the view that is on shows as a pill, and its x turns it off and brings back the filters you had before. Refresh reruns a view's request on the board as it is now. Delete views from the AI views list."],
   ["Reset", "The Reset button beside the search box turns every view off and clears the search, column and scorecard filters. Views stay saved; the org pill is not changed."],
-  ["Changing the board", "Ask it to create, update or delete tasks and subtasks. Nothing is written until you review the changes and click Apply. Untick any change you don't want."],
+  ["Changing the board", "Ask it to create, update or delete tasks and subtasks, and to add, rename, recolor or delete tags and categories — a new tag can go on tasks in the same request. Nothing is written until you review the changes and click Apply. Untick any change you don't want."],
   ["Cost", "Each reply shows its cost, and the header shows the total for this chat. New chat starts over."],
 ];
 
