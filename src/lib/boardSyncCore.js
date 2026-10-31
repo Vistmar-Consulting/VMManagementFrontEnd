@@ -27,6 +27,14 @@ export function toMs(v) {
   return Number.isNaN(p) ? 0 : p;
 }
 
+// Query docs in sortOrder, those without one last (in their stored order).
+// Sorted here, not with orderBy("sortOrder"): Firestore's orderBy leaves out
+// every doc that lacks the field, and tags added from the Task Board have none.
+export function bySortOrder(docs) {
+  const rank = (d) => (typeof d.data().sortOrder === "number" ? d.data().sortOrder : Infinity);
+  return docs.map((d, i) => [d, i]).sort(([a, i], [b, j]) => rank(a) - rank(b) || i - j).map(([d]) => d);
+}
+
 export function canBoardSync(email) {
   return norm(email) === BOARD_SYNC_EMAIL;
 }

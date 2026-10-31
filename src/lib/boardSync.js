@@ -26,6 +26,7 @@ import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
 import { coinedTagOrg, tagsForOrg } from "./tagScope.js";
 import {
   LOOKBACK_MS,
+  bySortOrder,
   bucketTranscripts,
   boardContextForOrg,
   fetchTranscriptsSince,
@@ -48,14 +49,14 @@ const isoDate = (ms) => (ms ? new Date(ms).toISOString().slice(0, 10) : "");
 export async function gatherBoardSyncInputs({ now = Date.now() } = {}) {
   const sinceMs = now - LOOKBACK_MS;
 
-  // Organizations are sorted client-side: orderBy("sortOrder") would silently
-  // drop an org doc that has no sortOrder.
+  // Organizations, categories and tags are sorted client-side: orderBy("sortOrder")
+  // would silently drop a doc that has no sortOrder.
   const [orgsSnap, seriesSnap, agendasSnap, catSnap, tagSnap, lastLogSnap] = await Promise.all([
     getDocs(collection(db, "organizations")),
     getDocs(collection(db, "calendar_series")),
     getDocs(collection(db, "agendas")),
-    getDocs(query(collection(db, "categories"), orderBy("sortOrder", "asc"))),
-    getDocs(query(collection(db, "tags"), orderBy("sortOrder", "asc"))),
+    getDocs(collection(db, "categories")),
+    getDocs(collection(db, "tags")),
     getDocs(query(collection(db, "boardSyncLog"), orderBy("at", "desc"), limit(1))),
   ]);
 
@@ -136,8 +137,8 @@ export async function gatherBoardSyncInputs({ now = Date.now() } = {}) {
     ambiguousTitles,
     lastSyncAt: lastLog?.at?.toDate ? lastLog.at.toDate() : null,
     agendasByOrg: Object.fromEntries(orgSlugs.map((s) => [s, agendas.filter((a) => a.org === s && !a.master).map((a) => ({ id: a.id, title: a.title }))])),
-    categories: catSnap.docs.map((d) => ({ slug: d.id, name: d.data().name || d.id, description: d.data().description || "", sop: d.data().sop || "" })),
-    tagVocab: tagSnap.docs.map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null, organizationId: d.data().organizationId || null })),
+    categories: bySortOrder(catSnap.docs).map((d) => ({ slug: d.id, name: d.data().name || d.id, description: d.data().description || "", sop: d.data().sop || "" })),
+    tagVocab: bySortOrder(tagSnap.docs).map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null, organizationId: d.data().organizationId || null })),
   };
 }
 

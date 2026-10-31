@@ -565,6 +565,8 @@ export default function TaskBoard() {
         name,
         color: tagDialog.color,
         organizationId: tagDialog.organizationId,
+        // Last in the tag order, like tags the syncs and Board Chat create.
+        sortOrder: tags.reduce((m, t) => Math.max(m, Number(t.sortOrder) || 0), 0) + 1,
         createdAt: serverTimestamp(),
       });
     } else {

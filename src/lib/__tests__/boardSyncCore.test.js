@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   BOARD_SYNC_EMAIL,
+  bySortOrder,
   canBoardSync,
   tagSlug,
   bucketTranscripts,
@@ -305,5 +306,12 @@ describe("initPromotion", () => {
     const p = initPromotion({ categories: [], tags: [], note: "Owner: Bill" }, { categories, tags, users: [{ id: "u2", displayName: "Bill Jones" }] });
     expect(p.categoryId).toBeNull();
     expect(p.assigneeIds).toEqual(["u2"]);
+  });
+});
+
+describe("bySortOrder", () => {
+  it("orders by sortOrder and keeps docs without one, last, in stored order", () => {
+    const d = (id, sortOrder) => ({ id, data: () => (sortOrder === undefined ? {} : { sortOrder }) });
+    expect(bySortOrder([d("a"), d("b", 2), d("c"), d("e", 1)]).map((x) => x.id)).toEqual(["e", "b", "a", "c"]);
   });
 });

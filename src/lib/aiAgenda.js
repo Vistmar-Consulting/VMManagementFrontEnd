@@ -31,7 +31,7 @@ import { resolveOrgFromAttendees } from "./orgMapping.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
 import { validateProposal, inheritKeysForCreate, planTopicWrites, changedOpenFloor } from "./syncMeeting.js";
-import { tagSlug, syncMeetingStamps, groupStamps } from "./boardSyncCore.js";
+import { bySortOrder, tagSlug, syncMeetingStamps, groupStamps } from "./boardSyncCore.js";
 import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, attendeeNames, syncNoteBody, withInMeetingTag } from "./syncNotes.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -98,7 +98,8 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
   // Org display/order is loaded once here (clients by sortOrder, Vistamar last).
   let orgMeta = [];
   if (master) {
-    const orgsSnap = await getDocs(query(collection(db, "organizations"), orderBy("sortOrder", "asc")));
+    // Sorted below, not with orderBy("sortOrder"), which drops an org without one.
+    const orgsSnap = await getDocs(collection(db, "organizations"));
     orgMeta = orgsSnap.docs
       .map((d) => ({ slug: d.id, name: d.data().name || d.id, type: d.data().type || "client", sortOrder: d.data().sortOrder ?? 999 }))
       .sort((a, b) => (a.type === "internal" ? 1 : 0) - (b.type === "internal" ? 1 : 0) || a.sortOrder - b.sortOrder);
@@ -285,16 +286,18 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
   }
 
   // Categories (with SOPs) + tag vocabulary for AI categorization (Slice 3b).
-  const catSnap = await getDocs(query(collection(db, "categories"), orderBy("sortOrder", "asc")));
-  const categories = catSnap.docs.map((d) => {
+  // In sortOrder, sorted here: orderBy("sortOrder") drops a doc without one
+  // (tags added from the Task Board have none).
+  const catSnap = await getDocs(collection(db, "categories"));
+  const categories = bySortOrder(catSnap.docs).map((d) => {
     const c = d.data();
     return { slug: d.id, name: c.name || d.id, description: c.description || "", sop: c.sop || "" };
   });
-  const tagSnap = await getDocs(query(collection(db, "tags"), orderBy("sortOrder", "asc")));
+  const tagSnap = await getDocs(collection(db, "tags"));
   // A client's meeting sees the shared tags and its own; the cross-org master
   // sees every tag, and apply keeps each topic to its org's (resolveTag).
   const tagVocab = tagsForOrg(
-    tagSnap.docs.map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null, organizationId: d.data().organizationId || null })),
+    bySortOrder(tagSnap.docs).map((d) => ({ name: d.data().name || d.id, layer: d.data().layer || null, organizationId: d.data().organizationId || null })),
     master ? null : targetOrg,
   ).map(({ name, layer }) => ({ name, layer }));
 
