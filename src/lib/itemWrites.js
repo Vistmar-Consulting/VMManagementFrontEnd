@@ -4,8 +4,8 @@
 // update / delete handlers and Board Chat's Apply all go through here, so
 // counters (organizations.nextItemNumber, parent.nextSubitemNumber),
 // hasChildren and the delete cascade stay identical everywhere. (Discarding
-// a just-added blank item and the category clean-up still write items
-// directly from TaskBoard.jsx; tag deletes go through lib/tagWrites.js.)
+// a just-added blank item still writes directly from TaskBoard.jsx; tag and
+// category deletes go through lib/tagWrites.js / lib/categoryWrites.js.)
 import { collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import { generateKeyBetween } from "fractional-indexing";
 import { db } from "../firebase.js";
@@ -114,8 +114,21 @@ const unique = (arr) => [...new Set(arr)];
 export const EDITABLE_FIELDS = ["title", "description", "statusId", "assigneeIds", "dueDate", "priorityId", "categoryId", "tagIds", "completedAt"];
 const CREATABLE_FIELDS = [...EDITABLE_FIELDS, "createdVia"];
 
+const TAXONOMY_WRITES = new Set(["createTag", "updateTag", "createCategory", "updateCategory"]);
+const TAXONOMY_FIELDS = { Tag: ["name", "color", "organizationId"], Category: ["name", "color"] };
+
 function assertSupportedFields(ops) {
   for (const o of ops) {
+    if (o.kind === "deleteTag" || o.kind === "deleteCategory") {
+      throw new Error(`${o.kind} runs after the change set (lib/boardChat/apply.js), not inside it`);
+    }
+    if (TAXONOMY_WRITES.has(o.kind)) {
+      const allowed = TAXONOMY_FIELDS[o.kind.endsWith("Tag") ? "Tag" : "Category"];
+      for (const key of Object.keys(o.fields || o.patch || {})) {
+        if (!allowed.includes(key)) throw new Error(`Unsupported field ${key} on ${o.kind}`);
+      }
+      continue;
+    }
     if (o.kind === "delete") continue;
     const allowed = o.kind === "create" ? CREATABLE_FIELDS : EDITABLE_FIELDS;
     const bag = o.kind === "create" ? o.fields : o.patch;
@@ -146,12 +159,36 @@ function assertNoConflicts(ops) {
   }
 }
 
-// Board Chat Apply: every accepted op in ONE transaction — all reads first
-// (Firestore requires it), then all writes. A missing target aborts the set.
-// Returns [{ tempId, itemId, ref }] for the creates.
-export async function applyChangeSet(ops, { uid, allItems }) {
+const maxSort = (list) => list.reduce((m, x) => Math.max(m, Number(x.sortOrder) || 0), 0);
+// Colors for a tag / category created without one: violet as for tags the
+// syncs coin, blue for categories.
+const DEFAULT_TAG_COLOR = "#8b5cf6";
+const DEFAULT_CATEGORY_COLOR = "#3b82f6";
+
+// Board Chat / Agenda Chat Apply: every accepted op in ONE transaction — all
+// reads first (Firestore requires it), then all writes. A missing target
+// aborts the set. New tags and categories are written first in the same
+// transaction; an item that names one by its tempId gets its real id.
+// `taxonomy` ({ tags, categories }, the current lists) places new ones last
+// in sort order. Returns [{ tempId, itemId, ref }] for item creates and
+// [{ tempId, tagId | categoryId }] for tag / category creates.
+export async function applyChangeSet(ops, { uid, allItems, taxonomy = { tags: [], categories: [] } }) {
   assertSupportedFields(ops);
   assertNoConflicts(ops);
+  const newTags = ops.filter((o) => o.kind === "createTag");
+  const newCats = ops.filter((o) => o.kind === "createCategory");
+  const tagRefs = new Map(newTags.map((o) => [o.tempId, doc(collection(db, "tags"))]));
+  const catRefs = new Map(newCats.map((o) => [o.tempId, doc(collection(db, "categories"))]));
+  const realTag = (id) => tagRefs.get(id)?.id ?? id;
+  const realCat = (id) => (id && catRefs.has(id) ? catRefs.get(id).id : id);
+  const resolve = (bag) => {
+    if (!bag) return bag;
+    const out = { ...bag };
+    if (Array.isArray(out.tagIds)) out.tagIds = out.tagIds.map(realTag);
+    if (out.categoryId) out.categoryId = realCat(out.categoryId);
+    return out;
+  };
+  ops = ops.map((o) => (o.kind === "create" ? { ...o, fields: resolve(o.fields) } : o.kind === "update" ? { ...o, patch: resolve(o.patch) } : o));
   const creates = ops.filter((o) => o.kind === "create");
   const refs = new Map(creates.map((c) => [c.tempId, newItemRef()]));
   const childCountByTemp = new Map();
@@ -162,7 +199,7 @@ export async function applyChangeSet(ops, { uid, allItems }) {
   return runTransaction(db, async (tx) => {
     const orgIds = unique(creates.filter((c) => !c.parentId && !c.parentTempId).map((c) => c.orgId));
     const parentIds = unique(creates.filter((c) => c.parentId).map((c) => c.parentId));
-    const targetIds = unique(ops.filter((o) => o.kind !== "create").map((o) => o.itemId));
+    const targetIds = unique(ops.filter((o) => o.kind === "update" || o.kind === "delete").map((o) => o.itemId));
 
     const orgSnaps = new Map();
     for (const id of orgIds) orgSnaps.set(id, await tx.get(doc(db, "organizations", id)));
@@ -171,6 +208,38 @@ export async function applyChangeSet(ops, { uid, allItems }) {
     for (const id of [...parentIds, ...targetIds]) {
       const snap = parentSnaps.get(id) || await tx.get(doc(db, "items", id));
       if (!snap.exists()) throw new Error(`Item ${id} no longer exists`);
+    }
+    for (const o of ops.filter((x) => x.kind === "updateTag" || x.kind === "updateCategory")) {
+      const coll = o.kind === "updateTag" ? "tags" : "categories";
+      if (!(await tx.get(doc(db, coll, o.id))).exists()) throw new Error(`${o.kind === "updateTag" ? "Tag" : "Category"} ${o.id} no longer exists`);
+    }
+
+    const taxonomyResults = [];
+    newTags.forEach((o, i) => {
+      const ref = tagRefs.get(o.tempId);
+      tx.set(ref, {
+        name: o.fields.name,
+        color: o.fields.color || DEFAULT_TAG_COLOR,
+        organizationId: o.fields.organizationId ?? null,
+        sortOrder: maxSort(taxonomy.tags) + i + 1,
+        createdAt: serverTimestamp(),
+        createdByUid: uid || null,
+      });
+      taxonomyResults.push({ tempId: o.tempId, tagId: ref.id });
+    });
+    newCats.forEach((o, i) => {
+      const ref = catRefs.get(o.tempId);
+      tx.set(ref, {
+        name: o.fields.name,
+        color: o.fields.color || DEFAULT_CATEGORY_COLOR,
+        sortOrder: maxSort(taxonomy.categories) + i + 1,
+        createdAt: serverTimestamp(),
+      });
+      taxonomyResults.push({ tempId: o.tempId, categoryId: ref.id });
+    });
+    for (const o of ops) {
+      if (o.kind === "updateTag") tx.update(doc(db, "tags", o.id), o.patch);
+      if (o.kind === "updateCategory") tx.update(doc(db, "categories", o.id), o.patch);
     }
 
     const nextOrgNum = new Map(orgIds.map((id) => [id, orgSnaps.get(id).data()?.nextItemNumber ?? 1]));
@@ -216,6 +285,6 @@ export async function applyChangeSet(ops, { uid, allItems }) {
         tx.delete(doc(db, "items", o.itemId));
       }
     }
-    return results;
+    return [...taxonomyResults, ...results];
   });
 }

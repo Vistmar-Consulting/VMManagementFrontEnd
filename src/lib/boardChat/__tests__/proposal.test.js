@@ -307,3 +307,91 @@ describe("toChangeSet", () => {
     }
   });
 });
+
+describe("tags and categories", () => {
+  const tags = [
+    { id: "t1", name: "website", organizationId: null },
+    { id: "t-bmd", name: "lasers", organizationId: "bmd" },
+  ];
+  const categories = [{ id: "c1", name: "Website" }];
+  const tctx = {
+    ...ctx,
+    items: [{ ...items[0], tagIds: ["t1"] }, ...items.slice(1)],
+    orgIds: new Set(["unio", "bmd"]),
+    tags,
+    categories,
+    tagsIn: () => new Set(),
+  };
+
+  it("an item can use a tag and a category created in the same proposal, in any order", () => {
+    const rows = buildReviewRows([
+      { op: "update", itemId: "p1", reason: "r", fields: { tagIds: ["t1", "nt"], categoryId: "nc" } },
+      { op: "create_tag", tempId: "nt", name: "launch", tagScope: "unio", reason: "r" },
+      { op: "create_category", tempId: "nc", name: "Launches", color: "#ABCDEF", reason: "r" },
+    ], tctx);
+    expect(rows.every((r) => r.ok)).toBe(true);
+    expect(rows[1].fields).toEqual({ name: "launch", organizationId: "unio" });
+    expect(rows[2].fields).toEqual({ name: "Launches", color: "#abcdef" });
+    expect(rows[0].needs).toEqual([1, 2]);
+    const all = toChangeSet(rows, new Set([0, 1, 2]));
+    expect(all.ops.map((o) => o.kind)).toEqual(["update", "createTag", "createCategory"]);
+    const noTag = toChangeSet(rows, new Set([0, 2]));
+    expect(noTag.ops.map((o) => o.kind)).toEqual(["createCategory"]);
+    expect(noTag.skipped).toEqual([{ index: 0, reason: "a new tag or category it uses was not applied" }]);
+  });
+
+  it("a new client tag can only go on that client's tasks", () => {
+    const rows = buildReviewRows([
+      { op: "create_tag", tempId: "nt", name: "launch", tagScope: "bmd", reason: "r" },
+      { op: "update", itemId: "p1", reason: "r", fields: { tagIds: ["t1", "nt"] } },
+    ], tctx);
+    expect(rows[1].ok).toBe(false);
+    expect(rows[1].error).toMatch(/belongs to another organization/);
+  });
+
+  it("rejects duplicate names per scope, reused tempIds and unknown targets", () => {
+    const rows = buildReviewRows([
+      { op: "create_tag", tempId: "a", name: "Website", reason: "r" },
+      { op: "create_tag", tempId: "b", name: "lasers", tagScope: "unio", reason: "r" },
+      { op: "create_tag", tempId: "b", name: "other", reason: "r" },
+      { op: "update_tag", tagId: "nope", name: "x", reason: "r" },
+      { op: "create_category", tempId: "p1", name: "New", reason: "r" },
+      { op: "create_category", tempId: "c", name: "website", reason: "r" },
+    ], tctx);
+    expect(rows.map((r) => r.ok)).toEqual([false, true, false, false, false, false]);
+    expect(rows[0].error).toMatch(/already exists among shared tags/);
+    expect(rows[2].error).toMatch(/tempId b is already used/);
+    expect(rows[3].error).toMatch(/Tag nope not found/);
+    expect(rows[4].error).toMatch(/tempId p1 is already used/);
+  });
+
+  it("an update reports its diffs; making a tag shared is a scope change", () => {
+    const rows = buildReviewRows([
+      { op: "update_tag", tagId: "t-bmd", tagScope: "shared", color: "#000000", reason: "r" },
+      { op: "update_category", categoryId: "c1", name: "Website", reason: "r" },
+    ], tctx);
+    expect(rows[0].diffs).toEqual([
+      { field: "color", before: null, after: "#000000" },
+      { field: "organizationId", before: "bmd", after: null },
+    ]);
+    expect(rows[1].ok).toBe(false);
+    expect(rows[1].error).toBe("No change from the current values");
+  });
+
+  it("items can't take a tag the proposal deletes; a tag gets one op", () => {
+    const rows = buildReviewRows([
+      { op: "delete_tag", tagId: "t1", reason: "r" },
+      { op: "update", itemId: "s1", reason: "r", fields: { tagIds: ["t1"] } },
+      { op: "update_tag", tagId: "t1", name: "web", reason: "r" },
+    ], tctx);
+    expect(rows[0]).toMatchObject({ ok: true, usedBy: 1, name: "website" });
+    expect(rows[1].error).toMatch(/Tag t1 is deleted by op 1/);
+    expect(rows[2].error).toMatch(/already has a change in op 1/);
+    expect(toChangeSet(rows, new Set([0])).ops).toEqual([{ kind: "deleteTag", id: "t1" }]);
+  });
+
+  it("without tag and category lists, those ops are not available", () => {
+    const rows = buildReviewRows([{ op: "create_tag", tempId: "x", name: "y", reason: "r" }], ctx);
+    expect(rows[0].error).toBe("Tag and category changes are not available here");
+  });
+});

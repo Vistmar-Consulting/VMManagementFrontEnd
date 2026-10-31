@@ -23,11 +23,10 @@ import SendIcon from "@mui/icons-material/Send";
 import BoardChatChangesModal from "./BoardChatChangesModal.jsx";
 import BoardChatHints from "./BoardChatHints.jsx";
 import ChatHistoryView from "./ChatHistoryView.jsx";
-import { applyChangeSet } from "../lib/itemWrites.js";
+import { applyBoardProposal } from "../lib/boardChat/apply.js";
 import { postChat } from "../lib/boardChat/api.js";
 import { MAX_CALLS_PER_TURN, formatUsd, runTurn } from "../lib/boardChat/conversation.js";
-import { buildReviewRows, toChangeSet } from "../lib/boardChat/proposal.js";
-import { tagsForOrg } from "../lib/tagScope.js";
+import { boardProposalContext, buildReviewRows } from "../lib/boardChat/proposal.js";
 import { buildBoardSnapshot, itemRef, makeLookups, memberName, toMillis } from "../lib/boardChat/snapshot.js";
 import { usePersistedDraft } from "../lib/boardChat/usePersistedChat.js";
 import { chatTitle, nextTurnIndex } from "../lib/chatHistory/store.js";
@@ -167,57 +166,22 @@ export default function BoardChatPanel({ open, onClose, items, users, people = n
   }, [entries, busy]);
 
   const proposeChanges = (toolInput) => new Promise((resolve, reject) => {
-    const { items: liveItems, orgs, users, people, categories, tags } = latest.current;
-    const rows = buildReviewRows(toolInput.ops, {
-      items: liveItems,
-      orgIds: new Set(orgs.map((o) => o.id)),
-      memberIds: new Set(users.map((u) => u.id)),
-      ...(people ? { assignableIn: (orgId) => new Set(people.choicesFor(orgId).map((p) => p.id)) } : {}),
-      categoryIds: new Set(categories.map((c) => c.id)),
-      tagIds: new Set(tags.map((t) => t.id)),
-      tagsIn: (orgId) => new Set(tagsForOrg(tags, orgId).map((t) => t.id)),
-      seen: seenRef.current,
-      now: serverTimestamp(),
-    });
+    const live = latest.current;
+    const rows = buildReviewRows(toolInput.ops, boardProposalContext({ ...live, seen: seenRef.current, now: serverTimestamp() }));
     proposalCount.current += 1;
     setPending({ id: proposalCount.current, summary: toolInput.summary, rows, resolve, reject, applying: false, error: null });
   });
 
   const handleApply = async (checked) => {
     const { rows, resolve } = pending;
-    const { ops, skipped } = toChangeSet(rows, checked);
     setPending((p) => ({ ...p, applying: true, error: null }));
     try {
-      const created = await applyChangeSet(ops, { uid: user.uid, allItems: items });
-      // Everything whose updatedAt this Apply bumps: updated items, new items,
-      // and existing parents that gained a subtask.
-      [
-        ...ops.filter((o) => o.kind === "update").map((o) => o.itemId),
-        ...ops.filter((o) => o.kind === "create" && o.parentId).map((o) => o.parentId),
-        ...created.map((c) => c.itemId),
-      ].forEach((id) => pendingSeenRef.current.add(id));
-      const createdByTemp = new Map(created.map((c) => [c.tempId, c]));
-      // Applied = exactly the rows that went into the change set: valid,
-      // ticked, not skipped. Reported to the model by row index so a rejected
-      // op on the same item can never be reported as applied.
-      const skippedIdx = new Set(skipped.map((s) => s.index));
-      const isApplied = (r) => r.ok && checked.has(r.index) && !skippedIdx.has(r.index);
-      // completedAt holds a serverTimestamp sentinel (or null), so it is
-      // reported as "now" / "cleared"; createdVia is ours, not the model's.
-      const completed = (completedAt) => (completedAt !== undefined ? { completedAt: completedAt === null ? "cleared" : "now" } : {});
-      const applied = rows.filter(isApplied).map((r) => {
-        if (r.op === "create") {
-          const { completedAt, createdVia, ...newValues } = r.fields;
-          return { index: r.index, op: "create", title: r.fields.title, ...createdByTemp.get(r.tempId), newValues, ...completed(completedAt) };
-        }
-        if (r.op === "delete") return { index: r.index, op: "delete", item: itemLabel(r.itemId), alsoDeletedSubtasks: r.cascadeIds.length };
-        const { completedAt, ...newValues } = r.patch;
-        return { index: r.index, op: "update", item: itemLabel(r.itemId), newValues, ...completed(completedAt) };
-      });
-      const declined = rows.filter((r) => !isApplied(r))
-        .map((r) => ({ index: r.index, op: r.op, why: r.error || skipped.find((s) => s.index === r.index)?.reason || "unticked by the user" }));
+      const live = latest.current;
+      const out = await applyBoardProposal(rows, checked, { uid: user.uid, items: live.items, tags: live.tags, categories: live.categories, itemLabel: live.itemLabel });
+      out.touchedItemIds.forEach((id) => pendingSeenRef.current.add(id));
+      const n = out.result.applied.length;
       setPending(null);
-      resolve({ result: { applied, declined }, step: `Applied ${applied.length} change${applied.length === 1 ? "" : "s"}` });
+      resolve({ result: out.result, step: `Applied ${n} change${n === 1 ? "" : "s"}` });
     } catch (err) {
       setPending((p) => ({ ...p, applying: false, error: err.message }));
     }

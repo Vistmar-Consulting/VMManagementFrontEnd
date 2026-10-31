@@ -20,7 +20,6 @@ import {
   doc,
   serverTimestamp,
   updateDoc,
-  writeBatch,
 } from "firebase/firestore";
 import {
   createSubitem,
@@ -83,6 +82,7 @@ import { usePeople } from "../hooks/usePeople.js";
 import { personName } from "../lib/people.js";
 import { tagGroups } from "../lib/tagScope.js";
 import { deleteTag } from "../lib/tagWrites.js";
+import { deleteCategory } from "../lib/categoryWrites.js";
 import { CATEGORY_COLORS, TAG_COLORS } from "../seed/archiveData.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
@@ -486,19 +486,9 @@ export default function TaskBoard() {
   const handleConfirmDeleteCategory = async () => {
     const catId = deleteCategoryConfirm;
     if (!catId) return;
-    // Atomic: clear categoryId on every affected item AND delete the
-    // category doc in one batch. Prevents the partial-failure mode where
-    // the category is gone but items still reference its id.
-    const affected = allItems.filter((i) => i.categoryId === catId);
-    const batch = writeBatch(db);
-    affected.forEach((i) => {
-      batch.update(doc(db, "items", i.id), {
-        categoryId: null,
-        updatedAt: serverTimestamp(),
-      });
-    });
-    batch.delete(doc(db, "categories", catId));
-    await batch.commit();
+    // Clears it from tasks and agenda topic cards; the category doc goes
+    // last, so a failure leaves it in place to delete again.
+    await deleteCategory(catId, user.uid);
     setDeleteCategoryConfirm(null);
   };
 

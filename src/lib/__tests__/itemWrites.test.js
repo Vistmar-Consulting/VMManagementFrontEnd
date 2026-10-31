@@ -235,3 +235,34 @@ describe("applyChangeSet", () => {
     expect(writes).toContainEqual(["tx:update", "items/p1", { nextSubitemNumber: 3, hasChildren: true, updatedAt: "TS" }]);
   });
 });
+
+describe("applyChangeSet — tags and categories", () => {
+  const allItems = [{ id: "p1", parentId: null, order: "a0", organizationId: "unio", tagIds: ["t-old"] }];
+  const taxonomy = { tags: [{ id: "t-old", sortOrder: 4 }], categories: [{ id: "c1", sortOrder: 2 }] };
+
+  it("creates a tag and a category and gives items their real ids, in one transaction", async () => {
+    docsById["items/p1"] = {};
+    const results = await W.applyChangeSet([
+      { kind: "createTag", tempId: "nt", fields: { name: "website-launch", organizationId: "unio" } },
+      { kind: "createCategory", tempId: "nc", fields: { name: "Launch", color: "#123456" } },
+      { kind: "update", itemId: "p1", patch: { tagIds: ["t-old", "nt"], categoryId: "nc" } },
+    ], { uid: "u1", allItems, taxonomy });
+    expect(writes).toContainEqual(["tx:set", "tags/new1", { name: "website-launch", color: "#8b5cf6", organizationId: "unio", sortOrder: 5, createdAt: "TS", createdByUid: "u1" }]);
+    expect(writes).toContainEqual(["tx:set", "categories/new2", { name: "Launch", color: "#123456", sortOrder: 3, createdAt: "TS" }]);
+    expect(writes).toContainEqual(["tx:update", "items/p1", { tagIds: ["t-old", "new1"], categoryId: "new2", updatedAt: "TS" }]);
+    expect(results).toEqual([{ tempId: "nt", tagId: "new1" }, { tempId: "nc", categoryId: "new2" }]);
+  });
+
+  it("updates an existing tag, refusing one that no longer exists", async () => {
+    docsById["tags/t-old"] = {};
+    await W.applyChangeSet([{ kind: "updateTag", id: "t-old", patch: { name: "renamed" } }], { uid: "u1", allItems, taxonomy });
+    expect(writes).toContainEqual(["tx:update", "tags/t-old", { name: "renamed" }]);
+    await expect(W.applyChangeSet([{ kind: "updateCategory", id: "gone", patch: { name: "x" } }], { uid: "u1", allItems, taxonomy }))
+      .rejects.toThrow("Category gone no longer exists");
+  });
+
+  it("refuses tag deletes and unknown tag fields (deletes run after the set)", async () => {
+    await expect(W.applyChangeSet([{ kind: "deleteTag", id: "t-old" }], { uid: "u1", allItems })).rejects.toThrow(/runs after the change set/);
+    await expect(W.applyChangeSet([{ kind: "createTag", tempId: "x", fields: { name: "a", layer: 3 } }], { uid: "u1", allItems })).rejects.toThrow("Unsupported field layer");
+  });
+});

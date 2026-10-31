@@ -10,8 +10,13 @@
 // so applyChangeSet never sees a conflicting set.
 // Moving to Done stamps completedAt and leaving Done clears it — Board Chat
 // only (the board's manual edits are unchanged).
+// Tags and categories can be created, changed and deleted in the same
+// proposal (taxonomy.js); items may use a new one by its tempId, and may not
+// use one the proposal deletes. One op per tag or category.
 import { STATUS } from "../../constants/itemStatuses.js";
+import { tagsForOrg } from "../tagScope.js";
 import { toMillis } from "./snapshot.js";
+import { TAXONOMY_OPS, buildTaxonomyRow, taxonomyAfter } from "./taxonomy.js";
 
 export const ALLOWED_STATUS_IDS = [1, 2, 9, 4, 5, 7];
 const PRIORITY_IDS = [1, 2, 3, 4];
@@ -223,32 +228,138 @@ function rejectConflicts(rows) {
   });
 }
 
+const failRow = (op, index, err) => ({ index, op: op.op, reason: op.reason, itemId: op.itemId, ok: false, error: err.message, stale: false });
+
+// Taxonomy rows first, in their own pass, so an item may use a tag created
+// later in the list. Each tag or category takes one op; a tempId must be new.
+function taxonomyRows(ops, ctx, itemsById) {
+  const taken = new Set();
+  const touched = new Map();
+  const seenTemp = new Map();
+  ops.forEach((o, i) => { if (o.tempId && !seenTemp.has(o.tempId)) seenTemp.set(o.tempId, i); });
+  const known = new Set([...itemsById.keys(), ...ctx.tags.map((t) => t.id), ...ctx.categories.map((c) => c.id)]);
+  return ops.map((op, index) => {
+    if (!TAXONOMY_OPS.includes(op.op)) return null;
+    try {
+      if (op.tempId && (known.has(op.tempId) || seenTemp.get(op.tempId) !== index)) throw new Error(`tempId ${op.tempId} is already used`);
+      const row = buildTaxonomyRow(op, index, ctx, taken);
+      if (row.targetId) {
+        if (touched.has(row.targetId)) throw new Error(`That ${row.kind} already has a change in op ${touched.get(row.targetId) + 1}`);
+        touched.set(row.targetId, index);
+      }
+      return row;
+    } catch (err) {
+      return failRow(op, index, err);
+    }
+  });
+}
+
+// What items may use, given the taxonomy rows: ctx with the post-proposal
+// tag / category sets, and the deleted ones named in errors.
+function itemContext(ctx, after) {
+  if (!after) return ctx;
+  return {
+    ...ctx,
+    categoryIds: after.categoryIds,
+    tagIds: new Set(after.tags.map((t) => t.id)),
+    tagsIn: (orgId) => new Set(tagsForOrg(after.tags, orgId).map((t) => t.id)),
+  };
+}
+
+function assertNotDeleted(op, after) {
+  if (!after) return;
+  const f = op.fields || {};
+  const tag = (f.tagIds || []).find((id) => after.deletedTags.has(id));
+  if (tag) throw new Error(`Tag ${tag} is deleted by op ${after.deletedTags.get(tag) + 1} in this proposal`);
+  if (f.categoryId && after.deletedCats.has(f.categoryId)) {
+    throw new Error(`Category ${f.categoryId} is deleted by op ${after.deletedCats.get(f.categoryId) + 1} in this proposal`);
+  }
+}
+
+// The taxonomy creates an item row relies on (row indexes), so it is skipped
+// if one of them isn't applied.
+function needsOf(row, after) {
+  if (!after || !row.ok || row.op === "delete") return [];
+  const f = row.fields || row.patch || {};
+  return [
+    ...(f.tagIds || []).filter((id) => after.pendingTags.has(id)).map((id) => after.pendingTags.get(id)),
+    ...(f.categoryId && after.pendingCategories.has(f.categoryId) ? [after.pendingCategories.get(f.categoryId)] : []),
+  ];
+}
+
+// The buildReviewRows ctx for a chat panel, from the live board lists.
+// people (lib/people.js), when given, limits new assignees per org.
+export function boardProposalContext({ items, orgs, users, people = null, categories, tags, seen, now }) {
+  return {
+    items,
+    orgIds: new Set(orgs.map((o) => o.id)),
+    memberIds: new Set(users.map((u) => u.id)),
+    ...(people ? { assignableIn: (orgId) => new Set(people.choicesFor(orgId).map((p) => p.id)) } : {}),
+    categoryIds: new Set(categories.map((c) => c.id)),
+    tagIds: new Set(tags.map((t) => t.id)),
+    tagsIn: (orgId) => new Set(tagsForOrg(tags, orgId).map((t) => t.id)),
+    tags,
+    categories,
+    seen,
+    now,
+  };
+}
+
+// ctx.tags / ctx.categories (full lists) enable tag and category ops;
+// without them those ops are rejected and items use ctx.tagIds / categoryIds.
 export function buildReviewRows(ops, ctx) {
   const itemsById = new Map(ctx.items.map((i) => [i.id, i]));
   const childrenOf = new Map();
   for (const i of ctx.items) {
     if (i.parentId) childrenOf.set(i.parentId, [...(childrenOf.get(i.parentId) || []), i]);
   }
+  const taxonomy = ctx.tags && ctx.categories ? taxonomyRows(ops, ctx, itemsById) : ops.map(() => null);
+  const after = ctx.tags && ctx.categories ? taxonomyAfter(taxonomy, ctx) : null;
+  const itemCtx = itemContext(ctx, after);
   const tempCreates = new Map();
   const tempIds = makeTempIds(ops, itemsById);
   const rows = ops.map((op, index) => {
+    if (taxonomy[index]) return taxonomy[index];
     try {
-      return buildRow(op, index, ctx, itemsById, childrenOf, tempCreates, tempIds);
+      if (TAXONOMY_OPS.includes(op.op)) throw new Error("Tag and category changes are not available here");
+      if (!["create", "update", "delete"].includes(op.op)) throw new Error(`Unknown op "${op.op}"`);
+      assertNotDeleted(op, after);
+      const row = buildRow(op, index, itemCtx, itemsById, childrenOf, tempCreates, tempIds);
+      const needs = needsOf(row, after);
+      return needs.length ? { ...row, needs } : row;
     } catch (err) {
-      return { index, op: op.op, reason: op.reason, itemId: op.itemId, ok: false, error: err.message, stale: false };
+      return failRow(op, index, err);
     }
   });
   return rejectConflicts(rows);
 }
 
+const TAXONOMY_KIND = {
+  create_tag: "createTag", update_tag: "updateTag", delete_tag: "deleteTag",
+  create_category: "createCategory", update_category: "updateCategory", delete_category: "deleteCategory",
+};
+
 // Accepted rows → applyChangeSet ops. A create whose tempId parent was not
-// accepted is skipped and reported.
+// accepted is skipped and reported, as is an item op whose new tag or
+// category was not accepted.
 export function toChangeSet(rows, checked) {
   const ops = [];
   const skipped = [];
   const acceptedTemps = new Set();
+  const accepted = (i) => rows[i]?.ok && checked.has(i);
   for (const r of rows) {
     if (!r.ok || !checked.has(r.index)) continue;
+    if (TAXONOMY_KIND[r.op]) {
+      const kind = TAXONOMY_KIND[r.op];
+      if (kind.startsWith("create")) ops.push({ kind, tempId: r.tempId, fields: r.fields });
+      else if (kind.startsWith("update")) ops.push({ kind, id: r.targetId, patch: r.patch });
+      else ops.push({ kind, id: r.targetId });
+      continue;
+    }
+    if ((r.needs || []).some((i) => !accepted(i))) {
+      skipped.push({ index: r.index, reason: "a new tag or category it uses was not applied" });
+      continue;
+    }
     if (r.op === "create") {
       if (r.parentTempId && !acceptedTemps.has(r.parentTempId)) {
         skipped.push({ index: r.index, reason: "its parent create was not applied" });
