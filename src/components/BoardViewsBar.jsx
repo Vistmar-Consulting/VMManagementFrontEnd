@@ -44,7 +44,9 @@ function when(view) {
 
 // views: [{ id, label, request, filters, createdAtMs, refreshedAtMs }].
 // itemCount(view) → number | null (null for a column-filter view).
-export default function BoardViewsBar({ views, activeId, edited, itemCount, onToggle, onDelete, onRefresh, refreshingId = null }) {
+// onToggle(id) switches a view on or off (or, when edited, puts its filters
+// back); onTurnOff turns the view that is on off.
+export default function BoardViewsBar({ views, activeId, edited, itemCount, onToggle, onTurnOff, onDelete, onRefresh, refreshingId = null }) {
   const [anchor, setAnchor] = useState(null);
   const [query, setQuery] = useState("");
   if (views.length === 0) return null;
@@ -112,7 +114,7 @@ export default function BoardViewsBar({ views, activeId, edited, itemCount, onTo
             </span>
           </Tooltip>
           <Tooltip title="Turn the view off">
-            <IconButton size="small" aria-label={`Turn off view ${active.label}`} onClick={() => onToggle(active.id)} sx={{ color: "inherit", p: 0.4 }}>
+            <IconButton size="small" aria-label={`Turn off view ${active.label}`} onClick={onTurnOff} sx={{ color: "inherit", p: 0.4 }}>
               <CloseIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>

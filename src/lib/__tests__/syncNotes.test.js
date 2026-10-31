@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, SYNC_NOTE_SOURCES, attendeeNames, syncNoteBody, withInMeetingTag } from "../syncNotes.js";
+import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, SYNC_NOTE_SOURCES, attendeeNames, inMeetingTagId, syncNoteBody, withInMeetingTag } from "../syncNotes.js";
 
 const meeting = { title: "Unio Biweekly", date: "2026-10-28", people: ["Bill", "Dana Lee"] };
 
@@ -57,5 +57,14 @@ describe("in-meeting tag", () => {
   it("labels both sync sources", () => {
     expect(SYNC_NOTE_SOURCES["sync-meeting"]).toBe("Sync Meeting");
     expect(SYNC_NOTE_SOURCES["board-sync"]).toBe("Board Sync");
+  });
+});
+
+describe("inMeetingTagId", () => {
+  it("uses tags/in-meeting, else a shared tag already named in-meeting", () => {
+    expect(inMeetingTagId([{ id: "in-meeting", name: "in-meeting" }, { id: "x", name: "In-Meeting" }])).toBe("in-meeting");
+    expect(inMeetingTagId([{ id: "auto1", name: "In-Meeting", organizationId: null }])).toBe("auto1");
+    expect(inMeetingTagId([{ id: "auto2", name: "in-meeting", organizationId: "bmd" }])).toBe("in-meeting");
+    expect(inMeetingTagId([])).toBe("in-meeting");
   });
 });

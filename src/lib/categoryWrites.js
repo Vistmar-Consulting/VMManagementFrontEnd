@@ -27,5 +27,6 @@ export async function deleteCategory(categoryId, uid) {
     writes.slice(i, i + BATCH).forEach((write) => write(batch));
     await batch.commit();
   }
-  return { items: items.size, topics: topics.reduce((n, s) => n + s.size, 0) };
+  // The ids too, so a chat can count these updatedAt bumps as its own writes.
+  return { items: items.size, topics: topics.reduce((n, s) => n + s.size, 0), itemIds: items.docs.map((d) => d.id), topicIds: topics.flatMap((s) => s.docs.map((d) => d.id)) };
 }

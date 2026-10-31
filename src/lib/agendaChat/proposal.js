@@ -12,7 +12,7 @@
 // its real id when the plan is made (planAgendaWrites' newIds).
 import { sanitizeHtml } from "../agendaHtml.js";
 import { toMillis } from "../boardChat/snapshot.js";
-import { topicItems, topicOrgId } from "../topicItems.js";
+import { topicOrgId } from "../topicItems.js";
 import { OPEN_FLOOR } from "./context.js";
 
 // The Open Floor's baseline is its content (see context.js seenOf).
@@ -38,6 +38,8 @@ function topicKeys(raw, topic, board) {
       const bad = unique.filter((id) => !board.categoryIds.has(id));
       if (bad.length) throw new Error(`Unknown category ${bad.join(", ")}`);
     } else {
+      const deleted = unique.find((id) => board.deletedTags?.has(id));
+      if (deleted) throw new Error(`Tag ${deleted} is deleted by board change ${board.deletedTags.get(deleted) + 1}`);
       const allowed = board.tagsFor(topicOrgId(topic, board.agendaOrgId));
       const bad = unique.filter((id) => !current.includes(id) && !allowed.has(id));
       if (bad.length) throw new Error(`Tag ${bad.join(", ")} is not a shared tag or this topic's organization's own`);
@@ -132,9 +134,12 @@ export function buildReviewRows(ops, { topics, agenda, isMaster, orgIds, seen = 
       if (!item) return fail(`Item ${raw.itemId || "(none)"} not found`);
       if (linkedBy.has(`${topic.id}:${item.id}`)) return fail(`That task already has a change on this topic in change ${linkedBy.get(`${topic.id}:${item.id}`) + 1}`);
       const removed = topic.excludedItemIds || [];
-      if (op === "remove_task" && !topicItems(topic, board.items, board.agendaOrgId).some((it) => it.id === item.id)) {
-        return fail("That task isn't on this topic card");
+      // A task off this card stays off, even one the same proposal is about to
+      // put there (e.g. by tagging it), so only its organization is checked.
+      if (op === "remove_task" && item.organizationId !== topicOrgId(topic, board.agendaOrgId)) {
+        return fail("That task belongs to another organization's board");
       }
+      if (op === "remove_task" && removed.includes(item.id)) return fail("That task is already removed from this card");
       if (op === "restore_task" && !removed.includes(item.id)) return fail("That task wasn't removed from this topic card");
       linkedBy.set(`${topic.id}:${item.id}`, index);
       if (!linkedTopics.has(topic.id)) linkedTopics.set(topic.id, index);
@@ -171,7 +176,9 @@ export function restale(rows, { topics, agenda, seen = {} }) {
 // The writes for the ticked, valid rows. A ticked row that depends on an
 // unticked or invalid one fails here rather than half-applying.
 // Returns { creates: [{ name, bodyHtml, sortOrder, organizationId }],
-//           updates: [{ id, patch }], deletes: [id], openFloorHtml: string|null,
+//           updates: [{ id, patch }], excluded: [{ id, add, remove }] (a topic's hand-removed
+//           items, applied with arrayUnion / arrayRemove so concurrent removals
+//           elsewhere are kept), deletes: [id], openFloorHtml: string|null,
 //           liveBodies: { [topicId | "openFloor"]: html } } — liveBodies are
 // the bodies of EXISTING fragments to write into the live editor.
 // newIds maps a board tempId (a tag or category the proposal created) to
@@ -246,11 +253,9 @@ export function planAgendaWrites(rows, checked, { topics, isMaster, orgs = [], n
       }
       for (const [field, { after }] of Object.entries(r.keys || {})) patch(r.topicId, { [field]: after.map(real) });
     } else if (r.op === "remove_task" || r.op === "restore_task") {
-      const topic = topics.find((tp) => tp.id === r.topicId);
-      const list = removals.get(r.topicId) || new Set(topic.excludedItemIds || []);
-      if (r.op === "remove_task") list.add(r.itemId); else list.delete(r.itemId);
-      removals.set(r.topicId, list);
-      patch(r.topicId, { excludedItemIds: [...list] });
+      const change = removals.get(r.topicId) || { add: [], remove: [] };
+      change[r.op === "remove_task" ? "add" : "remove"].push(r.itemId);
+      removals.set(r.topicId, change);
     } else if (r.op === "move_topic") {
       const [entry] = order.splice(indexOf(r.topicId), 1);
       entry.placed = true;
@@ -286,6 +291,7 @@ export function planAgendaWrites(rows, checked, { topics, isMaster, orgs = [], n
   return {
     creates: creates.map((e) => e.create),
     updates: [...updates].map(([id, p]) => ({ id, patch: p })),
+    excluded: [...removals].map(([id, change]) => ({ id, ...change })),
     deletes,
     openFloorHtml,
     liveBodies,

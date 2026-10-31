@@ -226,7 +226,7 @@ describe("AgendaChatPanel", { timeout: 60000 }, () => {
     expect(await screen.findByText("Take “I-4 Homepage hero” off the “Website” card")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Apply 1 change" }));
     expect(await screen.findByText("Removed.")).toBeTruthy();
-    expect(applyAgendaPlan.mock.calls[0][1].updates).toEqual([{ id: "t1", patch: { excludedItemIds: ["p1"] } }]);
+    expect(applyAgendaPlan.mock.calls[0][1].excluded).toEqual([{ id: "t1", add: ["p1"], remove: [] }]);
     expect(applyChangeSet).not.toHaveBeenCalled();
     expect(toolResult(1).agenda.applied).toEqual([{ index: 0, op: "remove_task", topic: "Website", item: "I-4 Homepage hero" }]);
   });

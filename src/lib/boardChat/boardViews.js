@@ -38,6 +38,12 @@ export function toggleView(store, id, current) {
   };
 }
 
+// Turn the active view off, edited or not: the filters from before it come back.
+export function turnOffView(store) {
+  if (!store.activeId) return { store, apply: null };
+  return { store: { ...store, activeId: null, before: null }, apply: store.before };
+}
+
 export function removeView(store, id) {
   return removeViews(store, [id]);
 }

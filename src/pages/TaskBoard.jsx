@@ -89,7 +89,7 @@ import { buildBoardGroups, groupKeyOf } from "../lib/boardGroups.js";
 import { BOARD_FOCUS_PARAM, planBoardFocus } from "../lib/boardFocus.js";
 import { buildItemMatcher } from "../lib/boardFilters.js";
 import { planBoardFilter } from "../lib/boardChat/boardFilter.js";
-import { EMPTY_ACTIVE, activeView, addView, aiFilterOfView, isEdited, removeView, removeViews, resetViews, toggleView } from "../lib/boardChat/boardViews.js";
+import { EMPTY_ACTIVE, activeView, addView, aiFilterOfView, isEdited, removeView, removeViews, resetViews, toggleView, turnOffView } from "../lib/boardChat/boardViews.js";
 import { useBoardViews } from "../lib/boardChat/useBoardViews.js";
 import { refreshView, requestFromChat } from "../lib/boardChat/refreshView.js";
 import { postChat } from "../lib/boardChat/api.js";
@@ -993,6 +993,7 @@ export default function TaskBoard() {
           edited={Boolean(activeView(viewStore)) && isEdited(activeView(viewStore), ownFilters)}
           itemCount={viewItemCount}
           onToggle={(id) => runViewChange(toggleView(viewStore, id, ownFilters))}
+          onTurnOff={() => runViewChange(turnOffView(viewStore))}
           onDelete={(id) => runViewChange(removeView(viewStore, id))}
           onRefresh={openRefresh}
           refreshingId={refreshTarget?.view.id ?? null}

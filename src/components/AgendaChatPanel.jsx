@@ -213,6 +213,7 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
         items: live.items,
         agendaOrgId: live.organizationId,
         categoryIds: after.categoryIds,
+        deletedTags: after.deletedTags,
         tagsFor: (orgId) => new Set(tagsForOrg(after.tags, orgId).map((tg) => tg.id)),
       },
     }).map((r) => {
@@ -263,6 +264,7 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
         return;
       }
       board.touchedItemIds.forEach((id) => pendingBoardSeenRef.current.add(id));
+      board.touchedTopicIds.forEach((id) => pendingSeenRef.current.add(id));
     }
     const boardResult = board?.result ?? { applied: [], declined: boardRows.map((r) => ({ index: r.index, op: r.op, why: r.error || "unticked by the user" })) };
 
@@ -310,7 +312,7 @@ export default function AgendaChatPanel({ open, onClose, agendaId, agenda, topic
     const step = `Applied ${n(applied) + n(boardResult.applied)} change${n(applied) + n(boardResult.applied) === 1 ? "" : "s"}`;
     // Committed: once the listener delivers their server timestamps, what the
     // model wrote becomes what it has "seen" (its own changes aren't stale).
-    plan.updates.forEach((u) => pendingSeenRef.current.add(u.id));
+    [...plan.updates, ...plan.excluded].forEach((u) => pendingSeenRef.current.add(u.id));
     if (plan.openFloorHtml !== null) pendingSeenRef.current.add(OPEN_FLOOR);
     settleSeen();
     try {

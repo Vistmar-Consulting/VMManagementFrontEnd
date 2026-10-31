@@ -390,6 +390,11 @@ describe("tags and categories", () => {
     expect(toChangeSet(rows, new Set([0])).ops).toEqual([{ kind: "deleteTag", id: "t1" }]);
   });
 
+  it("a tag other organizations' tasks use can't become one client's", () => {
+    const rows = buildReviewRows([{ op: "update_tag", tagId: "t1", tagScope: "bmd", reason: "r" }], tctx);
+    expect(rows[0].error).toMatch(/1 task of other organizations use this tag/);
+  });
+
   it("without tag and category lists, those ops are not available", () => {
     const rows = buildReviewRows([{ op: "create_tag", tempId: "x", name: "y", reason: "r" }], ctx);
     expect(rows[0].error).toBe("Tag and category changes are not available here");

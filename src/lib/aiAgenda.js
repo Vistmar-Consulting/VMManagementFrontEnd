@@ -32,7 +32,8 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
 import { validateProposal, inheritKeysForCreate, planTopicWrites, changedOpenFloor } from "./syncMeeting.js";
 import { bySortOrder, tagSlug, syncMeetingStamps, groupStamps } from "./boardSyncCore.js";
-import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, attendeeNames, syncNoteBody, withInMeetingTag } from "./syncNotes.js";
+import { noteBodiesByItem } from "./syncNoteReads.js";
+import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, attendeeNames, inMeetingTagId, syncNoteBody, withInMeetingTag } from "./syncNotes.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_WINDOW_MS = 21 * DAY_MS; // used only when this agenda has no mapped past meeting yet
@@ -511,6 +512,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
   const existingTagIds = new Set(tagSnap.docs.map((d) => d.id));
   const existingTags = tagSnap.docs.map((d) => ({ id: d.id, name: d.data().name || d.id, organizationId: d.data().organizationId || null }));
   const tagSort = tagSnap.size;
+  const inMeetingId = inMeetingTagId(existingTags);
 
   // Resolve which org each accepted create belongs to (master = per-create org;
   // single = orgSlug). Collect the distinct set so we read every counter up front.
@@ -576,6 +578,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     orgSlugs: sel.orgSlugs || [],
   }));
 
+  const priorNotes = await noteBodiesByItem([...acceptedMoves.map((m) => m.itemId), ...noteItemIds]);
   await runTransaction(db, async (tx) => {
     // ---- READS PHASE (all tx.get before any write) ----
     const agendaSnap = await tx.get(doc(db, "agendas", agendaId));
@@ -590,7 +593,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       noteSnaps.set(id, await tx.get(ref));
     }
     // Every created task gets the shared in-meeting tag; create it if missing.
-    const inMeetingTagRef = doc(db, "tags", IN_MEETING_TAG);
+    const inMeetingTagRef = doc(db, "tags", inMeetingId);
     const inMeetingTagMissing = acceptedCreates.length > 0 && !(await tx.get(inMeetingTagRef)).exists();
 
     // ---- WRITES PHASE ----
@@ -675,9 +678,11 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     topicPlan.deletes.forEach((id) => tx.delete(topicRef(id)));
 
     // Each accepted change also gets a Note saying where it came from.
+    // An existing task that already has this exact Note (a rerun over the same
+    // meeting) gets none. Returns whether a Note was written.
     const writeNote = (itemId, kind, change) => {
       const body = syncNoteBody(kind, change);
-      if (!body) return;
+      if (!body || priorNotes[itemId]?.has(body)) return false;
       tx.set(doc(collection(db, "items", itemId, "comments")), {
         itemId,
         authorId: uid,
@@ -686,6 +691,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
         source: "sync-meeting",
         createdAt: serverTimestamp(),
       });
+      return true;
     };
 
     // Accepted creates → new items. itemNumber from each org's counter.
@@ -701,7 +707,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       const assigneeIds = Array.isArray(promo?.assigneeIds) ? promo.assigneeIds : [];
       const inherited = inheritKeysForCreate(create, topicsById);
       const categoryId = promo?.categoryId !== undefined ? promo.categoryId : inherited.categoryId;
-      const tagIds = withInMeetingTag(promo?.tagIds !== undefined ? promo.tagIds : inherited.tagIds);
+      const tagIds = withInMeetingTag(promo?.tagIds !== undefined ? promo.tagIds : inherited.tagIds, inMeetingId);
       let num = orgNum.get(org) ?? 1;
       order = generateKeyBetween(order, null);
 
@@ -768,8 +774,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     acceptedNotes.forEach((n) => {
       const snap = noteSnaps.get(n.itemId);
       if (!snap?.exists() || !n.note) return;
-      writeNote(n.itemId, "note", n);
-      tx.update(doc(db, "items", n.itemId), { updatedAt: serverTimestamp(), updatedByUid: uid });
+      if (writeNote(n.itemId, "note", n)) tx.update(doc(db, "items", n.itemId), { updatedAt: serverTimestamp(), updatedByUid: uid });
     });
 
     if (inMeetingTagMissing) {

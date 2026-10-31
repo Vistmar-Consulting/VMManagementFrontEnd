@@ -74,6 +74,10 @@ export function buildTaxonomyRow(op, index, ctx, taken) {
     .filter((f) => (f === "organizationId" ? (patch[f] ?? null) !== curOrg : patch[f] !== current[f]))
     .map((f) => ({ field: f, before: f === "organizationId" ? curOrg : current[f] ?? null, after: patch[f] }));
   if (diffs.length === 0) throw new Error("No change from the current values");
+  if (isTag && patch.organizationId) {
+    const others = ctx.items.filter((i) => (i.tagIds || []).includes(current.id) && i.organizationId !== patch.organizationId).length;
+    if (others) throw new Error(`${others} task${others === 1 ? "" : "s"} of other organizations use this tag; it can only be shared`);
+  }
   const nextName = patch.name ?? current.name;
   const nextOrg = isTag ? (patch.organizationId !== undefined ? patch.organizationId : curOrg) : null;
   if ((patch.name !== undefined || patch.organizationId !== undefined) && nameTaken(nextName, nextOrg, current.id)) {

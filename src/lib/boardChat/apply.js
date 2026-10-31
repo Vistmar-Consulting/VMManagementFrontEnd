@@ -15,7 +15,7 @@ const DEFERRED = { deleteTag, deleteCategory };
 
 // ctx: { uid, items, tags, categories, itemLabel(id) }
 // Returns { result: { applied, declined }, created, touchedItemIds,
-// newIds: { [tempId]: real id } }. Throws (nothing written) if the
+// touchedTopicIds (agenda topic cards a delete cleared), newIds: { [tempId]: real id } }. Throws (nothing written) if the
 // transaction fails.
 export async function applyBoardProposal(rows, checked, { uid, items, tags, categories, itemLabel }) {
   const { ops, skipped } = toChangeSet(rows, checked);
@@ -23,10 +23,15 @@ export async function applyBoardProposal(rows, checked, { uid, items, tags, cate
   const created = txOps.length ? await applyChangeSet(txOps, { uid, allItems: items, taxonomy: { tags, categories } }) : [];
 
   const failed = new Map();
+  // Tasks and topic cards a delete cleared: their updatedAt moves too.
+  const clearedItemIds = [];
+  const touchedTopicIds = [];
   for (const r of rows) {
     if (!r.ok || !checked.has(r.index) || (r.op !== "delete_tag" && r.op !== "delete_category")) continue;
     try {
-      await DEFERRED[r.op === "delete_tag" ? "deleteTag" : "deleteCategory"](r.targetId, uid);
+      const out = await DEFERRED[r.op === "delete_tag" ? "deleteTag" : "deleteCategory"](r.targetId, uid);
+      clearedItemIds.push(...out.itemIds);
+      touchedTopicIds.push(...out.topicIds);
     } catch (err) {
       failed.set(r.index, `delete failed: ${err.message}`);
     }
@@ -73,6 +78,7 @@ export async function applyBoardProposal(rows, checked, { uid, items, tags, cate
     ...txOps.filter((o) => o.kind === "update").map((o) => o.itemId),
     ...txOps.filter((o) => o.kind === "create" && o.parentId).map((o) => o.parentId),
     ...created.filter((c) => c.itemId).map((c) => c.itemId),
+    ...clearedItemIds,
   ];
-  return { result: { applied, declined }, created, touchedItemIds, newIds };
+  return { result: { applied, declined }, created, touchedItemIds, touchedTopicIds, newIds };
 }

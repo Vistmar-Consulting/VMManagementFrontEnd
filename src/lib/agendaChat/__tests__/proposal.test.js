@@ -148,6 +148,7 @@ describe("topic cards and their tasks", () => {
     { id: "i1", organizationId: "bmd", categoryId: "web" },
     { id: "i9", organizationId: "bmd", categoryId: "web" },
     { id: "i5", organizationId: "bmd", categoryId: "seo" },
+    { id: "u1", organizationId: "unio", categoryId: "web" },
   ];
   const board = {
     items,
@@ -171,19 +172,34 @@ describe("topic cards and their tasks", () => {
     expect(p.liveBodies).toEqual({});
   });
 
-  it("removes a task shown on the card and restores one removed by hand, in one patch", () => {
+  it("removes and restores card tasks as adds and removes; another org's task is refused", () => {
     const rows = buildReviewRows([
       { op: "remove_task", topicId: "a", itemId: "i1", reason: "r" },
       { op: "restore_task", topicId: "a", itemId: "i9", reason: "r" },
       { op: "remove_task", topicId: "a", itemId: "i5", reason: "r" },
       { op: "restore_task", topicId: "a", itemId: "i1", reason: "r" },
       { op: "update_topic", topicId: "a", name: "Web", reason: "r" },
+      { op: "remove_task", topicId: "a", itemId: "u1", reason: "r" },
+      { op: "remove_task", topicId: "b", itemId: "i9", reason: "r" },
     ], bctx);
-    expect(rows.map((r) => r.ok)).toEqual([true, true, false, false, true]);
-    expect(rows[2].error).toBe("That task isn't on this topic card");
+    expect(rows.map((r) => r.ok)).toEqual([true, true, true, false, true, false, true]);
     expect(rows[3].error).toMatch(/already has a change on this topic in change 1/);
+    expect(rows[5].error).toBe("That task belongs to another organization's board");
     const p = planAgendaWrites(rows, all(rows), bctx);
-    expect(p.updates).toEqual([{ id: "a", patch: { excludedItemIds: ["i1"], name: "Web" } }]);
+    expect(p.updates).toEqual([{ id: "a", patch: { name: "Web" } }]);
+    expect(p.excluded).toEqual([
+      { id: "a", add: ["i1", "i5"], remove: ["i9"] },
+      { id: "b", add: ["i9"], remove: [] },
+    ]);
+  });
+
+  it("a topic can't keep a tag the board half deletes", () => {
+    const [row] = buildReviewRows([{ op: "update_topic", topicId: "a", tagIds: ["old", "newTag"], reason: "r" }], {
+      ...bctx,
+      topics: [{ ...cardTopics[0], tagIds: ["old"] }],
+      board: { ...board, deletedTags: new Map([["old", 0]]) },
+    });
+    expect(row.error).toBe("Tag old is deleted by board change 1");
   });
 
   it("a topic whose card tasks change can't be deleted in the same proposal; without the board, card ops are refused", () => {

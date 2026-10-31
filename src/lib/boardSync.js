@@ -37,7 +37,8 @@ import {
   tagSlug,
   toMs,
 } from "./boardSyncCore.js";
-import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, attendeeNames, syncNoteBody, withInMeetingTag } from "./syncNotes.js";
+import { noteBodiesByItem } from "./syncNoteReads.js";
+import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, attendeeNames, inMeetingTagId, syncNoteBody, withInMeetingTag } from "./syncNotes.js";
 
 const MAX_ORG_AGENDAS = 15; // same cap as Sync Meeting's per-org agenda context
 const MAX_TX_WRITES = 500; // Firestore's per-transaction write limit
@@ -225,6 +226,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
   const tagSnap = await getDocs(collection(db, "tags"));
   const existingTagIds = new Set(tagSnap.docs.map((d) => d.id));
   const tagSort = tagSnap.size;
+  const inMeetingId = inMeetingTagId(tagSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
   // Per-org accepted subsets, with the subitem guard applyUnified uses: a child
   // whose new:N parent isn't accepted (or is itself a child) is dropped.
@@ -296,6 +298,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
 
   const counts = {};
   const preDropped = [...dropped];
+  const priorNotes = await noteBodiesByItem(plan.flatMap((p) => [...p.moves.map((m) => m.itemId), ...p.notes.map((n) => n.itemId)]));
   await runTransaction(db, async (tx) => {
     // ---- READS (all before any write) ----
     // Tags to coin are re-read here: the outer read can be stale, and a tag
@@ -303,7 +306,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
     const orgSlugsToRead = plan.filter((p) => p.creates.length).map((p) => p.slug);
     const coinIds = [...coinable];
     // Every created task gets the shared in-meeting tag; create it if missing.
-    const inMeetingTagRef = doc(db, "tags", IN_MEETING_TAG);
+    const inMeetingTagRef = doc(db, "tags", inMeetingId);
     const [orgList, targetList, tagList, inMeetingSnap] = await Promise.all([
       Promise.all(orgSlugsToRead.map((slug) => tx.get(doc(db, "organizations", slug)))),
       Promise.all(targetIds.map((id) => tx.get(doc(db, "items", id)))),
@@ -338,9 +341,11 @@ export async function applyBoardSync(runs, selections, uid = null) {
       return id;
     };
     // Each applied change also gets a Note saying where it came from.
+    // An existing task that already has this exact Note (a rerun over the same
+    // meeting) gets none. Returns whether a Note was written.
     const writeNote = (itemId, kind, change) => {
       const body = syncNoteBody(kind, change);
-      if (!body) return;
+      if (!body || priorNotes[itemId]?.has(body)) return false;
       tx.set(doc(collection(db, "items", itemId, "comments")), {
         itemId,
         authorId: uid,
@@ -349,6 +354,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
         source: "board-sync",
         createdAt: serverTimestamp(),
       });
+      return true;
     };
     let order = null;
 
@@ -375,7 +381,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
           existingParents.add(ref);
         }
         const promo = p.promotions[idx] || {};
-        const tagIds = withInMeetingTag([...new Set([...(promo.tagIds || []), ...(promo.newTags || []).map((n) => coin(n, p.slug)).filter(Boolean)])]);
+        const tagIds = withInMeetingTag([...new Set([...(promo.tagIds || []), ...(promo.newTags || []).map((n) => coin(n, p.slug)).filter(Boolean)])], inMeetingId);
         order = generateKeyBetween(order, null);
         tx.set(p.refs[pos], {
           organizationId: p.slug,
@@ -426,8 +432,8 @@ export async function applyBoardSync(runs, selections, uid = null) {
         if (!n.note) return;
         const why = problem(n.itemId, p.slug);
         if (why) { dropped.push({ org: p.slug, title: n.title, reason: why }); return; }
-        writeNote(n.itemId, "note", n);
-        // A Note counts as an update to the item.
+        // A Note counts as an update to the item; a repeat Note is skipped.
+        if (!writeNote(n.itemId, "note", n)) return;
         tx.update(doc(db, "items", n.itemId), { updatedAt: serverTimestamp(), updatedByUid: uid });
         noted += 1;
       });

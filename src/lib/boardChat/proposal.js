@@ -95,7 +95,8 @@ function makeTempIds(ops, itemsById) {
   ops.forEach((o, i) => {
     if (o.op === "create" && o.tempId && !firstIndex.has(o.tempId)) firstIndex.set(o.tempId, i);
   });
-  const taken = new Set([...firstIndex.keys(), ...itemsById.keys()]);
+  // Tag / category tempIds are taken too, so a fallback can't collide with one.
+  const taken = new Set([...firstIndex.keys(), ...itemsById.keys(), ...ops.map((o) => o.tempId).filter(Boolean)]);
   const fallback = (index) => {
     let id = `op${index}`;
     for (let n = 1; taken.has(id); n += 1) id = `op${index}_${n}`;

@@ -71,8 +71,18 @@ export function syncNoteBody(kind, change) {
   ].filter(Boolean).join("\n");
 }
 
+// The in-meeting tag's id: tags/in-meeting, or a shared tag already named
+// in-meeting under another id (e.g. one added from the Task Board), so a sync
+// never makes a second tag of that name. tags: [{ id, name, organizationId }].
+export function inMeetingTagId(tags) {
+  const list = Array.isArray(tags) ? tags : [];
+  if (list.some((t) => t.id === IN_MEETING_TAG)) return IN_MEETING_TAG;
+  const named = list.find((t) => !t.organizationId && String(t.name || "").trim().toLowerCase() === IN_MEETING_TAG);
+  return named ? named.id : IN_MEETING_TAG;
+}
+
 // A created task's tags: the reviewer's picks plus in-meeting, once.
-export function withInMeetingTag(tagIds) {
+export function withInMeetingTag(tagIds, tagId = IN_MEETING_TAG) {
   const list = Array.isArray(tagIds) ? tagIds : [];
-  return list.includes(IN_MEETING_TAG) ? [...list] : [...list, IN_MEETING_TAG];
+  return list.includes(tagId) ? [...list] : [...list, tagId];
 }
