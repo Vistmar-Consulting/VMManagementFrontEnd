@@ -16,7 +16,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { applyCors } from "../../meetings/_lib/cors.js";
 import { requireAuth } from "../../meetings/_lib/auth.js";
 import { streamMessage } from "./claude.js";
-import { VISTAMAR_BOARD_SCOPE, CREATE_BASE_RULES, PARENT_REF_RULES, MOVES_RULES, NOTES_RULES } from "../_lib/boardRules.js";
+import { VISTAMAR_BOARD_SCOPE, CREATE_BASE_RULES, PARENT_REF_RULES, MOVES_RULES, NOTES_RULES, MEETING_RULES, MEETING_SCHEMA, normalizeMeeting, withoutAppTags } from "../_lib/boardRules.js";
 import { BODY_HTML_RULES } from "../_lib/htmlRules.js";
 
 // Sync Meeting reconciles a lot of input (transcripts + project board + other
@@ -33,7 +33,8 @@ export const config = { maxDuration: 300 };
 //
 // NOTE: creates carry an integer `topicIndex` (0-based index into topics) — the
 // model does NOT mint ids. The handler converts topicIndex → topicId afterward
-// and the new task INHERITS its topic's category + tags.
+// and the new task INHERITS its topic's category + tags. Every change carries
+// `meeting` (title, date, people) for the Note the client writes on the task.
 function buildSchema(master) {
   const topicProps = {
     ref: { type: "string" },
@@ -69,9 +70,11 @@ function buildSchema(master) {
                 title:      { type: "string" },
                 topicIndex: { type: "integer" },
                 note:       { type: "string" },
+                why:        { type: "string" },
+                meeting:    MEETING_SCHEMA,
                 parentRef:  { type: "string" },   // optional — "" or omitted = top-level
               },
-              required: ["title", "topicIndex", "note"],
+              required: ["title", "topicIndex", "note", "why", "meeting"],
             },
           },
           moves: {
@@ -84,8 +87,9 @@ function buildSchema(master) {
                 title: { type: "string" },
                 toStatus: { type: "string" },
                 reason: { type: "string" },
+                meeting: MEETING_SCHEMA,
               },
-              required: ["itemId", "title", "toStatus", "reason"],
+              required: ["itemId", "title", "toStatus", "reason", "meeting"],
             },
           },
           notes: {
@@ -97,8 +101,9 @@ function buildSchema(master) {
                 itemId: { type: "string" },
                 title: { type: "string" },
                 note: { type: "string" },
+                meeting: MEETING_SCHEMA,
               },
-              required: ["itemId", "title", "note"],
+              required: ["itemId", "title", "note", "meeting"],
             },
           },
         },
@@ -118,7 +123,7 @@ function buildCategorization(categories, tagVocab) {
   const tags = Array.isArray(tagVocab) ? tagVocab : [];
   if (cats.length === 0) return "";
   const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n");
-  const tagList = tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean).join(", ");
+  const tagList = withoutAppTags(tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean)).join(", ");
   const sops = cats
     .filter((c) => c.sop)
     .map((c) => `### ${c.name} (${c.slug})\n${c.sop}`)
@@ -221,6 +226,8 @@ ${MOVES_RULES}
 
 ${NOTES_RULES}
 
+${MEETING_RULES}
+
 Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.${buildCategorization(categories, tagVocab)}`;
 }
 
@@ -269,6 +276,7 @@ function buildMasterUserMessage(agenda, transcripts, style, projectBoard, orgAge
       lines.push("Meeting transcripts:");
       trs.forEach((tr) => {
         lines.push(`- ${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}`);
+        if (tr.attendees?.length) lines.push(`  Attendees: ${tr.attendees.join(", ")}`);
         if (tr.overview) lines.push(`  Overview: ${tr.overview}`);
         if (tr.actionItems) lines.push(`  Action items: ${tr.actionItems}`);
       });
@@ -323,6 +331,7 @@ function buildUserMessage(agenda, transcripts, style, projectBoard, orgAgendas, 
     transcripts.forEach((tr) => {
       const tag = SCOPE_TAG[tr.scope] || "Client";
       lines.push(`### [${tag}] ${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}`);
+      if (tr.attendees?.length) lines.push(`Attendees: ${tr.attendees.join(", ")}`);
       if (tr.overview) lines.push(`Overview: ${tr.overview}`);
       if (tr.actionItems) lines.push(`Action items: ${tr.actionItems}`);
       lines.push("");
@@ -418,7 +427,7 @@ export default async function handler(req, res) {
           name: String(t?.name || ""),
           bodyHtml: String(t?.bodyHtml || ""),
           categories: Array.isArray(t?.categories) ? t.categories.map((c) => String(c)) : [],
-          tags: Array.isArray(t?.tags) ? t.tags.map((x) => String(x)) : [],
+          tags: withoutAppTags(t?.tags),
           organizationId: t?.organizationId ? String(t.organizationId) : null,
         }))
       : [];
@@ -437,6 +446,8 @@ export default async function handler(req, res) {
               title: String(c?.title || ""),
               topicId: `t${idx}`,
               note: String(c?.note || ""),
+              why: String(c?.why || ""),
+              meeting: normalizeMeeting(c?.meeting),
               parentRef: typeof c?.parentRef === "string" ? c.parentRef : "",
             };
             if (master) create.organizationId = topics[idx].organizationId;
@@ -452,6 +463,7 @@ export default async function handler(req, res) {
             title: String(m?.title || ""),
             toStatus: String(m?.toStatus || ""),
             reason: String(m?.reason || ""),
+            meeting: normalizeMeeting(m?.meeting),
           }))
           .filter((m) => m.itemId && m.toStatus)
       : [];
@@ -462,6 +474,7 @@ export default async function handler(req, res) {
             itemId: String(n?.itemId || ""),
             title: String(n?.title || ""),
             note: String(n?.note || ""),
+            meeting: normalizeMeeting(n?.meeting),
           }))
           .filter((n) => n.itemId && n.note)
       : [];

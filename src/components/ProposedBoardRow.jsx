@@ -16,6 +16,7 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
 import { assignableForOrg } from "../lib/people.js";
 import { tagGroups } from "../lib/tagScope.js";
+import { IN_MEETING_TAG, syncNoteBody } from "../lib/syncNotes.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 
 const STATUS_BY_ID = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id, s]));
@@ -38,6 +39,7 @@ export default function ProposedBoardRow({
   tags = [],
 }) {
   const [editingTitle, setEditingTitle] = useState(false);
+  const noteBody = syncNoteBody("create", create);
   const [titleValue, setTitleValue] = useState(create.title || "");
   const [statusAnchor, setStatusAnchor] = useState(null);
 
@@ -383,7 +385,7 @@ export default function ProposedBoardRow({
         )}
       </Box>
 
-      {/* Row 3: AI note — read-only, dimmed italic */}
+      {/* Row 3: AI note (becomes the task description) — read-only, dimmed italic */}
       {create.note && (
         <Typography
           variant="caption"
@@ -399,6 +401,19 @@ export default function ProposedBoardRow({
           {create.note}
         </Typography>
       )}
+
+      {/* Row 4: the Note the apply writes on the task, plus the in-meeting tag */}
+      {noteBody && (
+        <Typography
+          variant="caption"
+          sx={{ display: "block", mt: 0.5, pl: 3, color: "text.secondary", lineHeight: 1.35, whiteSpace: "pre-wrap" }}
+        >
+          <strong>Note:</strong> {noteBody}
+        </Typography>
+      )}
+      <Typography variant="caption" sx={{ display: "block", mt: 0.25, pl: 3, color: "text.disabled" }}>
+        Tagged {IN_MEETING_TAG}
+      </Typography>
     </Box>
   );
 }

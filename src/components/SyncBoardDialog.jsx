@@ -27,6 +27,7 @@ import { initPromotion } from "../lib/boardSyncCore.js";
 import { validateProposal } from "../lib/syncMeeting.js";
 import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import ProposedBoardRow from "./ProposedBoardRow.jsx";
+import { syncNoteBody } from "../lib/syncNotes.js";
 
 const STATUS_BY_ID = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id, s]));
 
@@ -221,11 +222,16 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
               );
             })()}
             {bc.moves.map((m, i) => (r.valid.moves.has(i) ? (
-              <Box key={`m${i}`} sx={{ display: "flex", alignItems: "center", gap: 0.75, py: 0.5, opacity: r.sel.moves.has(i) ? 1 : 0.5 }}>
-                <Checkbox size="small" checked={r.sel.moves.has(i)} onChange={() => toggleSel(slug, "moves", i)} sx={{ p: 0.25 }} />
-                <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 600 }} noWrap>{m.title}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {STATUS_BY_ID[itemsById.get(m.itemId)?.statusId]?.name || "?"} → {m.toStatus}
+              <Box key={`m${i}`} sx={{ py: 0.5, opacity: r.sel.moves.has(i) ? 1 : 0.5 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  <Checkbox size="small" checked={r.sel.moves.has(i)} onChange={() => toggleSel(slug, "moves", i)} sx={{ p: 0.25 }} />
+                  <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 600 }} noWrap>{m.title}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {STATUS_BY_ID[itemsById.get(m.itemId)?.statusId]?.name || "?"} → {m.toStatus}
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", pl: 4, whiteSpace: "pre-wrap" }}>
+                  <strong>Note:</strong> {syncNoteBody("move", m)}
                 </Typography>
               </Box>
             ) : null))}
@@ -234,7 +240,7 @@ export default function SyncBoardDialog({ items, users, categories, tags, onClos
                 <Checkbox size="small" checked={r.sel.notes.has(i)} onChange={() => toggleSel(slug, "notes", i)} sx={{ p: 0.25 }} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>{n.title}</Typography>
-                  <Typography variant="caption" color="text.secondary">{n.note}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", whiteSpace: "pre-wrap" }}>{syncNoteBody("note", n)}</Typography>
                 </Box>
               </Box>
             ) : null))}

@@ -2,8 +2,10 @@
 // add via textarea + Enter.
 //
 // Comment doc shape: items/{itemId}/comments/{commentId}
-//   { itemId, authorId, body, parentCommentId, createdAt, updatedAt? }
+//   { itemId, authorId, body, parentCommentId, createdAt, updatedAt?, source? }
 // parentCommentId reserved for future reply nesting; always null in V1.
+// source is set on Notes a sync wrote ("sync-meeting" | "board-sync"; authored
+// by whoever applied it) and shows as a label (lib/syncNotes.js).
 //
 // Firestore rules already gate create on (authorId == auth.uid) and
 // update/delete on (resource.data.authorId == auth.uid), so the UI gate
@@ -15,6 +17,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -42,6 +45,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { db } from "../firebase.js";
 import { useCollection } from "../hooks/useCollection.js";
 import { tsToDate } from "../utils/firestoreTime.js";
+import { SYNC_NOTE_SOURCES } from "../lib/syncNotes.js";
 
 const COMMENTS_ORDER = Object.freeze([orderBy("createdAt", "asc")]);
 
@@ -157,6 +161,15 @@ export default function TaskBoardModal({ open, onClose, item, users = [] }) {
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {author?.displayName || author?.email || "Unknown"}
                         </Typography>
+                        {SYNC_NOTE_SOURCES[c.source] && (
+                          <Chip
+                            label={SYNC_NOTE_SOURCES[c.source]}
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            sx={{ height: 18, fontSize: "0.68rem", "& .MuiChip-label": { px: 0.6 } }}
+                          />
+                        )}
                         <Typography variant="caption" color="text.secondary">{time}</Typography>
                         {edited && !isEditing && (
                           <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>

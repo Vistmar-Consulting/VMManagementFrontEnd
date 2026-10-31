@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { BOARD_SYNC_EMAIL as FE_EMAIL } from "../../../../src/lib/boardSyncCore.js";
+import { IN_MEETING_TAG as FE_IN_MEETING_TAG } from "../../../../src/lib/syncNotes.js";
+import { IN_MEETING_TAG } from "../../_lib/boardRules.js";
 
 vi.mock("@anthropic-ai/sdk", () => ({ default: class {} }));
 
@@ -7,6 +9,7 @@ const { BOARD_SYNC_EMAIL, isBoardSyncAllowed, buildSystem, buildUserMessage, nor
 
 describe("access gate", () => {
   it("server and FE constants match", () => expect(BOARD_SYNC_EMAIL).toBe(FE_EMAIL));
+  it("server and FE in-meeting tag ids match", () => expect(IN_MEETING_TAG).toBe(FE_IN_MEETING_TAG));
   it("allows only Andy", () => {
     expect(isBoardSyncAllowed("adeemer@vistamarconsulting.com")).toBe(true);
     expect(isBoardSyncAllowed("scot@vistamarconsulting.com")).toBe(false);
@@ -70,6 +73,24 @@ describe("buildUserMessage", () => {
     expect(m).toContain("[itemId:i1] Fix hero [Assigned]");
     expect(m).toContain("Blog A published");
   });
+  it("lists each transcript's attendees", () => {
+    const m = buildUserMessage({
+      org: { slug: "unio", name: "Unio" },
+      transcripts: [{ title: "Unio weekly", date: "2026-10-28", scope: "this-org", attendees: ["Bill", "Dana Lee"], overview: "o", actionItems: "" }],
+    });
+    expect(m).toContain("### Unio weekly (2026-10-28)\nAttendees: Bill, Dana Lee\nOverview: o");
+  });
+});
+
+describe("buildSystem — provenance + in-meeting", () => {
+  const org = { slug: "unio", name: "Unio", type: "client" };
+  it("asks for meeting provenance and never the in-meeting tag", () => {
+    const s = buildSystem({ orgPrompt: "", org, categories: [{ slug: "website", name: "Website", description: "", sop: "" }], tagVocab: [{ name: "in-meeting" }, { name: "hipaa" }] });
+    expect(s).toContain("Where each change came from");
+    expect(s).toContain("Never invent a name.");
+    expect(s).toContain('Never use or coin the tag "in-meeting"');
+    expect(s).toContain("## Tag vocabulary\nhipaa");
+  });
 });
 
 describe("buildUserMessage — synced cross-org", () => {
@@ -108,9 +129,23 @@ describe("normalizeBoardChanges", () => {
         notes: [{ itemId: "i1", title: "a", note: "z" }, { itemId: "i1", note: "" }],
       },
     });
-    expect(out.creates).toEqual([{ title: "T", note: "n", parentRef: "", categories: ["seo", "3"], tags: ["x"] }]);
+    expect(out.creates).toEqual([{ title: "T", note: "n", why: "", meeting: { title: "", date: "", people: [] }, parentRef: "", categories: ["seo", "3"], tags: ["x"] }]);
     expect(out.moves).toHaveLength(1);
     expect(out.notes).toHaveLength(1);
+  });
+  it("keeps each change's meeting and why, and strips the app's in-meeting tag", () => {
+    const meeting = { title: "Unio weekly", date: "2026-10-28", people: [" Bill ", "", "Cedric"] };
+    const out = normalizeBoardChanges({
+      boardChanges: {
+        creates: [{ title: "T", note: "Owner: Bill", why: "Hero is stale", meeting, categories: [], tags: ["In-Meeting", "website"] }],
+        moves: [{ itemId: "i1", title: "a", toStatus: "Done", reason: "r", meeting }],
+        notes: [{ itemId: "i1", title: "a", note: "z", meeting }],
+      },
+    });
+    const clean = { title: "Unio weekly", date: "2026-10-28", people: ["Bill", "Cedric"] };
+    expect(out.creates[0]).toMatchObject({ why: "Hero is stale", meeting: clean, tags: ["website"] });
+    expect(out.moves[0].meeting).toEqual(clean);
+    expect(out.notes[0].meeting).toEqual(clean);
   });
   it("tolerates a missing boardChanges", () => {
     expect(normalizeBoardChanges({})).toEqual({ creates: [], moves: [], notes: [] });

@@ -36,6 +36,7 @@ import {
   tagSlug,
   toMs,
 } from "./boardSyncCore.js";
+import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, attendeeNames, syncNoteBody, withInMeetingTag } from "./syncNotes.js";
 
 const MAX_ORG_AGENDAS = 15; // same cap as Sync Meeting's per-org agenda context
 const MAX_TX_WRITES = 500; // Firestore's per-transaction write limit
@@ -154,6 +155,7 @@ async function fetchDetails(rows) {
       date: isoDate(rows[i]._ms),
       scope: rows[i].scope,
       sharedFrom: rows[i].sharedFrom || "",
+      attendees: attendeeNames(rows[i]),
       overview: s.overview || s.short_overview || "",
       actionItems: s.action_items || "",
     });
@@ -273,15 +275,18 @@ export async function applyBoardSync(runs, selections, uid = null) {
 
   // Firestore rejects a transaction over 500 writes. Upper bound, counted
   // before any write; a run over it fails loudly rather than splitting (spec 7).
+  // Every create, move and note is two writes (the change + its Note).
   const coinable = new Set(plan.flatMap((p) => p.creates.flatMap(({ idx }) => (p.promotions[idx]?.newTags || []).map(tagSlug)))
-    .filter((id) => id && !existingTagIds.has(id)));
+    .filter((id) => id && id !== IN_MEETING_TAG && !existingTagIds.has(id)));
+  const anyCreates = plan.some((p) => p.creates.length);
   const writeBound = plan.reduce((n, p) => n
-    + p.creates.length
+    + 2 * p.creates.length
     + new Set(existingParentRefs(p)).size
     + (p.creates.length ? 1 : 0)
-    + p.moves.length
-    + p.notes.length, 0)
+    + 2 * p.moves.length
+    + 2 * p.notes.length, 0)
     + coinable.size
+    + (anyCreates ? 1 : 0)
     + Object.keys(ledgerStamps).length
     + 1;
   if (writeBound > MAX_TX_WRITES) {
@@ -296,10 +301,13 @@ export async function applyBoardSync(runs, selections, uid = null) {
     // created since must not be overwritten.
     const orgSlugsToRead = plan.filter((p) => p.creates.length).map((p) => p.slug);
     const coinIds = [...coinable];
-    const [orgList, targetList, tagList] = await Promise.all([
+    // Every created task gets the shared in-meeting tag; create it if missing.
+    const inMeetingTagRef = doc(db, "tags", IN_MEETING_TAG);
+    const [orgList, targetList, tagList, inMeetingSnap] = await Promise.all([
       Promise.all(orgSlugsToRead.map((slug) => tx.get(doc(db, "organizations", slug)))),
       Promise.all(targetIds.map((id) => tx.get(doc(db, "items", id)))),
       Promise.all(coinIds.map((id) => tx.get(doc(db, "tags", id)))),
+      anyCreates ? tx.get(inMeetingTagRef) : null,
     ]);
     const orgSnaps = new Map(orgSlugsToRead.map((slug, i) => [slug, orgList[i]]));
     const targets = new Map(targetIds.map((id, i) => [id, targetList[i]]));
@@ -321,15 +329,26 @@ export async function applyBoardSync(runs, selections, uid = null) {
     // several orgs in one apply, it is shared (lib/tagScope.js).
     const coin = (name, org) => {
       const id = tagSlug(name);
-      if (!id) return null;
+      if (!id || id === IN_MEETING_TAG) return null;
       if (!existingTagIds.has(id) && !tagNowExists.has(id)) {
         const w = newTagWrites.find((x) => x.id === id) || newTagWrites[newTagWrites.push({ id, name: String(name).trim(), orgs: new Set() }) - 1];
         w.orgs.add(org);
       }
       return id;
     };
-    // Running descriptions, so two notes on one item both land.
-    const descriptions = new Map();
+    // Each applied change also gets a Note saying where it came from.
+    const writeNote = (itemId, kind, change) => {
+      const body = syncNoteBody(kind, change);
+      if (!body) return;
+      tx.set(doc(collection(db, "items", itemId, "comments")), {
+        itemId,
+        authorId: uid,
+        body,
+        parentCommentId: null,
+        source: "board-sync",
+        createdAt: serverTimestamp(),
+      });
+    };
     let order = null;
 
     for (const p of plan) {
@@ -355,7 +374,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
           existingParents.add(ref);
         }
         const promo = p.promotions[idx] || {};
-        const tagIds = [...new Set([...(promo.tagIds || []), ...(promo.newTags || []).map((n) => coin(n, p.slug)).filter(Boolean)])];
+        const tagIds = withInMeetingTag([...new Set([...(promo.tagIds || []), ...(promo.newTags || []).map((n) => coin(n, p.slug)).filter(Boolean)])]);
         order = generateKeyBetween(order, null);
         tx.set(p.refs[pos], {
           organizationId: p.slug,
@@ -373,10 +392,12 @@ export async function applyBoardSync(runs, selections, uid = null) {
           assigneeIds: Array.isArray(promo.assigneeIds) ? promo.assigneeIds : [],
           itemNumber: num,
           createdBy: uid || null,
+          createdVia: "board-sync",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           order,
         });
+        writeNote(p.refs[pos].id, "create", create);
         num += 1;
         created += 1;
       });
@@ -395,6 +416,7 @@ export async function applyBoardSync(runs, selections, uid = null) {
           updatedAt: serverTimestamp(),
           updatedByUid: uid,
         });
+        writeNote(m.itemId, "move", m);
         moved += 1;
       });
 
@@ -403,15 +425,9 @@ export async function applyBoardSync(runs, selections, uid = null) {
         if (!n.note) return;
         const why = problem(n.itemId, p.slug);
         if (why) { dropped.push({ org: p.slug, title: n.title, reason: why }); return; }
-        const cur = descriptions.has(n.itemId) ? descriptions.get(n.itemId) : targets.get(n.itemId).data().description || "";
-        if (cur.includes(n.note)) return;
-        const next = `${cur ? `${cur}\n` : ""}— ${n.note}`;
-        descriptions.set(n.itemId, next);
-        tx.update(doc(db, "items", n.itemId), {
-          description: next,
-          updatedAt: serverTimestamp(),
-          updatedByUid: uid,
-        });
+        writeNote(n.itemId, "note", n);
+        // A Note counts as an update to the item.
+        tx.update(doc(db, "items", n.itemId), { updatedAt: serverTimestamp(), updatedByUid: uid });
         noted += 1;
       });
 
@@ -422,6 +438,9 @@ export async function applyBoardSync(runs, selections, uid = null) {
     newTagWrites.forEach((w, i) => {
       tx.set(doc(db, "tags", w.id), { name: w.name, color: "#8b5cf6", layer: 3, organizationId: coinedTagOrg(w.orgs), sortOrder: tagSort + i + 1, createdAt: serverTimestamp(), createdByUid: uid });
     });
+    if (inMeetingSnap && !inMeetingSnap.exists()) {
+      tx.set(inMeetingTagRef, { ...IN_MEETING_TAG_FIELDS, sortOrder: tagSort + newTagWrites.length + 1, createdAt: serverTimestamp(), createdByUid: uid });
+    }
     // set+merge deep-merges the nested orgs map, so another org's stamp is kept.
     for (const [tid, orgs] of Object.entries(ledgerStamps)) {
       tx.set(doc(db, "syncedTranscripts", tid), {

@@ -51,7 +51,7 @@ const HOW_IT_WORKS = [
     group: "What it reads",
     items: [
       ["Current agenda", "The meeting's existing topics and Open Floor — the starting point it moves forward."],
-      ["Meeting transcripts", "Every Fireflies meeting since this meeting last occurred — this client's meetings plus internal Vistamar meetings (auto-detected by who attended). What was said."],
+      ["Meeting transcripts", "Every Fireflies meeting since this meeting last occurred — this client's meetings plus internal Vistamar meetings (auto-detected by who attended). What was said, plus each meeting's attendee names so tasks can say who raised them."],
       ["Other client agendas", "The current content of the client's other meeting agendas, whatever stage they're in. What's planned across the org."],
       ["Project Board", "The client's tasks created or updated in the window — with status and brand-new flags. Task state."],
       ["Your note", "The optional “Additional context” you type when you click Generate (e.g. “these two articles are published”)."],
@@ -64,6 +64,7 @@ const HOW_IT_WORKS = [
       ["Topic categories + tags", "Each generated topic gets the 1–3 most relevant categories + tags, so its Working-view mini-board surfaces the org's related tasks. A client's meeting only sees the shared tags and that client's own; another client's tag is never applied."],
       ["New tags", "The AI can coin a new specific tag when nothing fits — shown flagged “new” in the review so you approve it. A coined tag belongs to the client whose meeting coined it (a Client Tag). It never coins a tag for urgency or a blocked state (“urgent”, “blocked”) — those are statuses."],
       ["Task owners", "An “Owner:” in a proposed task is matched to the Vistamar team or that client's contacts (Client Settings) — never another client's contact, and never seo@ or other bot accounts."],
+      ["in-meeting tag", "Every task Sync Meeting or Board Sync creates gets the shared tag “in-meeting” (created automatically if missing), whatever else the reviewer picks, so meeting-sourced tasks can be filtered. The AI never proposes or coins that tag itself."],
     ],
   },
   {
@@ -86,6 +87,7 @@ const HOW_IT_WORKS = [
       ["Colors kept", "Text color and highlight already in a topic body or Open Floor stay on the words they mark. The AI never adds a color of its own."],
       ["Status moves", "Proposed moves on existing tasks only target Assigned, In Progress, Blocked, Review or Done. Work that is blocked or waiting on someone moves to Blocked."],
       ["Sync ledger", "Each Sync Meeting apply records which meetings it used, per org, so Board Sync never re-creates tasks from them."],
+      ["Why a task exists", "Every new task, status move and note on an existing task is written as a Note on that task, labeled “Sync Meeting” or “Board Sync”: why it exists (what was said, the decision or problem behind it), which meeting and date it came from, and who discussed it. Names come from the action items and attendee list — when the record doesn't say who raised it, the owner is named; names are never invented. The task description stays a one-line statement of the work. Notes are authored by whoever clicked Apply."],
     ],
   },
   {
@@ -100,7 +102,7 @@ const HOW_IT_WORKS = [
   {
     group: "Safe to run",
     items: [
-      ["Review before apply", "Nothing changes until you click Apply on the proposal. Applying saves the current agenda to version history first, so it's always revertible."],
+      ["Review before apply", "Nothing changes until you click Apply on the proposal. Applying saves the current agenda to version history first, so it's always revertible. The review shows the exact Note each task, move and note will get."],
       ["Edit before you apply", "The review shows the proposed agenda as a redline against the agenda before the sync: struck-through text is removed, highlighted text is added. The Edit tab lets you change any topic's text, Open Floor and new topics' titles before Apply; continuing topics keep their titles, and a new topic needs a title. Refine works on your edited version, and editing pauses while Refine runs. Discard asks before throwing away your edits. The redline and editing never call the AI."],
       ["Topics are never deleted by a sync", "Apply updates continuing topics and Open Floor in place and writes their new text straight into the live editor, so everyone sees it at once. A topic the AI leaves out is listed as a suggested removal and kept unless you tick its Delete box. Apply refuses if the live editor isn't connected."],
       ["Admin-only", "The AI Gen button appears only for admins."],
@@ -115,6 +117,7 @@ const HOW_IT_WORKS = [
       ["Touch Base", "Meetings mapped to the master (Touch Base) agenda feed every org's run; each org takes only its own parts. These are backfilled only by the Touch Base agenda's last sync."],
       ["Internal meetings", "Internal Vistamar meetings (platform, business development) feed every client's run too; each client takes only the work assigned to it, checked against its existing tasks. An internal meeting the master Touch Base agenda already synced counts as done for every client."],
       ["Context only", "Meetings already used for that org are read for moves, notes and duplicate checks, but never create tasks."],
+      ["Notes and tags", "Same as Sync Meeting: every created task gets the in-meeting tag, and every create, move and note becomes a Note labeled “Board Sync” saying why, which meeting and date, and who discussed it."],
       ["One call per org", "Orgs run in parallel; orgs with nothing new are skipped unless ticked. Review is grouped by org, and orgs that have finished can be applied while others are still running."],
       ["Apply and retry", "Apply is one atomic write with a log entry. A failed org can be retried, and its meetings stay unused until it succeeds."],
       ["Access", "Only adeemer@vistamarconsulting.com — the button is hidden for everyone else and the server refuses other accounts."],

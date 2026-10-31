@@ -10,7 +10,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { applyCors } from "../../meetings/_lib/cors.js";
 import { requireAuth } from "../../meetings/_lib/auth.js";
-import { VISTAMAR_BOARD_SCOPE, CREATE_BASE_RULES, PARENT_REF_RULES, MOVES_RULES, NOTES_RULES } from "../_lib/boardRules.js";
+import { VISTAMAR_BOARD_SCOPE, CREATE_BASE_RULES, PARENT_REF_RULES, MOVES_RULES, NOTES_RULES, MEETING_RULES, MEETING_SCHEMA, normalizeMeeting, withoutAppTags } from "../_lib/boardRules.js";
 
 // Same model as prepare.js.
 const MODEL = "claude-sonnet-4-6";
@@ -24,7 +24,8 @@ export function isBoardSyncAllowed(email) {
 }
 
 // Board changes only. Unlike prepare.js, creates carry their own categories +
-// tags — there is no topic to inherit from.
+// tags — there is no topic to inherit from. Every change carries `meeting`
+// (title, date, people) for the Note the client writes on the task.
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -41,11 +42,13 @@ const SCHEMA = {
             properties: {
               title: { type: "string" },
               note: { type: "string" },
+              why: { type: "string" },
+              meeting: MEETING_SCHEMA,
               parentRef: { type: "string" },
               categories: { type: "array", items: { type: "string" } },
               tags: { type: "array", items: { type: "string" } },
             },
-            required: ["title", "note", "categories", "tags"],
+            required: ["title", "note", "why", "meeting", "categories", "tags"],
           },
         },
         moves: {
@@ -58,8 +61,9 @@ const SCHEMA = {
               title: { type: "string" },
               toStatus: { type: "string" },
               reason: { type: "string" },
+              meeting: MEETING_SCHEMA,
             },
-            required: ["itemId", "title", "toStatus", "reason"],
+            required: ["itemId", "title", "toStatus", "reason", "meeting"],
           },
         },
         notes: {
@@ -71,8 +75,9 @@ const SCHEMA = {
               itemId: { type: "string" },
               title: { type: "string" },
               note: { type: "string" },
+              meeting: MEETING_SCHEMA,
             },
-            required: ["itemId", "title", "note"],
+            required: ["itemId", "title", "note", "meeting"],
           },
         },
       },
@@ -87,7 +92,7 @@ function categorizationBlock(categories, tagVocab) {
   const tags = Array.isArray(tagVocab) ? tagVocab : [];
   if (cats.length === 0) return "";
   const catList = cats.map((c) => `- ${c.slug} — ${c.name}: ${c.description || ""}`).join("\n");
-  const tagList = tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean).join(", ");
+  const tagList = withoutAppTags(tags.map((t) => (typeof t === "string" ? t : t.name)).filter(Boolean)).join(", ");
   const sops = cats.filter((c) => c.sop).map((c) => `### ${c.name} (${c.slug})\n${c.sop}`).join("\n\n");
   return `
 
@@ -124,6 +129,8 @@ ${MOVES_RULES}
 
 ${NOTES_RULES}
 
+${MEETING_RULES}
+
 Be precise, not exhaustive. Return empty arrays for any boardChanges kind with nothing to propose.${categorizationBlock(categories, tagVocab)}`;
 }
 
@@ -141,6 +148,7 @@ function transcriptLines(lines, list, orgName, tagged) {
     const tag = tagged ? `[${SCOPE_TAG[tr.scope] || "Context"}] ` : "";
     const cross = sharedSuffix(tr, orgName);
     lines.push(`### ${tag}${tr.title || "Meeting"}${tr.date ? ` (${tr.date})` : ""}${cross}`);
+    if (tr.attendees?.length) lines.push(`Attendees: ${tr.attendees.join(", ")}`);
     if (tr.overview) lines.push(`Overview: ${tr.overview}`);
     if (tr.actionItems) lines.push(`Action items: ${tr.actionItems}`);
     lines.push("");
@@ -193,16 +201,18 @@ export function normalizeBoardChanges(parsed) {
       .map((c) => ({
         title: String(c?.title || ""),
         note: String(c?.note || ""),
+        why: String(c?.why || ""),
+        meeting: normalizeMeeting(c?.meeting),
         parentRef: typeof c?.parentRef === "string" ? c.parentRef : "",
         categories: strs(c?.categories),
-        tags: strs(c?.tags),
+        tags: withoutAppTags(c?.tags),
       }))
       .filter((c) => c.title),
     moves: (Array.isArray(bc.moves) ? bc.moves : [])
-      .map((m) => ({ itemId: String(m?.itemId || ""), title: String(m?.title || ""), toStatus: String(m?.toStatus || ""), reason: String(m?.reason || "") }))
+      .map((m) => ({ itemId: String(m?.itemId || ""), title: String(m?.title || ""), toStatus: String(m?.toStatus || ""), reason: String(m?.reason || ""), meeting: normalizeMeeting(m?.meeting) }))
       .filter((m) => m.itemId && m.toStatus),
     notes: (Array.isArray(bc.notes) ? bc.notes : [])
-      .map((n) => ({ itemId: String(n?.itemId || ""), title: String(n?.title || ""), note: String(n?.note || "") }))
+      .map((n) => ({ itemId: String(n?.itemId || ""), title: String(n?.title || ""), note: String(n?.note || ""), meeting: normalizeMeeting(n?.meeting) }))
       .filter((n) => n.itemId && n.note),
   };
 }

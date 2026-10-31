@@ -32,6 +32,7 @@ import { STATUS_OPTIONS } from "../constants/itemStatuses.js";
 import { STATUS_MAP, AI_GEN_STATUS } from "./itemStatusMap.js";
 import { validateProposal, inheritKeysForCreate, planTopicWrites, changedOpenFloor } from "./syncMeeting.js";
 import { tagSlug, syncMeetingStamps, groupStamps } from "./boardSyncCore.js";
+import { IN_MEETING_TAG, IN_MEETING_TAG_FIELDS, attendeeNames, syncNoteBody, withInMeetingTag } from "./syncNotes.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_WINDOW_MS = 21 * DAY_MS; // used only when this agenda has no mapped past meeting yet
@@ -203,6 +204,7 @@ export async function assembleGenInputs(agenda, items = [], orgSlug = null, { ma
       scope: capped[i].scope,
       org: capped[i].org || null,
       orgName: orgNameOf(capped[i].org),
+      attendees: attendeeNames(capped[i]),
       overview: s.overview || s.short_overview || "",
       actionItems: s.action_items || "",
     });
@@ -517,7 +519,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
   const createOrgs = acceptedCreates.map((x) => orgOfCreate(x.create));
   const distinctOrgs = [...new Set(createOrgs.filter(Boolean))];
 
-  // Note targets: need each item's current description (read phase).
+  // Note targets: read in the tx so a Note never lands on a deleted item.
   const noteItemIds = [...new Set(acceptedNotes.map((n) => n.itemId).filter(Boolean))];
 
   let createdCount = 0;
@@ -584,6 +586,9 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     for (const [id, ref] of noteRefs) {
       noteSnaps.set(id, await tx.get(ref));
     }
+    // Every created task gets the shared in-meeting tag; create it if missing.
+    const inMeetingTagRef = doc(db, "tags", IN_MEETING_TAG);
+    const inMeetingTagMissing = acceptedCreates.length > 0 && !(await tx.get(inMeetingTagRef)).exists();
 
     // ---- WRITES PHASE ----
     // Fresh-per-attempt accumulators (retries must not double-append).
@@ -598,6 +603,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       if (!name) return null;
       const inScope = tagsForOrg(existingTags, orgId);
       const id = tagSlug(name);
+      if (id === IN_MEETING_TAG) return null;
       const found = inScope.find((x) => x.id === name)
         || inScope.find((x) => x.name.toLowerCase() === name.toLowerCase())
         || inScope.find((x) => x.id === id);
@@ -665,6 +671,20 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
     });
     topicPlan.deletes.forEach((id) => tx.delete(topicRef(id)));
 
+    // Each accepted change also gets a Note saying where it came from.
+    const writeNote = (itemId, kind, change) => {
+      const body = syncNoteBody(kind, change);
+      if (!body) return;
+      tx.set(doc(collection(db, "items", itemId, "comments")), {
+        itemId,
+        authorId: uid,
+        body,
+        parentCommentId: null,
+        source: "sync-meeting",
+        createdAt: serverTimestamp(),
+      });
+    };
+
     // Accepted creates → new items. itemNumber from each org's counter.
     const orgNum = new Map();
     for (const [o, snap] of orgSnaps) {
@@ -678,7 +698,7 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
       const assigneeIds = Array.isArray(promo?.assigneeIds) ? promo.assigneeIds : [];
       const inherited = inheritKeysForCreate(create, topicsById);
       const categoryId = promo?.categoryId !== undefined ? promo.categoryId : inherited.categoryId;
-      const tagIds = promo?.tagIds !== undefined ? promo.tagIds : inherited.tagIds;
+      const tagIds = withInMeetingTag(promo?.tagIds !== undefined ? promo.tagIds : inherited.tagIds);
       let num = orgNum.get(org) ?? 1;
       order = generateKeyBetween(order, null);
 
@@ -709,10 +729,12 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
         assigneeIds,
         itemNumber: num,
         createdBy: uid || null,
+        createdVia: "sync-meeting",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         order,
       });
+      writeNote(createDocRefs[pos].id, "create", create);
       orgNum.set(org, num + 1);
     });
 
@@ -736,21 +758,20 @@ export async function applyUnified(agendaId, orgSlug, proposal, accepted, uid = 
         updatedAt: serverTimestamp(),
         updatedByUid: uid,
       });
+      writeNote(m.itemId, "move", m);
     });
 
-    // Accepted notes → append to description (skip if the raw note is already
-    // present in the current description).
+    // Accepted notes → a Note on the existing item, which counts as an update.
     acceptedNotes.forEach((n) => {
       const snap = noteSnaps.get(n.itemId);
       if (!snap?.exists() || !n.note) return;
-      const cur = snap.data().description || "";
-      if (cur.includes(n.note)) return;
-      tx.update(doc(db, "items", n.itemId), {
-        description: `${cur ? `${cur}\n` : ""}— ${n.note}`,
-        updatedAt: serverTimestamp(),
-        updatedByUid: uid,
-      });
+      writeNote(n.itemId, "note", n);
+      tx.update(doc(db, "items", n.itemId), { updatedAt: serverTimestamp(), updatedByUid: uid });
     });
+
+    if (inMeetingTagMissing) {
+      tx.set(inMeetingTagRef, { ...IN_MEETING_TAG_FIELDS, sortOrder: tagSort + newTagWrites.length + 1, createdAt: serverTimestamp(), createdByUid: uid });
+    }
 
     // Coined tags (layer-3 client-proprietary).
     newTagWrites.forEach((w, i) => {

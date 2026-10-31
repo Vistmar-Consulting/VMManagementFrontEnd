@@ -47,6 +47,7 @@ import { AI_GEN_STATUS } from "../lib/itemStatusMap.js";
 import { getPillBg, getTextColor } from "../theme/pillColors.js";
 import ProposedBoardRow from "./ProposedBoardRow.jsx";
 import ProposalReview from "./ProposalReview.jsx";
+import { syncNoteBody } from "../lib/syncNotes.js";
 
 const STATUS_BY_ID   = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.id,   s]));
 const STATUS_BY_NAME = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.name, s]));
@@ -729,9 +730,6 @@ export default function SyncMeetingDialog({
                       <Box
                         key={i}
                         sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 0.75,
                           px: 1.5,
                           py: 0.75,
                           borderBottom: "1px solid",
@@ -740,45 +738,50 @@ export default function SyncMeetingDialog({
                           opacity: selMoves.has(i) ? 1 : 0.5,
                         }}
                       >
-                        <Checkbox
-                          size="small"
-                          checked={selMoves.has(i)}
-                          onChange={() => toggle(setSelMoves)(i)}
-                          sx={{ p: 0.25, flexShrink: 0 }}
-                        />
-                        <Typography
-                          variant="body2"
-                          sx={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                        >
-                          {m.title}
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                          <Checkbox
+                            size="small"
+                            checked={selMoves.has(i)}
+                            onChange={() => toggle(setSelMoves)(i)}
+                            sx={{ p: 0.25, flexShrink: 0 }}
+                          />
+                          <Typography
+                            variant="body2"
+                            sx={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                          >
+                            {m.title}
+                          </Typography>
+                          <Chip
+                            label={curStatus?.name || "?"}
+                            size="small"
+                            sx={{
+                              bgcolor: getPillBg(curStatus?.color),
+                              color: getTextColor(curStatus?.color),
+                              fontWeight: 600,
+                              fontSize: "0.68rem",
+                              height: 19,
+                              "& .MuiChip-label": { px: 0.6 },
+                              flexShrink: 0,
+                            }}
+                          />
+                          <Typography variant="caption" sx={{ color: "text.disabled", flexShrink: 0 }}>→</Typography>
+                          <Chip
+                            label={toStatus?.name || m.toStatus}
+                            size="small"
+                            sx={{
+                              bgcolor: getPillBg(toStatus?.color),
+                              color: getTextColor(toStatus?.color),
+                              fontWeight: 600,
+                              fontSize: "0.68rem",
+                              height: 19,
+                              "& .MuiChip-label": { px: 0.6 },
+                              flexShrink: 0,
+                            }}
+                          />
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", pl: 3.5, whiteSpace: "pre-wrap" }}>
+                          <strong>Note:</strong> {syncNoteBody("move", m)}
                         </Typography>
-                        <Chip
-                          label={curStatus?.name || "?"}
-                          size="small"
-                          sx={{
-                            bgcolor: getPillBg(curStatus?.color),
-                            color: getTextColor(curStatus?.color),
-                            fontWeight: 600,
-                            fontSize: "0.68rem",
-                            height: 19,
-                            "& .MuiChip-label": { px: 0.6 },
-                            flexShrink: 0,
-                          }}
-                        />
-                        <Typography variant="caption" sx={{ color: "text.disabled", flexShrink: 0 }}>→</Typography>
-                        <Chip
-                          label={toStatus?.name || m.toStatus}
-                          size="small"
-                          sx={{
-                            bgcolor: getPillBg(toStatus?.color),
-                            color: getTextColor(toStatus?.color),
-                            fontWeight: 600,
-                            fontSize: "0.68rem",
-                            height: 19,
-                            "& .MuiChip-label": { px: 0.6 },
-                            flexShrink: 0,
-                          }}
-                        />
                       </Box>
                     );
                   })}
@@ -797,7 +800,7 @@ export default function SyncMeetingDialog({
                       <Checkbox size="small" checked={selNotes.has(i)} onChange={() => toggle(setSelNotes)(i)} sx={{ mt: -0.5 }} />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>{n.title}</Typography>
-                        <Typography variant="caption" color="text.secondary">{n.note}</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", whiteSpace: "pre-wrap" }}>{syncNoteBody("note", n)}</Typography>
                       </Box>
                     </Box>
                   );

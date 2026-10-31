@@ -144,6 +144,13 @@ describe("ProposedBoardRow", () => {
     expect(screen.queryByText("Discussed in client call 2026-06-06")).not.toBeInTheDocument();
   });
 
+  it("shows the Note the apply will write and the in-meeting tag", () => {
+    const create = { ...baseCreate, why: "Bill wants posts queued before launch.", meeting: { title: "Unio Biweekly", date: "2026-10-28", people: ["Bill"] } };
+    wrap(<ProposedBoardRow {...makeProps({ create })} />);
+    expect(screen.getByText(/Bill wants posts queued before launch\.\s+Meeting: Unio Biweekly · 2026-10-28\s+Discussed by: Bill/)).toBeInTheDocument();
+    expect(screen.getByText("Tagged in-meeting")).toBeInTheDocument();
+  });
+
   it("syncs title display when create.title changes externally (not editing)", () => {
     const p = makeProps();
     const { rerender } = wrap(<ProposedBoardRow {...p} />);
