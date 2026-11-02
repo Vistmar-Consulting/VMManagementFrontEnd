@@ -21,7 +21,7 @@ function reloadForNewVersion() {
 // PROPS and builds the client internally — it does NOT accept a pre-built
 // `client` prop (that's the createLiveblocksContext(client) pattern). So the
 // authEndpoint lives here and is passed straight to LiveblocksProvider.
-const authEndpoint = async (room) => {
+export const authEndpoint = async (room) => {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
@@ -46,8 +46,13 @@ const authEndpoint = async (room) => {
   });
   // 426: a newer version is deployed. Reload onto it rather than edit with an
   // older editor schema. At most once a minute, so a lagging CDN can't loop.
-  // A local build is refused for good — reloading wouldn't change that.
-  if (res.status === 426 && __BUILD_ID__ !== "dev") reloadForNewVersion();
+  // A local build is refused for good — reloading wouldn't change that, so it
+  // returns "forbidden", the one auth result Liveblocks does not retry.
+  // Throwing instead made it re-request every ~11s for as long as the tab was open.
+  if (res.status === 426) {
+    if (__BUILD_ID__ === "dev") return { error: "forbidden", reason: "Local build — live editing is disabled" };
+    reloadForNewVersion();
+  }
   if (!res.ok) throw new Error(`Liveblocks auth failed: ${res.status}`);
   return await res.json();
 };

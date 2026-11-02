@@ -16,6 +16,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { applyCors } from "../../meetings/_lib/cors.js";
 import { requireAuth } from "../../meetings/_lib/auth.js";
 import { streamMessage } from "./claude.js";
+import { startKeepAlive } from "../_lib/keepAlive.js";
 import { VISTAMAR_BOARD_SCOPE, CREATE_BASE_RULES, PARENT_REF_RULES, MOVES_RULES, NOTES_RULES, MEETING_RULES, MEETING_SCHEMA, normalizeMeeting, withoutAppTags } from "../_lib/boardRules.js";
 import { BODY_HTML_RULES } from "../_lib/htmlRules.js";
 
@@ -385,6 +386,9 @@ export default async function handler(req, res) {
   }
   const style = meetingStyle === "executive" ? "executive" : "working";
 
+  // From here on the status is committed (200) and errors travel in the body.
+  const out = startKeepAlive(res);
+
   try {
     const client = new Anthropic({ apiKey });
     // Streamed (high max_tokens crosses the SDK's non-streaming guard); model,
@@ -400,22 +404,22 @@ export default async function handler(req, res) {
     });
 
     if (message.stop_reason === "max_tokens") {
-      return res.status(502).json({ error: "Generation was cut off (hit token limit). Try again." });
+      return out.fail("Generation was cut off (hit token limit). Try again.");
     }
     if (message.stop_reason === "refusal") {
-      return res.status(502).json({ error: "The model declined to prepare this meeting." });
+      return out.fail("The model declined to prepare this meeting.");
     }
 
     const textBlock = message.content.find((b) => b.type === "text");
     if (!textBlock?.text) {
-      return res.status(502).json({ error: "The model returned no content." });
+      return out.fail("The model returned no content.");
     }
 
     let parsed;
     try {
       parsed = JSON.parse(textBlock.text);
     } catch {
-      return res.status(502).json({ error: "The model returned malformed JSON." });
+      return out.fail("The model returned malformed JSON.");
     }
 
     // Topics: mint a stable topicId per topic (t0, t1, …) so creates can
@@ -479,14 +483,13 @@ export default async function handler(req, res) {
           .filter((n) => n.itemId && n.note)
       : [];
 
-    return res.status(200).json({
+    return out.send({
       topics,
       openFloorHtml: String(parsed.openFloorHtml || ""),
       boardChanges: { creates, moves, notes },
     });
   } catch (err) {
     console.error("ai/prepare failed", err);
-    const status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 500;
-    return res.status(status).json({ error: err?.message || "Meeting preparation failed" });
+    return out.fail(err?.message || "Meeting preparation failed");
   }
 }

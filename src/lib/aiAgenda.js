@@ -410,10 +410,16 @@ export async function prepareMeeting({ prompt, meetingStyle, agenda, transcripts
     const data = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((typeof data.error === "string" ? data.error : data.error?.message) || `HTTP ${res.status}`);
   }
-  // /api/ai/prepare returns the proposal fields at the top level
-  // ({ topics, openFloorHtml, boardChanges }) — no { proposal }
-  // wrapper — so return the body directly.
-  return res.json();
+  // The server commits a 200 up front and streams keep-alive whitespace while
+  // the model works (api/ai/_lib/keepAlive.js), so failures after that point
+  // arrive as a 200 with { error } in the body.
+  const data = await res.json();
+  if (data.error) {
+    throw new Error(typeof data.error === "string" ? data.error : data.error.message || "Meeting preparation failed");
+  }
+  // Proposal fields are at the top level ({ topics, openFloorHtml,
+  // boardChanges }) — no { proposal } wrapper — so return the body directly.
+  return data;
 }
 
 // Sync Meeting (unified): apply the reviewed proposal — agenda content + topic
