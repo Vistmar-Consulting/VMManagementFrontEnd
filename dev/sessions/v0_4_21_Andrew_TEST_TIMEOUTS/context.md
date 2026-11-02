@@ -44,7 +44,16 @@ Separate worktree (`agenda-link-click`), recorded here because it had no session
 Verified on production: clicking a topic-body link opened a new tab, agenda stayed put, `window.opener` null. `RichBodyEditor` covered by unit tests only.
 Tradeoff: clicking a link no longer places the cursor in it; edit links by arrowing into the text, then Cmd+K or the toolbar Link button.
 
+## Also shipped: Sync Meeting keep-alive + Liveblocks 426 retry (2026-11-02)
+
+Separate worktree (`prepare-keepalive`), recorded here because it had no session of its own. Commit `5ccf46a`.
+
+- **Sync Meeting "Failed to fetch".** A Unio sync returned 200 on the server while the browser lost the connection: `/api/ai/prepare` sent no bytes until Opus finished, so an idle connection was dropped. `api/ai/_lib/keepAlive.js` now commits a 200 and writes a space every 15s; errors after that point travel in the body as `{ error }`, and `prepareMeeting` checks for them. Verified on production: the Unio sync re-run at 09:26 reached the review screen.
+- **Liveblocks 426 loop.** A local build (`__BUILD_ID__ === "dev"`) refused with 426 threw, and Liveblocks retried every ~11s indefinitely (48 calls in 9 min on 2026-11-02). It now returns `{ error: "forbidden" }`, which Liveblocks does not retry. Unit-tested only. Tabs open since before 2026-10-13 run older code and keep looping until closed.
+
 ## Deferred
+
+- Full-suite run on 2026-11-02 failed 4 UI tests under load (`SyncMeetingDialog.review` ×2, `TaskBoard.views`, `ColorMenu`); all pass when run alone. Same load-timeout class as this session.
 
 - The 6 dialog test files run 0.1–4s per test at low load; no query rewrite needed. `BoardChatPanel` "shows the model-call cap notice" is 6.2s, over vitest's 5s default.
 - expandAll tests still take 4–9s each; the 60s limits are kept.
