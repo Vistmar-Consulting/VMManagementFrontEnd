@@ -57,8 +57,7 @@ Nothing else in the prompt or tool schemas changes.
 Today a list is several `li` blocks; `diffGap` pairs only the first bullet with the new table and
 emits the remaining deleted bullets after it, so the redline splits the old list around the new
 table (`agendaDiff.js:152-157`). Fix: in `diffGap`, if any **paired** position `x < k`
-(k = min of the two side lengths) has exactly one side a table, or two tables of different
-shapes, the whole gap becomes every `before` block as `<del>`, then every `after` block as `<ins>`.
+(k = min of the two side lengths) has exactly one side a table, the whole gap becomes every `before` block as `<del>`, then every `after` block as `<ins>`.
 Leftover blocks (index ≥ k) never trigger it. Every other gap keeps today's pairing — e.g.
 before = [p], after = [p′, table] still word-diffs p→p′ and inserts the table.
 

@@ -150,15 +150,15 @@ function pairChanged(b, a, out) {
   out.push(wholeBlock(a, "ins"));
 }
 
-// A table can't be shown in place against a non-table, or against a table of
-// another shape.
-const tableMismatch = (b, a) =>
-  (b.kind === "table") !== (a.kind === "table") || (b.kind === "table" && !sameShape(b, a));
+// A table paired with a non-table can't be shown in place. (Two tables of
+// different shapes already render as one table deleted then one inserted.)
+const tableMismatch = (b, a) => (b.kind === "table") !== (a.kind === "table");
 
 // Unmatched blocks between two LCS matches: pair in order, then the leftovers.
 // If any pair is a table mismatch, the whole gap reads as the old blocks
 // deleted, then the new ones inserted, so a list replaced by a table stays
-// together instead of being split around it.
+// together instead of being split around it. Other pairs in that gap lose
+// their word diff too, an accepted cost of keeping the gap readable.
 function diffGap(before, after, out) {
   const k = Math.min(before.length, after.length);
   if (before.slice(0, k).some((b, x) => tableMismatch(b, after[x]))) {
