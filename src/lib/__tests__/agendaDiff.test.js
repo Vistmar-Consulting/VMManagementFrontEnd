@@ -75,6 +75,23 @@ describe("diffAgendaHtml", () => {
     expect([...tables[1].querySelectorAll("td")].every((td) => td.querySelector("ins"))).toBe(true);
   });
 
+  const TABLE = "<table><tbody><tr><th><p>Campaign</p></th><th><p>Spend</p></th></tr><tr><td><p>SF</p></td><td><p>$595</p></td></tr></tbody></table>";
+
+  it("shows a list replaced by a table as the whole list deleted, then the table", () => {
+    const before = "<p>Campaign results</p><ul><li>SF: $595</li><li>Fremont: $412</li><li>Total: $2,486</li></ul>";
+    const out = diffAgendaHtml(before, `<p>Campaign results</p>${TABLE}`);
+    expect(marks(out, "del")).toEqual(["SF: $595", "Fremont: $412", "Total: $2,486"]);
+    expect(out.indexOf("<table")).toBeGreaterThan(out.lastIndexOf("</del>"));
+    expect([...body(out).querySelectorAll("table td, table th")].every((c) => c.querySelector("ins"))).toBe(true);
+  });
+
+  it("still word-diffs a paired paragraph when the table is a leftover insert", () => {
+    const out = diffAgendaHtml("<p>Campaign results (Spend)</p>", `<p>Campaign results</p>${TABLE}`);
+    expect(marks(out, "del").join(" ")).not.toMatch(/Campaign/);
+    expect(marks(out, "del").join(" ")).toMatch(/Spend/);
+    expect([...body(out).querySelectorAll("table td, table th")].every((c) => c.querySelector("ins"))).toBe(true);
+  });
+
   it("marks everything inserted when before is empty", () => {
     const out = diffAgendaHtml("", "<p>Homepage hero copy</p>");
     expect(marks(out, "ins")).toEqual(["Homepage hero copy"]);

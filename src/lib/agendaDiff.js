@@ -150,9 +150,22 @@ function pairChanged(b, a, out) {
   out.push(wholeBlock(a, "ins"));
 }
 
+// A table can't be shown in place against a non-table, or against a table of
+// another shape.
+const tableMismatch = (b, a) =>
+  (b.kind === "table") !== (a.kind === "table") || (b.kind === "table" && !sameShape(b, a));
+
 // Unmatched blocks between two LCS matches: pair in order, then the leftovers.
+// If any pair is a table mismatch, the whole gap reads as the old blocks
+// deleted, then the new ones inserted, so a list replaced by a table stays
+// together instead of being split around it.
 function diffGap(before, after, out) {
   const k = Math.min(before.length, after.length);
+  if (before.slice(0, k).some((b, x) => tableMismatch(b, after[x]))) {
+    before.forEach((b) => out.push(wholeBlock(b, "del")));
+    after.forEach((a) => out.push(wholeBlock(a, "ins")));
+    return;
+  }
   for (let x = 0; x < k; x++) pairChanged(before[x], after[x], out);
   before.slice(k).forEach((b) => out.push(wholeBlock(b, "del")));
   after.slice(k).forEach((a) => out.push(wholeBlock(a, "ins")));
