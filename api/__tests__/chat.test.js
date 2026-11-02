@@ -101,6 +101,16 @@ describe("Agenda Chat route", () => {
     expect(create.mock.calls[0][0].system).toBe(AGENDA_CHAT_SYSTEM_PROMPT);
     expect(create.mock.calls[0][0].tools).toBe(AGENDA_CHAT_TOOLS);
   });
+
+  it("only Agenda Chat's prompt carries the table-creation rule", async () => {
+    const { CHAT_TABLE_RULES, BODY_HTML_RULES } = await import("../ai/_lib/htmlRules.js");
+    const { AGENDA_CHAT_SYSTEM_PROMPT } = await import("../ai/_handlers/agendaChatTools.js");
+    const { SYSTEM_PROMPT } = await import("../ai/_handlers/chatTools.js");
+    expect(AGENDA_CHAT_SYSTEM_PROMPT).toContain(BODY_HTML_RULES);
+    expect(AGENDA_CHAT_SYSTEM_PROMPT).toContain(CHAT_TABLE_RULES);
+    expect(AGENDA_CHAT_SYSTEM_PROMPT).toMatch(/no tables in your reply text/);
+    expect(SYSTEM_PROMPT).not.toContain(CHAT_TABLE_RULES);
+  });
 });
 
 describe("POST /api/ai/chat", () => {

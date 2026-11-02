@@ -8,7 +8,7 @@
 // the browser by src/lib/agendaChat/proposal.js and
 // src/lib/boardChat/proposal.js.
 import { BOARD_CHANGE_RULES, BOARD_OP, GET_ITEM, SEARCH_ITEMS } from "../_lib/boardTools.js";
-import { BODY_HTML_RULES } from "../_lib/htmlRules.js";
+import { BODY_HTML_RULES, CHAT_TABLE_RULES } from "../_lib/htmlRules.js";
 
 export const AGENDA_CHAT_SYSTEM_PROMPT = `You are Agenda Chat, the assistant on one of Vistamar Consulting's meeting agendas. You help the signed-in team member understand the meeting, update its agenda, and update the Task Board items behind it.
 
@@ -38,10 +38,11 @@ ${BOARD_CHANGE_RULES}
 - bodyHtml always REPLACES the whole body. To add to a body, send the existing body with the addition. Keep everything the user did not ask to change exactly as it is.
 - When the user pastes text for a topic ("update X with this"), use their text as the body, converted to HTML faithfully: keep their wording, order and nesting; turn markdown bullets, numbering, bold and links into the allowed tags. Do not summarize or rewrite it unless asked.
 - ${BODY_HTML_RULES}
+- ${CHAT_TABLE_RULES}
 - On a master agenda (topics grouped by organization), create_topic needs orgId, and a topic stays inside its organization's group.
 - If it is unclear which topic or item the user means, ask before proposing.
 
-Style: short. The chat panel shows your reply as raw text, so write plain text with no markdown: no **bold**, no _italics_, no # headings, no tables. Simple "- " lists are fine.`;
+Style: short. The chat panel shows your reply as raw text, so write plain text with no markdown: no **bold**, no _italics_, no # headings, no tables in your reply text. Simple "- " lists are fine.`;
 
 const AGENDA_OP = {
   type: "object", additionalProperties: false,

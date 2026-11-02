@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { BODY_HTML_RULES } from "../htmlRules.js";
+import { BODY_HTML_RULES, CHAT_TABLE_RULES } from "../htmlRules.js";
 
 vi.mock("@anthropic-ai/sdk", () => ({ default: class {} }));
 
@@ -20,5 +20,18 @@ describe("BODY_HTML_RULES", () => {
     expect(prepare.buildSystem("P", "working", cats, [], false, false, [])).toContain(BODY_HTML_RULES);
     expect(refine.buildSystem(cats, [], false, [])).toContain(BODY_HTML_RULES);
     expect(generate.buildSystem("P", "working", cats, [], false, false, [])).toContain(BODY_HTML_RULES);
+  });
+});
+
+describe("CHAT_TABLE_RULES", () => {
+  it("lets a table be created only on request", () => {
+    expect(CHAT_TABLE_RULES).toMatch(/create a new table ONLY when the user explicitly asks/);
+    expect(CHAT_TABLE_RULES).toMatch(/Never turn content into a table otherwise/);
+  });
+
+  it("is not in the Sync Meeting, Refine or Generate prompts", () => {
+    expect(prepare.buildSystem("P", "working", cats, [], false, false, [])).not.toContain(CHAT_TABLE_RULES);
+    expect(refine.buildSystem(cats, [], false, [])).not.toContain(CHAT_TABLE_RULES);
+    expect(generate.buildSystem("P", "working", cats, [], false, false, [])).not.toContain(CHAT_TABLE_RULES);
   });
 });
