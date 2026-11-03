@@ -9,7 +9,8 @@ import { t } from "../theme/tokens.js";
 // collaborator) all reflect automatically via Firestore onSnapshot. Hidden when
 // there are no topics. Clicking an entry smooth-scrolls to its anchor, which
 // carries scroll-margin-top to clear the sticky toolbar. Jumping to a topic
-// first expands it (onExpandTopic) in case this viewer had collapsed it. The
+// first expands it (onExpandTopic) in case this viewer had collapsed it; the
+// Open Floor entry does the same via onExpandOpenFloor. The
 // expand is flushed before scrolling: after Collapse all the page is too short
 // to reach a late topic until its body is back in the layout.
 export default function AgendaTOC({
@@ -19,13 +20,15 @@ export default function AgendaTOC({
   allCollapsed = false,
   onToggleAll,
   onExpandTopic,
+  onExpandOpenFloor,
 }) {
   const entries = buildTocEntries(topics, { isMaster, orgById, hasOpenFloor: true });
   if (entries.length === 0) return null;
 
-  const goTo = (anchorId, topicId) => {
-    if (topicId != null && onExpandTopic) flushSync(() => onExpandTopic(topicId));
-    document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const goTo = (entry) => {
+    if (entry.type === "topic" && entry.topicId != null && onExpandTopic) flushSync(() => onExpandTopic(entry.topicId));
+    if (entry.type === "openfloor" && onExpandOpenFloor) flushSync(() => onExpandOpenFloor());
+    document.getElementById(entry.anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -70,11 +73,11 @@ export default function AgendaTOC({
               <Box
                 component="li"
                 key={e.anchorId}
-                onClick={() => goTo(e.anchorId)}
+                onClick={() => goTo(e)}
                 onKeyDown={(ev) => {
                   if (ev.key === "Enter" || ev.key === " ") {
                     ev.preventDefault();
-                    goTo(e.anchorId);
+                    goTo(e);
                   }
                 }}
                 role="link"
@@ -100,11 +103,11 @@ export default function AgendaTOC({
             <Box
               component="li"
               key={e.anchorId}
-              onClick={() => goTo(e.anchorId, e.topicId)}
+              onClick={() => goTo(e)}
               onKeyDown={(ev) => {
                 if (ev.key === "Enter" || ev.key === " ") {
                   ev.preventDefault();
-                  goTo(e.anchorId, e.topicId);
+                  goTo(e);
                 }
               }}
               role="link"

@@ -118,7 +118,7 @@ const inputBase = {
 };
 
 // Shared visual for every Overview section title — topic headings (editable)
-// and Open Floor (static) both use this so they look identical.
+// and the Open Floor toggle header both use this so they look identical.
 const sectionTitleSx = {
   fontFamily: t.serif,
   fontSize: 15,
@@ -562,19 +562,67 @@ export function OverviewTopic({ topic, agendaId, dragHandleProps, collapsed, onT
 
 // ─── Open Floor ────────────────────────────────────────────────────────
 
-function OpenFloorSection({ agendaId, agenda }) {
+// Collapsible like an Overview topic, and collapsed by default. The header is
+// the toggle; the body is hidden, not unmounted, for the same collab-editor
+// reason as OverviewTopic.
+export function OpenFloorSection({ agendaId, agenda, collapsed, onToggleCollapsed }) {
   const { user } = useAuth();
+  const focus = useEditorFocus();
+  const bodyRef = useRef(null);
+
+  // Same rule as OverviewTopic: a hidden body must not stay the shared
+  // toolbar's target.
+  useEffect(() => {
+    if (!collapsed) return;
+    const active = focus?.activeEditor;
+    if (active && !active.isDestroyed && bodyRef.current?.contains(active.view.dom)) {
+      focus.setActiveEditor(null);
+    }
+  }, [collapsed, focus]);
 
   return (
     <Box id="open-floor" sx={{ mt: 2.5, scrollMarginTop: `${ANCHOR_SCROLL_MT}px` }}>
-      <Typography sx={sectionTitleSx}>Open Floor</Typography>
-      <CollabBodyEditor
-        mode="shared"
-        valueHtml={agenda?.openFloorHtml || ""}
-        fragmentKey="openFloor"
-        placeholder="Add open-floor items…"
-        onChangeHtml={(html) => editAgenda(agendaId, { openFloorHtml: html }, user?.uid)}
-      />
+      <Box
+        component="button"
+        type="button"
+        onClick={onToggleCollapsed}
+        aria-expanded={!collapsed}
+        aria-controls="open-floor-body"
+        aria-label={`${collapsed ? "Expand" : "Collapse"} Open Floor`}
+        title={collapsed ? "Expand Open Floor" : "Collapse Open Floor"}
+        sx={{
+          ...sectionTitleSx,
+          display: "flex",
+          alignItems: "center",
+          width: "100%",
+          borderTop: "none",
+          borderLeft: "none",
+          borderRight: "none",
+          background: "none",
+          px: 0,
+          textAlign: "left",
+          cursor: "pointer",
+          "& .open-floor-chevron": { opacity: 0.55, transition: "opacity 0.12s" },
+          "&:hover .open-floor-chevron, &:focus-visible .open-floor-chevron": { opacity: 1 },
+        }}
+      >
+        <Box component="span" sx={{ flex: 1 }}>Open Floor</Box>
+        <Box component="span" className="open-floor-chevron" sx={{ display: "flex", color: t.ink3, ml: 1 }}>
+          <ChevronDown
+            size={16}
+            style={{ transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 0.12s" }}
+          />
+        </Box>
+      </Box>
+      <Box id="open-floor-body" ref={bodyRef} sx={{ display: collapsed ? "none" : "block" }}>
+        <CollabBodyEditor
+          mode="shared"
+          valueHtml={agenda?.openFloorHtml || ""}
+          fragmentKey="openFloor"
+          placeholder="Add open-floor items…"
+          onChangeHtml={(html) => editAgenda(agendaId, { openFloorHtml: html }, user?.uid)}
+        />
+      </Box>
     </Box>
   );
 }
@@ -1640,14 +1688,18 @@ export default function AgendaDetail() {
   // Agenda Chat stays open across agendas and visits, like Board Chat.
   const [agendaChatOpen, setAgendaChatOpen] = useLocalStorage("vm-agenda-chat-open", false);
   // Overview topics this viewer has collapsed. Window-local by design: never
-  // persisted, never shared, so everything opens expanded on load.
+  // persisted, never shared, so topics open expanded on load.
   const [collapsedTopicIds, setCollapsedTopicIds] = useState(() => new Set());
+  // Open Floor, by contrast, opens collapsed. Same window-local scope; shared
+  // by Overview and Working so switching views keeps this viewer's choice.
+  const [openFloorCollapsed, setOpenFloorCollapsed] = useState(true);
   // The route keeps this page mounted across agenda-to-agenda navigation;
-  // start each agenda fully expanded.
+  // start each agenda with topics expanded and Open Floor collapsed.
   const [collapsedForAgendaId, setCollapsedForAgendaId] = useState(agendaId);
   if (collapsedForAgendaId !== agendaId) {
     setCollapsedForAgendaId(agendaId);
     setCollapsedTopicIds(new Set());
+    setOpenFloorCollapsed(true);
   }
 
   // Estimated pending timestamps: the header's "updated … ago" doesn't vanish
@@ -1759,9 +1811,14 @@ export default function AgendaDetail() {
 
   const lastTopicSort = topics?.length ? topics[topics.length - 1].sortOrder ?? 0 : 0;
 
-  const allTopicsCollapsed = !!topics?.length && topics.every((tp) => collapsedTopicIds.has(tp.id));
-  const toggleAllTopics = () =>
-    setCollapsedTopicIds(allTopicsCollapsed ? new Set() : new Set((topics || []).map((tp) => tp.id)));
+  // "All" spans every collapsible section in the Contents box: the topics and
+  // Open Floor.
+  const allSectionsCollapsed =
+    openFloorCollapsed && (topics || []).every((tp) => collapsedTopicIds.has(tp.id));
+  const toggleAllSections = () => {
+    setCollapsedTopicIds(allSectionsCollapsed ? new Set() : new Set((topics || []).map((tp) => tp.id)));
+    setOpenFloorCollapsed(!allSectionsCollapsed);
+  };
   const toggleTopicCollapsed = (topicId) =>
     setCollapsedTopicIds((prev) => {
       const next = new Set(prev);
@@ -1891,9 +1948,10 @@ export default function AgendaDetail() {
                   topics={topics}
                   isMaster={isMaster}
                   orgById={orgById}
-                  allCollapsed={allTopicsCollapsed}
-                  onToggleAll={toggleAllTopics}
+                  allCollapsed={allSectionsCollapsed}
+                  onToggleAll={toggleAllSections}
                   onExpandTopic={expandTopic}
+                  onExpandOpenFloor={() => setOpenFloorCollapsed(false)}
                 />
                 <DragDropContext onDragEnd={handleTopicDragEnd}>
                   <Droppable droppableId="overview-topics">
@@ -1941,7 +1999,12 @@ export default function AgendaDetail() {
                   </Droppable>
                 </DragDropContext>
                 {!isMaster && <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />}
-                <OpenFloorSection agendaId={agendaId} agenda={agenda} />
+                <OpenFloorSection
+                  agendaId={agendaId}
+                  agenda={agenda}
+                  collapsed={openFloorCollapsed}
+                  onToggleCollapsed={() => setOpenFloorCollapsed((c) => !c)}
+                />
               </Box>
             </Box>
           </EditorFocusProvider>
@@ -2024,7 +2087,12 @@ export default function AgendaDetail() {
                   <AddTopicButton agendaId={agendaId} lastSortOrder={lastTopicSort} />
                 </Box>
               )}
-              <OpenFloorSection agendaId={agendaId} agenda={agenda} />
+              <OpenFloorSection
+                agendaId={agendaId}
+                agenda={agenda}
+                collapsed={openFloorCollapsed}
+                onToggleCollapsed={() => setOpenFloorCollapsed((c) => !c)}
+              />
               {agenda?.firefliesTitles?.length > 0 && (
                 <PastMeetingsCard firefliesTitles={agenda.firefliesTitles} />
               )}

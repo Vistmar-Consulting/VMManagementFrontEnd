@@ -32,11 +32,27 @@ describe("AgendaTOC collapse controls", () => {
     expect(onExpandTopic).toHaveBeenCalledWith("b");
   });
 
-  it("does not expand anything when Open Floor is clicked", () => {
+  it("expands Open Floor, and no topic, when Open Floor is clicked", () => {
     const onExpandTopic = vi.fn();
-    render(<AgendaTOC topics={topics} onToggleAll={() => {}} onExpandTopic={onExpandTopic} />);
+    const onExpandOpenFloor = vi.fn();
+    render(
+      <AgendaTOC
+        topics={topics}
+        onToggleAll={() => {}}
+        onExpandTopic={onExpandTopic}
+        onExpandOpenFloor={onExpandOpenFloor}
+      />
+    );
     fireEvent.click(screen.getByRole("link", { name: "Jump to Open Floor" }));
+    expect(onExpandOpenFloor).toHaveBeenCalledTimes(1);
     expect(onExpandTopic).not.toHaveBeenCalled();
+  });
+
+  it("does not expand Open Floor when a topic is clicked", () => {
+    const onExpandOpenFloor = vi.fn();
+    render(<AgendaTOC topics={topics} onToggleAll={() => {}} onExpandTopic={() => {}} onExpandOpenFloor={onExpandOpenFloor} />);
+    fireEvent.click(screen.getByRole("link", { name: "Jump to Reporting" }));
+    expect(onExpandOpenFloor).not.toHaveBeenCalled();
   });
 });
 
