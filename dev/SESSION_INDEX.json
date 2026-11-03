@@ -566,6 +566,16 @@
       "summary": "Member roles + labeled fields; Board Chat manages tags/categories; Sync Meeting/Board Sync provenance Notes + In-Meeting tag; Meeting Chat renamed Agenda Chat; Agenda Chat edits Task Board items and topic cards; AI views menu + Refresh; Remove from topic; syncs now see tags without sortOrder.",
       "folder": "dev/sessions/v0_4_24_Andrew_AGENDA_CHAT_BATCH/",
       "status": "complete"
+    },
+    {
+      "session_id": "SES-20261102-Andrew-v0.4.25-agenda-chat-tables",
+      "developer": "Andrew",
+      "date": "2026-11-02",
+      "date_closed": "2026-11-03",
+      "commit_start": "7231e30",
+      "summary": "Agenda Chat creates tables on request (CHAT_TABLE_RULES, Agenda Chat only); redline keeps a list replaced by a table together.",
+      "folder": "dev/sessions/v0_4_25_Andrew_AGENDA_CHAT_TABLES/",
+      "status": "complete"
     }
   ]
 }
