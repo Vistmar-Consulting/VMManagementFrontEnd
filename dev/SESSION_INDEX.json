@@ -584,7 +584,8 @@
       "commit_start": "dfffffa",
       "summary": "Meeting Agenda Open Floor is collapsible and opens collapsed (Overview + Working); Contents jump and Collapse all / Expand all include it.",
       "folder": "dev/sessions/v0_4_26_Andrew_OPEN_FLOOR_COLLAPSE/",
-      "status": "active"
+      "date_closed": "2026-11-03",
+      "status": "complete"
     }
   ]
 }

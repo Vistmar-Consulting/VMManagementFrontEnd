@@ -24,10 +24,15 @@ Andy's directive: make the Meeting Agenda Open Floor section collapsible, collap
 
 ## Deferred
 
-- Deployed-site check after Vercel builds `5f1279e`.
+- **Deployed-site check** — What: confirm Open Floor opens collapsed and toggles on the Vercel site. Why deferred: only local dev was checked. Trigger: next agenda session, or first time Open Floor is opened on prod.
+- **Full-suite timeouts** — 18 load-dependent timeouts in 5 unrelated files; tracked in `v0_4_21_Andrew_TEST_TIMEOUTS`.
 
 ## Shipped
 
 | Commit | Change |
 |---|---|
 | `5f1279e` | Open Floor collapsible, opens collapsed. Pushed to `origin/dev` 2026-11-03 after pre-push review (no Critical/Important). Rebased onto `dfffffa`; Open Floor body now saves through `editAgenda()` from `dev`. Re-verified in the browser after the rebase. |
+
+## Session close (2026-11-03 13:03 PST)
+
+Status: **complete**. Andy reviewed and approved. Commits `5f1279e` + this close-out are on `origin/dev`; local `main` was not touched (it sits at `4d97ccb`, behind `dev`). Worktree `open-floor-collapse` and its branch removed at close. Nothing uncommitted; no live data changed.
