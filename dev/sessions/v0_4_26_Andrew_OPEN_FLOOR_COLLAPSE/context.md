@@ -24,4 +24,10 @@ Andy's directive: make the Meeting Agenda Open Floor section collapsible, collap
 
 ## Deferred
 
-- Not committed or pushed — awaiting Andy's go-ahead (global rule 7 / rule 6).
+- Deployed-site check after Vercel builds `5f1279e`.
+
+## Shipped
+
+| Commit | Change |
+|---|---|
+| `5f1279e` | Open Floor collapsible, opens collapsed. Pushed to `origin/dev` 2026-11-03 after pre-push review (no Critical/Important). Rebased onto `dfffffa`; Open Floor body now saves through `editAgenda()` from `dev`. Re-verified in the browser after the rebase. |
