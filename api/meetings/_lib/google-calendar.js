@@ -276,17 +276,24 @@ export async function listEventsAcrossSubjects({ subjects, orgId, start, end }) 
   return dedupeEventsAcrossSubjects(perSubjectResults, subjects);
 }
 
+// Google may return an empty page with a nextPageToken (documented: a page can
+// hold fewer items than maxResults, "or none at all"). This happens once an
+// instance has been moved (an exception), so follow pages until one is found.
 async function findInstanceByDate(cal, eventId, date) {
-  const res = await cal.events.instances({
-    calendarId: CALENDAR_ID,
-    eventId,
-    timeMin: `${date}T00:00:00Z`,
-    timeMax: `${date}T23:59:59Z`,
-    maxResults: 1,
-  });
-  const inst = res.data.items?.[0];
-  if (!inst) throw new Error(`No instance found for ${date}`);
-  return inst;
+  let pageToken;
+  do {
+    const res = await cal.events.instances({
+      calendarId: CALENDAR_ID,
+      eventId,
+      timeMin: `${date}T00:00:00Z`,
+      timeMax: `${date}T23:59:59Z`,
+      pageToken,
+    });
+    const inst = res.data.items?.[0];
+    if (inst) return inst;
+    pageToken = res.data.nextPageToken;
+  } while (pageToken);
+  throw new Error(`No instance found for ${date}`);
 }
 
 export async function rescheduleEvent({
