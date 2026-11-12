@@ -20,6 +20,7 @@
 // Spec: docs/specs/2026-04-28-m365-primary-meeting-scheduler-design.md
 
 import { getTeamsCredentials } from "./keyvault.js";
+import { instantOf, sameInstant, wallClockToInstant, windowAround } from "./instance-time.js";
 
 const ORG_ID_PROP = "String {c4e6a6c0-47d0-4f0a-b915-1a1e0a1b2c3d} Name OrgId";
 const SOURCE_AGENDA_PROP = "String {c4e6a6c0-47d0-4f0a-b915-1a1e0a1b2c3d} Name SourceAgendaId";
@@ -246,10 +247,29 @@ async function findInstanceByDate(eventId, date) {
   return inst;
 }
 
+// The live occurrence of series `eventId` that starts exactly at `startIso`,
+// or null. Selects only the fields used: the full instance payload (body,
+// attendees, online meeting) is what Graph times out on first when degraded.
+async function findInstanceAt(eventId, startIso) {
+  const { from, to } = windowAround(startIso);
+  const target = Date.parse(startIso);
+  const res = await graphFetch(
+    `/calendar/events/${eventId}/instances?startDateTime=${from}&endDateTime=${to}&$select=id,start,type,isCancelled`,
+    { method: "GET", headers: { Prefer: 'outlook.timezone="UTC"' } }
+  );
+  if (!res.ok) throw new Error(`Outlook occurrence lookup failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return (data.value || []).find(
+    (i) => !i.isCancelled && sameInstant(instantOf(i.start?.dateTime, i.start?.timeZone), target)
+  ) || null;
+}
+
+// Returns { alreadyApplied: true } when a previous attempt already moved this
+// occurrence, so a retry after a partial failure is safe.
 export async function rescheduleEvent({
   eventId,
   mode,             // "series" | "instance"
-  originalDate,     // required for instance mode
+  originalStart,    // ISO instant of the occurrence's current start (instance mode)
   newStartDateTime, // local-ISO
   newEndDateTime,
   timezone,
@@ -260,7 +280,12 @@ export async function rescheduleEvent({
   };
   let targetId = eventId;
   if (mode === "instance") {
-    const inst = await findInstanceByDate(eventId, originalDate);
+    const inst = await findInstanceAt(eventId, originalStart);
+    if (!inst) {
+      const moved = await findInstanceAt(eventId, wallClockToInstant(newStartDateTime, timezone));
+      if (moved && moved.type === "exception") return { alreadyApplied: true };
+      throw new Error(`Outlook has no occurrence of this meeting starting at ${originalStart}`);
+    }
     targetId = inst.id;
   }
   // Reschedules always notify — attendees need to know the time changed.

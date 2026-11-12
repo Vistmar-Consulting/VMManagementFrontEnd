@@ -1,7 +1,7 @@
 // src/components/RescheduleDialog.jsx
 //
 // V2.1.1 dual-write reschedule:
-//   1. POST /api/meetings/reschedule (PATCHes Graph → Google mirror)
+//   1. PUT /api/meetings/reschedule (patches Google, which emails attendees, then Graph)
 //   2. On success, write the new meetingDatetime + rescheduledFrom to the
 //      Firestore agenda doc that matches this meeting (joined via
 //      graphEventId or googleEventId).
@@ -92,6 +92,9 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
       // Refresh the Calendar's cached meeting list everywhere (this dialog is
       // used from both the Calendar and the Agenda Action Bar).
       queryClient.invalidateQueries({ queryKey: ["meetings-list"] });
+      // The Agenda page anchors this dialog on its own cached next-occurrence
+      // query (1h staleTime). Left stale, the next reschedule targets the old time.
+      queryClient.invalidateQueries({ queryKey: ["agenda-next-occ"] });
       onSuccess?.();
     },
     onError: (err) => setError(err.message || "Reschedule failed"),
@@ -105,7 +108,6 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
     }
     const dateStr = format(newDate, "yyyy-MM-dd");
     const timeStr = `${pad2(newTime.getHours())}:${pad2(newTime.getMinutes())}`;
-    const originalDateStr = format(originalStart, "yyyy-MM-dd");
     // Construct a wall-clock ISO for the Firestore Timestamp write — uses the
     // local browser TZ same way the picker captured the inputs. Pacific is
     // hardcoded server-side in the API; Firestore stores the absolute instant.
@@ -127,7 +129,9 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
     mutation.mutate({
       eventId: eventIdForApi,
       mode: effectiveMode,
-      originalDate: effectiveMode === "instance" ? originalDateStr : null,
+      // The exact start instant identifies the occurrence; a calendar date
+      // can't (a 4pm-or-later Pacific meeting falls on the next UTC day).
+      originalStart: effectiveMode === "instance" ? originalStart.toISOString() : null,
       newDate: dateStr,
       newTime: timeStr,
       timezone: "America/Los_Angeles",
@@ -183,8 +187,8 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
 
           <Typography variant="caption" color="text.secondary">
             Times shown in Pacific (Vistamar HQ). Duration preserved at {originalDurationMinutes} min.
-            Attendees will be notified automatically via Outlook (Microsoft Graph fans the
-            updated invite to every attendee); the Google Calendar mirror is updated silently.
+            Attendees get the updated invite by email from Google Calendar; the Outlook
+            calendar on meetings@ is updated to match.
           </Typography>
 
           {error && <Alert severity="error">{error}</Alert>}

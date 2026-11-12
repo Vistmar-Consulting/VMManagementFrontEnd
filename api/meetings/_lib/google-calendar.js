@@ -23,6 +23,7 @@
 import { google } from "googleapis";
 import { getGoogleCredentials } from "./keyvault.js";
 import { dedupeEventsAcrossSubjects } from "./dedupe-events.js";
+import { instantOf, sameInstant, wallClockToInstant, windowAround } from "./instance-time.js";
 
 const CALENDAR_ID = "primary"; // primary calendar of whichever subject is impersonated
 const IMPERSONATE = "meetings@vistamarconsulting.com";
@@ -296,10 +297,42 @@ async function findInstanceByDate(cal, eventId, date) {
   throw new Error(`No instance found for ${date}`);
 }
 
+// The live (not cancelled) occurrence of series `eventId` that starts exactly
+// at `startIso`, or null. Follows pages for the same reason as above.
+async function findInstanceAt(cal, eventId, startIso) {
+  const { from, to } = windowAround(startIso);
+  const target = Date.parse(startIso);
+  let pageToken;
+  do {
+    const res = await cal.events.instances({
+      calendarId: CALENDAR_ID,
+      eventId,
+      timeMin: from,
+      timeMax: to,
+      pageToken,
+    });
+    const inst = (res.data.items || []).find(
+      (i) => i.status !== "cancelled" && sameInstant(instantOf(i.start?.dateTime, i.start?.timeZone), target)
+    );
+    if (inst) return inst;
+    pageToken = res.data.nextPageToken;
+  } while (pageToken);
+  return null;
+}
+
+function wasMoved(inst) {
+  const orig = instantOf(inst.originalStartTime?.dateTime, inst.originalStartTime?.timeZone);
+  const cur = instantOf(inst.start?.dateTime, inst.start?.timeZone);
+  return Number.isFinite(orig) && !sameInstant(orig, cur);
+}
+
+// Returns { alreadyApplied: true } when a previous attempt already moved this
+// occurrence (the occurrence is no longer at originalStart but a moved one sits
+// at the new start), so a retry after a partial failure is safe.
 export async function rescheduleEvent({
   eventId,
   mode,
-  originalDate,
+  originalStart,    // ISO instant of the occurrence's current start (instance mode)
   newStartDateTime,
   newEndDateTime,
   timezone,
@@ -310,7 +343,12 @@ export async function rescheduleEvent({
     end: { dateTime: newEndDateTime, timeZone: timezone },
   };
   if (mode === "instance") {
-    const inst = await findInstanceByDate(cal, eventId, originalDate);
+    const inst = await findInstanceAt(cal, eventId, originalStart);
+    if (!inst) {
+      const moved = await findInstanceAt(cal, eventId, wallClockToInstant(newStartDateTime, timezone));
+      if (moved && wasMoved(moved)) return { alreadyApplied: true };
+      throw new Error(`Google Calendar has no occurrence of this meeting starting at ${originalStart}`);
+    }
     await cal.events.patch({
       calendarId: CALENDAR_ID,
       eventId: inst.id,

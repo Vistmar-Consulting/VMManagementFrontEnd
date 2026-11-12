@@ -1,8 +1,10 @@
 // PUT /api/meetings/reschedule
 //
-// M365-primary flow: patch the Graph event first (Graph fans out updates to
-// all attendees), then mirror the time change to the Google copy with
-// sendUpdates:"none".
+// Patch Google first, then Graph. Google is the copy that emails attendees
+// (sendUpdates:"all"; the meetings@ M365 mailbox has no send rights), so a
+// Graph outage must not stop the attendee-facing change. Each side is
+// retry-safe: an occurrence an earlier attempt already moved is skipped, so
+// "Reschedule" can be clicked again after a partial failure.
 //
 // `event_id` from the FE is the GOOGLE mirror event ID (unchanged contract).
 // We resolve the m365EventId from the Google event's extendedProperties.
@@ -36,13 +38,13 @@ export default async function handler(req, res) {
   if (!(await requireAuth(req, res))) return;
 
   try {
-    const { org_id, event_id, mode, original_date, new_date, new_time, timezone, duration_minutes } = req.body;
+    const { org_id, event_id, mode, original_start, new_date, new_time, timezone, duration_minutes } = req.body;
 
     if (!org_id || !event_id || !mode || !new_date || !new_time) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-    if (mode === "instance" && !original_date) {
-      return res.status(400).json({ error: "original_date required for instance mode" });
+    if (mode === "instance" && (!original_start || Number.isNaN(Date.parse(original_start)))) {
+      return res.status(400).json({ error: "original_start (the occurrence's start instant) is required for instance mode. Reload the page and try again." });
     }
 
     const tz = timezone || "America/Los_Angeles";
@@ -65,25 +67,31 @@ export default async function handler(req, res) {
       });
     }
 
-    // Step 1 — Canonical patch on Graph. Graph fans out time-change .ics to all attendees.
-    await graphReschedule({
-      eventId: m365EventId,
+    const args = {
       mode,
-      originalDate: original_date,
+      originalStart: original_start,
       newStartDateTime,
       newEndDateTime,
       timezone: tz,
-    });
+    };
 
-    // Step 2 — Mirror time-change to Google (no fanout, Graph already did).
-    await googleReschedule({
-      eventId: event_id,
-      mode,
-      originalDate: original_date,
-      newStartDateTime,
-      newEndDateTime,
-      timezone: tz,
-    });
+    // Step 1 — Google: moves the attendees' invites.
+    await googleReschedule({ eventId: event_id, ...args });
+
+    // Step 2 — Graph: keeps the meetings@ Outlook calendar (and Teams meeting
+    // times) in step. A failure here leaves the two calendars apart, so say so
+    // plainly; a retry finishes the job.
+    try {
+      await graphReschedule({ eventId: m365EventId, ...args });
+    } catch (graphErr) {
+      console.error("PUT /api/meetings/reschedule: Graph step failed after Google succeeded:", graphErr);
+      return res.status(502).json({
+        error:
+          "Attendees were sent the new time, but the Outlook calendar on meetings@ was not updated " +
+          `(${graphErr.message}). Click Reschedule again to finish — it is safe to retry.`,
+        partial: true,
+      });
+    }
 
     return res.status(200).json({ success: true });
   } catch (err) {
