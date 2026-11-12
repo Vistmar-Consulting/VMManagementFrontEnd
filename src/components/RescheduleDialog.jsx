@@ -40,14 +40,11 @@ function pad2(n) { return String(n).padStart(2, "0"); }
 export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const originalStart = useMemo(
-    () => (meeting?.date ? new Date(meeting.date) : new Date()),
-    [meeting?.date]
-  );
-  const originalEnd = useMemo(
-    () => (meeting?.end_date ? new Date(meeting.end_date) : null),
-    [meeting?.end_date]
-  );
+  // The occurrence this dialog moves, fixed when the dialog opens. After a
+  // partial failure Google already shows the new time, and a parent refetch
+  // must not re-aim the retry at it.
+  const [originalStart] = useState(() => (meeting?.date ? new Date(meeting.date) : new Date()));
+  const [originalEnd] = useState(() => (meeting?.end_date ? new Date(meeting.end_date) : null));
   const isRecurring = meeting?.type === "recurring";
 
   // Preserve original duration on reschedule (archive defaulted to 1hr).
@@ -59,7 +56,7 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
 
   // Scope only meaningful for recurring meetings. Non-recurring meetings
   // always patch their own event directly — the backend's `series` mode does
-  // exactly that (events.patch on the event_id, no findInstanceByDate).
+  // exactly that (events.patch on the event_id, no occurrence lookup).
   const [mode, setMode] = useState("instance");
   const [newDate, setNewDate] = useState(originalStart);
   const [newTime, setNewTime] = useState(originalStart);
@@ -114,8 +111,10 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
     // Construct a wall-clock ISO for the Firestore Timestamp write — uses the
     // local browser TZ same way the picker captured the inputs. Pacific is
     // hardcoded server-side in the API; Firestore stores the absolute instant.
+    // A series time-only change keeps this occurrence's date (the date picker
+    // is hidden and the server ignores it).
     const newDateIso = (() => {
-      const d = new Date(newDate);
+      const d = new Date(seriesTimeOnly ? originalStart : newDate);
       d.setHours(newTime.getHours(), newTime.getMinutes(), 0, 0);
       return d.toISOString();
     })();

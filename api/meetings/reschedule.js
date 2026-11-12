@@ -76,13 +76,15 @@ export default async function handler(req, res) {
     };
 
     // Step 1 — Google: moves the attendees' invites.
-    await googleReschedule({ eventId: event_id, ...args });
+    // Returns the occurrence's series slot (original scheduled start), which
+    // identifies the same occurrence in Outlook however often it has moved.
+    const { seriesSlot } = (await googleReschedule({ eventId: event_id, ...args })) || {};
 
     // Step 2 — Graph: keeps the meetings@ Outlook calendar (and Teams meeting
     // times) in step. A failure here leaves the two calendars apart, so say so
     // plainly; a retry finishes the job.
     try {
-      await graphReschedule({ eventId: m365EventId, ...args });
+      await graphReschedule({ eventId: m365EventId, seriesSlot, ...args });
     } catch (graphErr) {
       console.error("PUT /api/meetings/reschedule: Graph step failed after Google succeeded:", graphErr);
       return res.status(502).json({

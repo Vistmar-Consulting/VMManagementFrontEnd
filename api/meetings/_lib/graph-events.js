@@ -235,25 +235,40 @@ export { fetchOnlineMeetingDetails };
 
 // ── RESCHEDULE ──
 
-// The live occurrence of series `eventId` that starts exactly at `startIso`,
-// or null. Selects only the fields used: the full instance payload (body,
-// attendees, online meeting) is what Graph times out on first when degraded.
-async function findInstanceAt(eventId, startIso) {
-  const { from, to } = windowAround(startIso);
-  const target = Date.parse(startIso);
-  const res = await graphFetch(
-    `/calendar/events/${eventId}/instances?startDateTime=${from}&endDateTime=${to}&$select=id,start,type,isCancelled`,
-    { method: "GET", headers: { Prefer: 'outlook.timezone="UTC"' } }
-  );
-  if (!res.ok) throw new Error(`Outlook occurrence lookup failed: ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  return (data.value || []).find(
-    (i) => !i.isCancelled && sameInstant(instantOf(i.start?.dateTime, i.start?.timeZone), target)
-  ) || null;
+// The occurrence's slot: its original scheduled start, fixed however often it
+// moves. An unmoved occurrence's slot is its start.
+function slotOf(i) {
+  const original = instantOf(i.originalStart);
+  if (Number.isFinite(original)) return original;
+  return i.type === "occurrence" ? instantOf(i.start?.dateTime, i.start?.timeZone) : NaN;
+}
+
+// The live occurrence of series `eventId` whose slot is `slotIso` (the same
+// slot Google reports as originalStartTime), or null. It sits either at its
+// slot (not moved yet) or wherever it was moved, so `near` lists the other
+// instants to look around. Cancelled occurrences are not returned by Graph.
+// Selects only the fields used: the full instance payload (body, attendees,
+// online meeting) is what Graph times out on first when degraded.
+async function findBySlot(eventId, slotIso, near = []) {
+  const target = Date.parse(slotIso);
+  const seen = new Map();
+  for (const at of [slotIso, ...near]) {
+    const { from, to } = windowAround(at);
+    const res = await graphFetch(
+      `/calendar/events/${eventId}/instances?startDateTime=${from}&endDateTime=${to}&$select=id,start,end,type,isCancelled,originalStart`,
+      { method: "GET", headers: { Prefer: 'outlook.timezone="UTC"' } }
+    );
+    if (!res.ok) throw new Error(`Outlook occurrence lookup failed: ${res.status} ${await res.text()}`);
+    for (const i of (await res.json()).value || []) seen.set(i.id, i);
+  }
+  return [...seen.values()].find((i) => !i.isCancelled && sameInstant(slotOf(i), target)) || null;
 }
 
 // Returns { alreadyApplied: true } when a previous attempt already made this
 // change, so a retry after a partial failure is safe.
+//
+// Instance mode finds the occurrence by `seriesSlot` (from the Google step),
+// so a retry finds it whether or not Outlook already moved it.
 //
 // Series mode on a recurring series changes the time of day only: the series
 // keeps its first date (so its weekday and past occurrences). On a one-time
@@ -261,7 +276,8 @@ async function findInstanceAt(eventId, startIso) {
 export async function rescheduleEvent({
   eventId,
   mode,             // "series" | "instance"
-  originalStart,    // ISO instant of the occurrence's current start (instance mode)
+  originalStart,    // ISO instant of the occurrence's start as the user saw it (instance mode)
+  seriesSlot,       // ISO instant of the occurrence's original scheduled start (instance mode)
   newStartDateTime, // local-ISO
   newEndDateTime,
   timezone,
@@ -291,11 +307,16 @@ export async function rescheduleEvent({
   };
   let targetId = eventId;
   if (mode === "instance") {
-    const inst = await findInstanceAt(eventId, originalStart);
-    if (!inst) {
-      const moved = await findInstanceAt(eventId, wallClockToInstant(newStartDateTime, timezone));
-      if (moved && moved.type === "exception") return { alreadyApplied: true };
-      throw new Error(`Outlook has no occurrence of this meeting starting at ${originalStart}`);
+    if (!seriesSlot) throw new Error("rescheduleEvent: seriesSlot is required for instance mode");
+    const newStart = wallClockToInstant(newStartDateTime, timezone);
+    const newEnd = wallClockToInstant(newEndDateTime, timezone);
+    const inst = await findBySlot(eventId, seriesSlot, [originalStart, newStart]);
+    if (!inst) throw new Error(`Outlook has no live occurrence of this meeting scheduled for ${seriesSlot}`);
+    if (
+      sameInstant(instantOf(inst.start?.dateTime, inst.start?.timeZone), Date.parse(newStart))
+      && sameInstant(instantOf(inst.end?.dateTime, inst.end?.timeZone), Date.parse(newEnd))
+    ) {
+      return { alreadyApplied: true };
     }
     targetId = inst.id;
   }
@@ -372,10 +393,15 @@ export async function updateAttendees({ eventId, add = [], remove = [] }) {
 
 // ── CANCEL ──
 
-export async function cancelEvent({ eventId, mode, originalStart }) {
+// Returns { alreadyApplied: true } when there is nothing left to cancel.
+export async function cancelEvent({ eventId, mode, originalStart, seriesSlot }) {
   if (mode === "instance") {
-    const inst = await findInstanceAt(eventId, originalStart);
-    if (!inst) throw new Error(`Outlook has no live occurrence of this meeting starting at ${originalStart}`);
+    if (!seriesSlot) throw new Error("cancelEvent: seriesSlot is required for instance mode");
+    const inst = await findBySlot(eventId, seriesSlot, [originalStart]);
+    // Graph drops cancelled occurrences from /instances, so "no live
+    // occurrence in this slot" is how an earlier cancel (one that Graph applied
+    // but reported as failed) looks on a retry.
+    if (!inst) return { alreadyApplied: true };
     // Graph supports cancelling a single instance via /cancel action — sends
     // proper cancellation .ics to attendees for that occurrence only.
     const res = await graphFetch(`/calendar/events/${inst.id}/cancel`, {

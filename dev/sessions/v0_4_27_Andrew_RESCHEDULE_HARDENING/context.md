@@ -43,7 +43,19 @@ blocked the attendee-facing change even though Google is the copy that emails at
    502 `partial:true` on a Graph failure. The Agenda page's cancel now targets the next
    live occurrence, not the agenda's stored (frozen, often past) meetingDatetime.
 
+8. **Pre-push review fixes.** Outlook now finds the occurrence by its *series slot*
+   (Google's `originalStartTime`, Graph's `originalStart`), which never changes when
+   the occurrence moves, so a retry finds it whether or not either side already moved it.
+   Live occurrences win over cancelled ones at the same start, and if two live ones share
+   a start, the one originally scheduled there wins. An Outlook cancel that went through
+   but reported failure no longer blocks the retry. Both dialogs fix the target
+   occurrence when they open. Series cancel retry falls back to the FE's stored Graph id
+   if Google no longer returns the deleted series.
+
 ## Deferred
+- **Unverified against live APIs:** Graph `originalStart` on occurrences (the code
+  falls back to `start` for unmoved `type: occurrence`); whether Google `events.get`
+  on a deleted series still returns `m365EventId`. Graph was down during this session.
 - `dev/bmd-cleanup.mjs` (one-off, already run) still passes `originalDate`.
 - Full-suite run: 25 UI tests time out under load (pass in isolation) — see
   v0_4_21_Andrew_TEST_TIMEOUTS.

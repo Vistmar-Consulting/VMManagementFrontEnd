@@ -35,7 +35,7 @@ const base = {
 beforeEach(() => {
   calls.length = 0;
   graphCancel.mockReset().mockImplementation(async () => { calls.push("graph"); });
-  googleCancel.mockReset().mockImplementation(async () => { calls.push("google"); });
+  googleCancel.mockReset().mockImplementation(async () => { calls.push("google"); return { seriesSlot: "2026-11-13T01:00:00.000Z" }; });
 });
 
 describe("DELETE /api/meetings/cancel", () => {
@@ -44,7 +44,11 @@ describe("DELETE /api/meetings/cancel", () => {
     expect(res.statusCode).toBe(200);
     expect(calls).toEqual(["google", "graph"]);
     expect(googleCancel.mock.calls[0][0]).toMatchObject({ originalStart: base.original_start, sendUpdates: "all" });
-    expect(graphCancel.mock.calls[0][0]).toMatchObject({ eventId: "graph-master", originalStart: base.original_start });
+    expect(graphCancel.mock.calls[0][0]).toMatchObject({
+      eventId: "graph-master",
+      originalStart: base.original_start,
+      seriesSlot: "2026-11-13T01:00:00.000Z",
+    });
   });
 
   it("silent cancel passes sendUpdates none to Google", async () => {

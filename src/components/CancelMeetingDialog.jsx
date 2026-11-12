@@ -7,11 +7,11 @@
 // red button from "Cancel meeting" to "Cancel agenda" (stage 2).
 //
 // For recurring meetings the user picks scope (instance vs series); for
-// one-time it's implicit. The /api/meetings/cancel endpoint delegates to
-// graph.cancelEvent which uses POST /cancel and fans cancellation .ics
-// invites to every attendee from meetings@'s Outlook.
+// one-time it's implicit. /api/meetings/cancel cancels the Google event first
+// (Google emails the cancellation to attendees unless "Notify" is off), then
+// the Graph event on meetings@'s Outlook (silent — meetings@ can't send).
 
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -35,9 +35,9 @@ import { db } from "../firebase.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { cancelMeeting } from "../lib/meetingsApi.js";
 
-// occurrenceDate: start of the specific occurrence the user picked (Calendar
-// popover). A recurring series' running agenda keeps a stale meetingDatetime,
-// so it is only the fallback.
+// occurrenceDate: start of the specific occurrence to cancel (the Calendar
+// popover's pick, or the Agenda page's next live occurrence). Required for a
+// recurring meeting's "Just this meeting".
 export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, occurrenceDate = null, onClose }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -49,11 +49,17 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const meetingDt = useMemo(() => {
-    if (occurrenceDate) return occurrenceDate;
-    if (!agenda?.meetingDatetime) return null;
-    return agenda.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null;
-  }, [occurrenceDate, agenda?.meetingDatetime]);
+  // The occurrence this dialog cancels, latched the first time it is known and
+  // never changed after: once Google has cancelled it, the parent's "next
+  // occurrence" becomes next week's, and a retry must still target this one.
+  // A recurring meeting needs the live occurrence (the agenda's stored
+  // meetingDatetime is a frozen, often past, one); a one-time meeting's stored
+  // time is its time.
+  const storedDt = agenda?.meetingDatetime?.toDate ? agenda.meetingDatetime.toDate() : null;
+  const latchedDt = useRef(null);
+  const candidateDt = occurrenceDate || (isRecurring ? null : storedDt);
+  if (!latchedDt.current && candidateDt) latchedDt.current = candidateDt;
+  const meetingDt = latchedDt.current;
 
   const handleCancel = async () => {
     setError(null);
@@ -61,7 +67,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
     try {
       if (isBound) {
         if (mode === "instance" && !meetingDt) {
-          throw new Error("No occurrence time for this meeting — cannot cancel a single occurrence.");
+          throw new Error("The next occurrence of this meeting hasn't loaded yet — close this and try again in a moment.");
         }
         // The exact start instant identifies the occurrence; a calendar date
         // can't (a 4pm-or-later Pacific meeting falls on the next UTC day).
@@ -78,6 +84,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
         await cancelMeeting({
           orgId: agenda?.organizationId || calendarSeries?.organizationId || null,
           eventId,
+          m365EventId: calendarSeries?.graphSeriesEventId || agenda?.graphEventId || null,
           mode,
           originalStart,
           notify,

@@ -80,12 +80,13 @@ export function rescheduleMeeting({ orgId, eventId, mode, originalStart, newDate
 // sendUpdates:"none" so attendees are NOT emailed a cancellation — used for
 // silent cleanup (e.g. removing a duplicate series). Graph cancel is silent
 // regardless (meetings@ has no send rights in our tenant).
-export function cancelMeeting({ orgId, eventId, mode, originalStart, notify }) {
+export function cancelMeeting({ orgId, eventId, m365EventId, mode, originalStart, notify }) {
   return call("cancel", {
     method: "DELETE",
     body: {
       org_id: orgId || "unspecified",
       event_id: eventId,
+      m365_event_id: m365EventId || null, // used only if Google already deleted the series (retry)
       mode,
       original_start: originalStart || null,
       notify: notify !== false,

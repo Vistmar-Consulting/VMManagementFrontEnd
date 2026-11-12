@@ -37,7 +37,7 @@ const base = {
 beforeEach(() => {
   calls.length = 0;
   graphReschedule.mockReset().mockImplementation(async () => { calls.push("graph"); });
-  googleReschedule.mockReset().mockImplementation(async () => { calls.push("google"); });
+  googleReschedule.mockReset().mockImplementation(async () => { calls.push("google"); return { seriesSlot: "2026-11-12T22:00:00.000Z" }; });
 });
 
 describe("PUT /api/meetings/reschedule", () => {
@@ -52,7 +52,11 @@ describe("PUT /api/meetings/reschedule", () => {
       newEndDateTime: "2026-11-12T12:00:00",
       timezone: "America/Los_Angeles",
     });
-    expect(graphReschedule.mock.calls[0][0]).toMatchObject({ eventId: "graph-master", originalStart: base.original_start });
+    expect(graphReschedule.mock.calls[0][0]).toMatchObject({
+      eventId: "graph-master",
+      originalStart: base.original_start,
+      seriesSlot: "2026-11-12T22:00:00.000Z",
+    });
   });
 
   it("reports a Graph outage after Google moved, as a retryable partial failure", async () => {

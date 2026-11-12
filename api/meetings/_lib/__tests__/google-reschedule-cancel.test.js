@@ -27,15 +27,25 @@ function serve() {
   cal.events.instances.mockImplementation(async ({ timeMin, timeMax, showDeleted }) => ({
     data: {
       items: instances.filter((i) => {
-        const s = Date.parse(i.start.dateTime);
+        const s = Date.parse((i.start || i.originalStartTime).dateTime);
         return s < Date.parse(timeMax) && s + 3600_000 > Date.parse(timeMin) && (showDeleted || i.status !== "cancelled");
       }),
     },
   }));
 }
+const hourAfter = (iso) => {
+  const d = new Date(Date.parse(iso) + 3600_000);
+  return `${new Date(d.getTime() - 8 * 3600_000).toISOString().slice(0, 19)}-08:00`;
+};
 const occ = (id, start, original = start, status = "confirmed") => ({
-  id, status, start: { dateTime: start, timeZone: PT }, originalStartTime: { dateTime: original, timeZone: PT },
+  id, status,
+  start: { dateTime: start, timeZone: PT },
+  end: { dateTime: hourAfter(start), timeZone: PT },
+  originalStartTime: { dateTime: original, timeZone: PT },
 });
+// Google only guarantees id / recurringEventId / originalStartTime on a
+// cancelled occurrence.
+const cancelledOcc = (id, original) => ({ id, status: "cancelled", originalStartTime: { dateTime: original, timeZone: PT } });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -64,8 +74,43 @@ describe("google rescheduleEvent — instance", () => {
     instances[0] = occ("s_1112", "2026-11-12T11:00:00-08:00", "2026-11-12T14:00:00-08:00");
     const r = await rescheduleEvent({ eventId: "s", mode: "instance", originalStart: "2026-11-12T22:00:00.000Z",
       newStartDateTime: "2026-11-12T11:00:00", newEndDateTime: "2026-11-12T12:00:00", timezone: PT });
-    expect(r).toEqual({ alreadyApplied: true });
+    expect(r).toEqual({ alreadyApplied: true, seriesSlot: "2026-11-12T22:00:00.000Z" });
     expect(cal.events.patch).not.toHaveBeenCalled();
+  });
+
+  it("returns the slot so Outlook can find the same occurrence", async () => {
+    const r = await rescheduleEvent({ eventId: "s", mode: "instance", originalStart: "2026-11-12T22:00:00.000Z",
+      newStartDateTime: "2026-11-12T11:00:00", newEndDateTime: "2026-11-12T12:00:00", timezone: PT });
+    expect(r).toEqual({ seriesSlot: "2026-11-12T22:00:00.000Z" });
+  });
+
+  it("reopened after a partial failure (shows the new time): no second email, slot still returned", async () => {
+    instances[0] = occ("s_1112", "2026-11-12T11:00:00-08:00", "2026-11-12T14:00:00-08:00");
+    const r = await rescheduleEvent({ eventId: "s", mode: "instance", originalStart: "2026-11-12T19:00:00.000Z",
+      newStartDateTime: "2026-11-12T11:00:00", newEndDateTime: "2026-11-12T12:00:00", timezone: PT });
+    expect(r).toEqual({ alreadyApplied: true, seriesSlot: "2026-11-12T22:00:00.000Z" });
+    expect(cal.events.patch).not.toHaveBeenCalled();
+  });
+
+  it("retry onto a slot another occurrence already uses: finds the moved one whichever comes first", async () => {
+    // Tue 10am moved onto Wed 10am, where Wed's own occurrence sits; natural one listed first.
+    instances = [
+      occ("s_wed", "2026-11-18T10:00:00-08:00"),
+      occ("s_tue", "2026-11-18T10:00:00-08:00", "2026-11-17T10:00:00-08:00"),
+    ];
+    const r = await rescheduleEvent({ eventId: "s", mode: "instance", originalStart: "2026-11-17T18:00:00.000Z",
+      newStartDateTime: "2026-11-18T10:00:00", newEndDateTime: "2026-11-18T11:00:00", timezone: PT });
+    expect(r).toEqual({ alreadyApplied: true, seriesSlot: "2026-11-17T18:00:00.000Z" });
+  });
+
+  it("two live occurrences at originalStart: moves the one scheduled there, not the one moved onto it", async () => {
+    instances = [
+      occ("s_tue", "2026-11-18T10:00:00-08:00", "2026-11-17T10:00:00-08:00"),
+      occ("s_wed", "2026-11-18T10:00:00-08:00"),
+    ];
+    await rescheduleEvent({ eventId: "s", mode: "instance", originalStart: "2026-11-18T18:00:00.000Z",
+      newStartDateTime: "2026-11-18T09:00:00", newEndDateTime: "2026-11-18T10:00:00", timezone: PT });
+    expect(cal.events.patch).toHaveBeenCalledWith(expect.objectContaining({ eventId: "s_wed" }));
   });
 
   it("fails loudly when nothing starts at originalStart", async () => {
@@ -120,11 +165,21 @@ describe("google cancelEvent", () => {
     expect(cal.events.patch).toHaveBeenCalledWith(expect.objectContaining({ eventId: "s_1119", requestBody: { status: "cancelled" } }));
   });
 
-  it("on retry, an already-cancelled occurrence is a no-op", async () => {
-    instances[1] = occ("s_1119", "2026-11-19T14:00:00-08:00", undefined, "cancelled");
+  it("on retry, an already-cancelled occurrence (no start field) is a no-op", async () => {
+    instances[1] = cancelledOcc("s_1119", "2026-11-19T14:00:00-08:00");
     const r = await cancelEvent({ eventId: "s", mode: "instance", originalStart: "2026-11-19T22:00:00.000Z" });
-    expect(r).toEqual({ alreadyApplied: true });
+    expect(r).toEqual({ alreadyApplied: true, seriesSlot: "2026-11-19T22:00:00.000Z" });
     expect(cal.events.patch).not.toHaveBeenCalled();
+  });
+
+  it("an old cancellation at the same start does not mask the live occurrence moved there", async () => {
+    instances = [
+      cancelledOcc("s_1119", "2026-11-19T14:00:00-08:00"),
+      occ("s_1112", "2026-11-19T14:00:00-08:00", "2026-11-12T14:00:00-08:00"),
+    ];
+    const r = await cancelEvent({ eventId: "s", mode: "instance", originalStart: "2026-11-19T22:00:00.000Z", sendUpdates: "all" });
+    expect(cal.events.patch).toHaveBeenCalledWith(expect.objectContaining({ eventId: "s_1112" }));
+    expect(r).toEqual({ seriesSlot: "2026-11-12T22:00:00.000Z" });
   });
 
   it("series delete that is already gone (410) is a no-op", async () => {
