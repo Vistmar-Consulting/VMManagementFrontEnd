@@ -60,9 +60,12 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
     setBusy(true);
     try {
       if (isBound) {
-        const dateStr = mode === "instance" && meetingDt
-          ? format(meetingDt, "yyyy-MM-dd")
-          : null;
+        if (mode === "instance" && !meetingDt) {
+          throw new Error("No occurrence time for this meeting — cannot cancel a single occurrence.");
+        }
+        // The exact start instant identifies the occurrence; a calendar date
+        // can't (a 4pm-or-later Pacific meeting falls on the next UTC day).
+        const originalStart = mode === "instance" ? meetingDt.toISOString() : null;
         // Google's events.instances() rejects per-instance IDs — recurring
         // patches need the series master. Bail loudly if both are missing.
         const eventId =
@@ -76,7 +79,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
           orgId: agenda?.organizationId || calendarSeries?.organizationId || null,
           eventId,
           mode,
-          date: dateStr,
+          originalStart,
           notify,
         });
       }
@@ -116,6 +119,7 @@ export default function CancelMeetingDialog({ agenda, agendaId, calendarSeries, 
       // Refresh the Calendar's cached meeting list so the cancelled meeting
       // drops off when the user returns there.
       queryClient.invalidateQueries({ queryKey: ["meetings-list"] });
+      queryClient.invalidateQueries({ queryKey: ["agenda-next-occ"] });
       onClose();
     } catch (err) {
       setError(err.message || "Cancel failed");

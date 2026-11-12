@@ -34,12 +34,16 @@ blocked the attendee-facing change even though Google is the copy that emails at
    re-anchor on the old time (same class of bug as v0.4.4).
 5. Dialog caption no longer says Outlook sends the invites (Google does).
 
+6. **"Entire series" changes the time only** (Andy, 2026-11-12). The series keeps its
+   first date, so its weekday and past occurrences stay; the dialog hides the date
+   picker. One-time events still move to the new date. Previously the master start was
+   patched to the picked date: a different weekday left BYDAY / `daysOfWeek` on the old
+   day, and a later date dropped earlier occurrences in Google.
+7. **Cancel** uses the same pattern: exact start instant, Google first, retry-safe,
+   502 `partial:true` on a Graph failure. The Agenda page's cancel now targets the next
+   live occurrence, not the agenda's stored (frozen, often past) meetingDatetime.
+
 ## Deferred
-- **"Entire series" with a different weekday/date** — patches the master start only;
-  RRULE BYDAY / Graph `daysOfWeek` are not updated and a later date drops earlier
-  occurrences in Google. Needs a decision on series semantics.
-- **Cancel "this occurrence"** still uses the UTC-day lookup (`findInstanceByDate`) —
-  same evening-meeting bug.
 - `dev/bmd-cleanup.mjs` (one-off, already run) still passes `originalDate`.
 - Full-suite run: 25 UI tests time out under load (pass in isolation) — see
   v0_4_21_Andrew_TEST_TIMEOUTS.

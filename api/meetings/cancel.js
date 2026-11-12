@@ -1,8 +1,7 @@
 // DELETE /api/meetings/cancel
 //
-// M365-primary flow: cancel on Graph first (Graph fans out cancellation .ics
-// to all attendees), then mirror the cancellation/delete to the Google copy
-// with sendUpdates:"none".
+// Cancel on Google first (the copy that emails attendees), then on Graph.
+// Occurrences are matched by exact start instant (original_start).
 //
 // Spec: docs/specs/2026-04-28-m365-primary-meeting-scheduler-design.md
 
@@ -17,13 +16,13 @@ export default async function handler(req, res) {
   if (!(await requireAuth(req, res))) return;
 
   try {
-    const { org_id, event_id, mode, date, notify } = req.body;
+    const { org_id, event_id, mode, original_start, notify } = req.body;
 
     if (!org_id || !event_id || !mode) {
       return res.status(400).json({ error: "Missing required fields: org_id, event_id, mode" });
     }
-    if (mode === "instance" && !date) {
-      return res.status(400).json({ error: "date required for instance mode" });
+    if (mode === "instance" && (!original_start || Number.isNaN(Date.parse(original_start)))) {
+      return res.status(400).json({ error: "original_start (the occurrence's start instant) is required for instance mode. Reload the page and try again." });
     }
 
     const m365EventId = await getM365EventId(event_id);
@@ -33,11 +32,27 @@ export default async function handler(req, res) {
       });
     }
 
-    // Graph cancel is silent in our tenant (meetings@ has no send rights).
-    // Google is the invite-fan path: sendUpdates "all" emails a cancellation
-    // to every attendee; "none" removes the event silently (notify === false).
-    await graphCancel({ eventId: m365EventId, mode, date });
-    await googleCancel({ eventId: event_id, mode, date, sendUpdates: notify === false ? "none" : "all" });
+    // Google first: it is the invite-fan path (sendUpdates "all" emails a
+    // cancellation to every attendee; "none" removes it silently). Graph cancel
+    // is silent in our tenant (meetings@ has no send rights), so a Graph outage
+    // must not block the attendee-facing cancel. Both steps are retry-safe.
+    await googleCancel({
+      eventId: event_id,
+      mode,
+      originalStart: original_start,
+      sendUpdates: notify === false ? "none" : "all",
+    });
+    try {
+      await graphCancel({ eventId: m365EventId, mode, originalStart: original_start });
+    } catch (graphErr) {
+      console.error("DELETE /api/meetings/cancel: Graph step failed after Google succeeded:", graphErr);
+      return res.status(502).json({
+        error:
+          "The meeting is cancelled in Google Calendar (attendees' calendars), but the Outlook calendar on " +
+          `meetings@ was not updated (${graphErr.message}). Click Cancel meeting again to finish — it is safe to retry.`,
+        partial: true,
+      });
+    }
 
     return res.status(200).json({ success: true });
   } catch (err) {

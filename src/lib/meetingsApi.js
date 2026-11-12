@@ -74,19 +74,20 @@ export function rescheduleMeeting({ orgId, eventId, mode, originalStart, newDate
 
 // DELETE /api/meetings/cancel
 // mode: 'instance' | 'series'
-// For 'instance', date is required (YYYY-MM-DD of the specific occurrence).
+// For 'instance', originalStart is required (ISO instant of the occurrence's
+// current start).
 // notify (default true): when false, the Google cancel runs with
 // sendUpdates:"none" so attendees are NOT emailed a cancellation — used for
 // silent cleanup (e.g. removing a duplicate series). Graph cancel is silent
 // regardless (meetings@ has no send rights in our tenant).
-export function cancelMeeting({ orgId, eventId, mode, date, notify }) {
+export function cancelMeeting({ orgId, eventId, mode, originalStart, notify }) {
   return call("cancel", {
     method: "DELETE",
     body: {
       org_id: orgId || "unspecified",
       event_id: eventId,
       mode,
-      date: date || null,
+      original_start: originalStart || null,
       notify: notify !== false,
     },
   });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { instantOf, sameInstant, wallClockToInstant, windowAround } from "../instance-time.js";
+import { instantOf, localDateIn, onDate, sameInstant, wallClockToInstant, windowAround } from "../instance-time.js";
 
 const PT = "America/Los_Angeles";
 
@@ -35,6 +35,24 @@ describe("instantOf", () => {
   });
   it("is NaN when missing", () => {
     expect(instantOf(undefined)).toBeNaN();
+  });
+});
+
+describe("localDateIn / onDate (series time-only change)", () => {
+  it("reads the Pacific date of an evening instant that is the next UTC day", () => {
+    expect(localDateIn(Date.parse("2026-10-09T01:00:00Z"), PT)).toBe("2026-10-08");
+  });
+  it("keeps the series' first date and takes the new time", () => {
+    expect(onDate("2026-10-08", "2026-11-12T11:00:00", "2026-11-12T12:00:00")).toEqual({
+      start: "2026-10-08T11:00:00",
+      end: "2026-10-08T12:00:00",
+    });
+  });
+  it("keeps an end that runs past midnight on the following day", () => {
+    expect(onDate("2026-10-08", "2026-11-12T23:30:00", "2026-11-13T00:30:00")).toEqual({
+      start: "2026-10-08T23:30:00",
+      end: "2026-10-09T00:30:00",
+    });
   });
 });
 

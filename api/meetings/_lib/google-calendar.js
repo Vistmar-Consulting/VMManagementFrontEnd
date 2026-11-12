@@ -23,7 +23,7 @@
 import { google } from "googleapis";
 import { getGoogleCredentials } from "./keyvault.js";
 import { dedupeEventsAcrossSubjects } from "./dedupe-events.js";
-import { instantOf, sameInstant, wallClockToInstant, windowAround } from "./instance-time.js";
+import { instantOf, localDateIn, onDate, sameInstant, wallClockToInstant, windowAround } from "./instance-time.js";
 
 const CALENDAR_ID = "primary"; // primary calendar of whichever subject is impersonated
 const IMPERSONATE = "meetings@vistamarconsulting.com";
@@ -277,28 +277,12 @@ export async function listEventsAcrossSubjects({ subjects, orgId, start, end }) 
   return dedupeEventsAcrossSubjects(perSubjectResults, subjects);
 }
 
+// The occurrence of series `eventId` that starts exactly at `startIso`
+// (cancelled ones included — callers check `status`), or null.
+//
 // Google may return an empty page with a nextPageToken (documented: a page can
 // hold fewer items than maxResults, "or none at all"). This happens once an
 // instance has been moved (an exception), so follow pages until one is found.
-async function findInstanceByDate(cal, eventId, date) {
-  let pageToken;
-  do {
-    const res = await cal.events.instances({
-      calendarId: CALENDAR_ID,
-      eventId,
-      timeMin: `${date}T00:00:00Z`,
-      timeMax: `${date}T23:59:59Z`,
-      pageToken,
-    });
-    const inst = res.data.items?.[0];
-    if (inst) return inst;
-    pageToken = res.data.nextPageToken;
-  } while (pageToken);
-  throw new Error(`No instance found for ${date}`);
-}
-
-// The live (not cancelled) occurrence of series `eventId` that starts exactly
-// at `startIso`, or null. Follows pages for the same reason as above.
 async function findInstanceAt(cal, eventId, startIso) {
   const { from, to } = windowAround(startIso);
   const target = Date.parse(startIso);
@@ -309,10 +293,11 @@ async function findInstanceAt(cal, eventId, startIso) {
       eventId,
       timeMin: from,
       timeMax: to,
+      showDeleted: true,
       pageToken,
     });
     const inst = (res.data.items || []).find(
-      (i) => i.status !== "cancelled" && sameInstant(instantOf(i.start?.dateTime, i.start?.timeZone), target)
+      (i) => sameInstant(instantOf(i.start?.dateTime, i.start?.timeZone), target)
     );
     if (inst) return inst;
     pageToken = res.data.nextPageToken;
@@ -320,15 +305,20 @@ async function findInstanceAt(cal, eventId, startIso) {
   return null;
 }
 
+const isLive = (inst) => !!inst && inst.status !== "cancelled";
+
 function wasMoved(inst) {
   const orig = instantOf(inst.originalStartTime?.dateTime, inst.originalStartTime?.timeZone);
   const cur = instantOf(inst.start?.dateTime, inst.start?.timeZone);
   return Number.isFinite(orig) && !sameInstant(orig, cur);
 }
 
-// Returns { alreadyApplied: true } when a previous attempt already moved this
-// occurrence (the occurrence is no longer at originalStart but a moved one sits
-// at the new start), so a retry after a partial failure is safe.
+// Returns { alreadyApplied: true } when a previous attempt already made this
+// change, so a retry after a partial failure is safe and sends no second email.
+//
+// Series mode on a recurring event changes the time of day only: the series
+// keeps its first date (so its weekday and past occurrences). On a one-time
+// event it moves the event to the new date and time.
 export async function rescheduleEvent({
   eventId,
   mode,
@@ -338,30 +328,41 @@ export async function rescheduleEvent({
   timezone,
 }) {
   const cal = await getCalendar();
-  const requestBody = {
-    start: { dateTime: newStartDateTime, timeZone: timezone },
-    end: { dateTime: newEndDateTime, timeZone: timezone },
-  };
+  const body = (start, end) => ({
+    start: { dateTime: start, timeZone: timezone },
+    end: { dateTime: end, timeZone: timezone },
+  });
   if (mode === "instance") {
     const inst = await findInstanceAt(cal, eventId, originalStart);
-    if (!inst) {
+    if (!isLive(inst)) {
       const moved = await findInstanceAt(cal, eventId, wallClockToInstant(newStartDateTime, timezone));
-      if (moved && wasMoved(moved)) return { alreadyApplied: true };
-      throw new Error(`Google Calendar has no occurrence of this meeting starting at ${originalStart}`);
+      if (isLive(moved) && wasMoved(moved)) return { alreadyApplied: true };
+      throw new Error(`Google Calendar has no live occurrence of this meeting starting at ${originalStart}`);
     }
     await cal.events.patch({
       calendarId: CALENDAR_ID,
       eventId: inst.id,
       sendUpdates: "all",
-      requestBody,
+      requestBody: body(newStartDateTime, newEndDateTime),
     });
     return;
   }
+  const master = (await cal.events.get({ calendarId: CALENDAR_ID, eventId })).data;
+  let start = newStartDateTime;
+  let end = newEndDateTime;
+  if (master.recurrence?.length) {
+    const firstDate = localDateIn(instantOf(master.start?.dateTime, master.start?.timeZone), timezone);
+    ({ start, end } = onDate(firstDate, newStartDateTime, newEndDateTime));
+  }
+  const unchanged =
+    sameInstant(instantOf(master.start?.dateTime, master.start?.timeZone), Date.parse(wallClockToInstant(start, timezone)))
+    && sameInstant(instantOf(master.end?.dateTime, master.end?.timeZone), Date.parse(wallClockToInstant(end, timezone)));
+  if (unchanged) return { alreadyApplied: true };
   await cal.events.patch({
     calendarId: CALENDAR_ID,
     eventId,
     sendUpdates: "all",
-    requestBody,
+    requestBody: body(start, end),
   });
 }
 
@@ -400,13 +401,17 @@ export async function updateAttendees({ eventId, add = [], remove = [] }) {
   });
 }
 
-export async function cancelEvent({ eventId, mode, date, sendUpdates = "all" }) {
+// Returns { alreadyApplied: true } when an earlier attempt already cancelled
+// it, so a retry after a partial failure is safe.
+export async function cancelEvent({ eventId, mode, originalStart, sendUpdates = "all" }) {
   // Default sendUpdates="all" — Google is now the invite-fan source since
   // the M365 meetings@ mailbox can't send. Callers can pass "none" to
   // explicitly suppress (e.g. backfill scripts that don't want to spam).
   const cal = await getCalendar();
   if (mode === "instance") {
-    const inst = await findInstanceByDate(cal, eventId, date);
+    const inst = await findInstanceAt(cal, eventId, originalStart);
+    if (!inst) throw new Error(`Google Calendar has no occurrence of this meeting starting at ${originalStart}`);
+    if (!isLive(inst)) return { alreadyApplied: true };
     await cal.events.patch({
       calendarId: CALENDAR_ID,
       eventId: inst.id,
@@ -415,11 +420,17 @@ export async function cancelEvent({ eventId, mode, date, sendUpdates = "all" }) 
     });
     return;
   }
-  await cal.events.delete({
-    calendarId: CALENDAR_ID,
-    eventId,
-    sendUpdates,
-  });
+  try {
+    await cal.events.delete({
+      calendarId: CALENDAR_ID,
+      eventId,
+      sendUpdates,
+    });
+  } catch (err) {
+    // 410 Gone: already deleted (an earlier attempt, or someone in Google).
+    if (err?.code === 410 || err?.response?.status === 410) return { alreadyApplied: true };
+    throw err;
+  }
 }
 
 export async function getEventDetails(eventId) {

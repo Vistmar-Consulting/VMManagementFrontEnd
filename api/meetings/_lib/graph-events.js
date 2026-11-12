@@ -20,7 +20,7 @@
 // Spec: docs/specs/2026-04-28-m365-primary-meeting-scheduler-design.md
 
 import { getTeamsCredentials } from "./keyvault.js";
-import { instantOf, sameInstant, wallClockToInstant, windowAround } from "./instance-time.js";
+import { instantOf, onDate, sameInstant, wallClockToInstant, windowAround } from "./instance-time.js";
 
 const ORG_ID_PROP = "String {c4e6a6c0-47d0-4f0a-b915-1a1e0a1b2c3d} Name OrgId";
 const SOURCE_AGENDA_PROP = "String {c4e6a6c0-47d0-4f0a-b915-1a1e0a1b2c3d} Name SourceAgendaId";
@@ -235,18 +235,6 @@ export { fetchOnlineMeetingDetails };
 
 // ── RESCHEDULE ──
 
-async function findInstanceByDate(eventId, date) {
-  const res = await graphFetch(
-    `/calendar/events/${eventId}/instances?startDateTime=${date}T00:00:00&endDateTime=${date}T23:59:59&$top=1`,
-    { method: "GET" }
-  );
-  if (!res.ok) throw new Error(`graph-events.findInstanceByDate failed: ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  const inst = data.value?.[0];
-  if (!inst) throw new Error(`No Graph instance found for ${date}`);
-  return inst;
-}
-
 // The live occurrence of series `eventId` that starts exactly at `startIso`,
 // or null. Selects only the fields used: the full instance payload (body,
 // attendees, online meeting) is what Graph times out on first when degraded.
@@ -264,8 +252,12 @@ async function findInstanceAt(eventId, startIso) {
   ) || null;
 }
 
-// Returns { alreadyApplied: true } when a previous attempt already moved this
-// occurrence, so a retry after a partial failure is safe.
+// Returns { alreadyApplied: true } when a previous attempt already made this
+// change, so a retry after a partial failure is safe.
+//
+// Series mode on a recurring series changes the time of day only: the series
+// keeps its first date (so its weekday and past occurrences). On a one-time
+// event it moves the event to the new date and time.
 export async function rescheduleEvent({
   eventId,
   mode,             // "series" | "instance"
@@ -274,9 +266,28 @@ export async function rescheduleEvent({
   newEndDateTime,
   timezone,
 }) {
+  let start = newStartDateTime;
+  let end = newEndDateTime;
+  if (mode === "series") {
+    const res = await graphFetch(`/calendar/events/${eventId}?$select=type,recurrence,start,end`, {
+      method: "GET",
+      headers: { Prefer: 'outlook.timezone="UTC"' },
+    });
+    if (!res.ok) throw new Error(`Outlook event lookup failed: ${res.status} ${await res.text()}`);
+    const ev = await res.json();
+    if (ev.type === "seriesMaster") {
+      const firstDate = ev.recurrence?.range?.startDate;
+      if (!firstDate) throw new Error("Outlook series has no recurrence start date");
+      ({ start, end } = onDate(firstDate, newStartDateTime, newEndDateTime));
+    }
+    const unchanged =
+      sameInstant(instantOf(ev.start?.dateTime, ev.start?.timeZone), Date.parse(wallClockToInstant(start, timezone)))
+      && sameInstant(instantOf(ev.end?.dateTime, ev.end?.timeZone), Date.parse(wallClockToInstant(end, timezone)));
+    if (unchanged) return { alreadyApplied: true };
+  }
   const requestBody = {
-    start: { dateTime: newStartDateTime, timeZone: timezone },
-    end: { dateTime: newEndDateTime, timeZone: timezone },
+    start: { dateTime: start, timeZone: timezone },
+    end: { dateTime: end, timeZone: timezone },
   };
   let targetId = eventId;
   if (mode === "instance") {
@@ -361,9 +372,10 @@ export async function updateAttendees({ eventId, add = [], remove = [] }) {
 
 // ── CANCEL ──
 
-export async function cancelEvent({ eventId, mode, date }) {
+export async function cancelEvent({ eventId, mode, originalStart }) {
   if (mode === "instance") {
-    const inst = await findInstanceByDate(eventId, date);
+    const inst = await findInstanceAt(eventId, originalStart);
+    if (!inst) throw new Error(`Outlook has no live occurrence of this meeting starting at ${originalStart}`);
     // Graph supports cancelling a single instance via /cancel action — sends
     // proper cancellation .ics to attendees for that occurrence only.
     const res = await graphFetch(`/calendar/events/${inst.id}/cancel`, {

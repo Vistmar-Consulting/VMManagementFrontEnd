@@ -54,6 +54,21 @@ export function windowAround(startIso) {
   };
 }
 
+// "YYYY-MM-DD" of instant `t` (epoch ms) as seen in `timeZone`.
+export function localDateIn(t, timeZone) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(t));
+}
+
+// Moves a local start/end pair so the start lands on `date` ("YYYY-MM-DD"),
+// keeping time of day and duration (an end past midnight stays past midnight).
+export function onDate(date, startLocal, endLocal) {
+  const shift = Date.parse(`${date}T00:00:00Z`) - Date.parse(`${startLocal.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(shift)) throw new Error(`Invalid date: ${date}`);
+  const move = (iso) => new Date(Date.parse(`${iso.slice(0, 19)}Z`) + shift).toISOString().slice(0, 19);
+  return { start: move(startLocal), end: move(endLocal) };
+}
+
 export function sameInstant(a, b) {
   return Number.isFinite(a) && Number.isFinite(b) && a === b;
 }

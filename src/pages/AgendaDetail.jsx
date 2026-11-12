@@ -1022,6 +1022,9 @@ function ActionBar({ agenda, agendaId, calendarSeries, topics }) {
           agenda={agenda}
           agendaId={agendaId}
           calendarSeries={calendarSeries}
+          // A recurring agenda's stored meetingDatetime is a frozen past
+          // occurrence; "this meeting" means the next live one.
+          occurrenceDate={isRecurring ? (nextOccurrence?.start || null) : null}
           onClose={() => setCancelMeetingOpen(false)}
         />
       )}

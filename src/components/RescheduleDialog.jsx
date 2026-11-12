@@ -64,6 +64,9 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
   const [newDate, setNewDate] = useState(originalStart);
   const [newTime, setNewTime] = useState(originalStart);
   const [error, setError] = useState(null);
+  // "Entire series" keeps the series' weekday and changes only the time; the
+  // server ignores the date for a recurring series.
+  const seriesTimeOnly = isRecurring && mode === "series";
 
   // Dual-write: call API, then mirror the new meetingDatetime to the
   // matching Firestore agenda doc. Failure to update Firestore doesn't roll
@@ -123,7 +126,7 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
     // non-recurring meetings, event_id IS the master (no series exists).
     const eventIdForApi = isRecurring ? meeting.series_id : meeting.event_id;
     // Collapse non-recurring meetings to "series" mode so the backend skips
-    // findInstanceByDate (which is recurring-only) and patches directly.
+    // the occurrence lookup (recurring-only) and patches the event directly.
     const effectiveMode = isRecurring ? mode : "series";
 
     mutation.mutate({
@@ -170,12 +173,14 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
           )}
 
           <Stack direction="row" spacing={2}>
-            <DatePicker
-              label="New date"
-              value={newDate}
-              onChange={setNewDate}
-              slotProps={{ textField: { size: "small", fullWidth: true } }}
-            />
+            {!seriesTimeOnly && (
+              <DatePicker
+                label="New date"
+                value={newDate}
+                onChange={setNewDate}
+                slotProps={{ textField: { size: "small", fullWidth: true } }}
+              />
+            )}
             <TimePicker
               label="New time"
               value={newTime}
@@ -186,6 +191,7 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
           </Stack>
 
           <Typography variant="caption" color="text.secondary">
+            {seriesTimeOnly && "Changes the time of every meeting in the series; the day of the week stays the same. "}
             Times shown in Pacific (Vistamar HQ). Duration preserved at {originalDurationMinutes} min.
             Attendees get the updated invite by email from Google Calendar; the Outlook
             calendar on meetings@ is updated to match.
