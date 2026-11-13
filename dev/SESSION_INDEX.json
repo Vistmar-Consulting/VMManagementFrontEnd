@@ -588,6 +588,16 @@
       "status": "complete"
     },
     {
+      "session_id": "SES-20261112-Andrew-v0.4.27-reschedule-hardening",
+      "developer": "Andrew",
+      "date": "2026-11-12",
+      "commit_start": "b258efd",
+      "summary": "Reschedule + cancel match occurrences by exact start and series slot, run Google first, and survive a Graph outage with a safe retry; series reschedule changes time only.",
+      "folder": "dev/sessions/v0_4_27_Andrew_RESCHEDULE_HARDENING/",
+      "date_closed": "2026-11-12",
+      "status": "complete"
+    },
+    {
       "session_id": "SES-20261117-Andrew-v0.4.28-series-cadence",
       "developer": "Andrew",
       "date": "2026-11-17",

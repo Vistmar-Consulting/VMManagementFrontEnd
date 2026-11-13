@@ -33,6 +33,8 @@ Andy's directive: move the Golden Vision meeting to "GV - Weekly", Mondays 10am 
 - **Past Meetings misses older recordings** — What: `PastMeetingsCard` loads only the 50 most recent Fireflies transcripts account-wide, so GV (last recording 2026-08-26) shows 0. Why deferred: pre-existing, outside this task. Trigger: Andy's go-ahead.
 - **GV back to biweekly** — What: Change schedule → "GV - Biweekly", Every 2 weeks; add "GV - Biweekly" (hyphen) to the agenda's `firefliesTitles`. Trigger: ~3-4 weeks after 2026-11-23.
 
+- **Carried from v0.4.27 (reschedule hardening)** — still open: confirm Graph returns `originalStart` on occurrences (list a series' instances with `$select=id,start,type,originalStart`); confirm Google `events.get` on a deleted series still returns `m365EventId`; `dev/bmd-cleanup.mjs` (one-off, already run) still passes `originalDate`. Closed today: Reschedule dialog opened in the browser (scope options render, nothing submitted on a real meeting except GV). Worktree `reschedule-hardening` removed 2026-11-17.
+
 ## Shipped
 
 | Commit | Change |

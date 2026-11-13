@@ -3,7 +3,7 @@
 - **Developer:** Andrew
 - **Date:** 2026-11-12
 - **Branch:** `worktree-reschedule-hardening` (cut from `main` = `origin/dev` @ b258efd)
-- **Status:** in progress — code done + tested locally, not pushed
+- **Status:** complete — fbbed72 pushed to `origin/dev`, Vercel prod deploy Ready
 
 ## Trigger
 Rescheduling "Vistamar Platform Development updates" (Thu Nov 12, 2:00 PM → 11:00 AM,
@@ -18,8 +18,9 @@ blocked the attendee-facing change even though Google is the copy that emails at
 ## Live state of the Nov 12 meeting
 - Google occurrence `m4b1tbph59cpv51hk1t4p2bh0g_20261112T220000Z` moved to 11:00–12:00 PT
   with `sendUpdates:"all"` (attendees emailed) at ~18:21Z.
-- Graph occurrence still at 2:00 PM. A background job (scratchpad `graph_catchup.mjs`)
-  retries the Graph PATCH every 60s for up to 2h.
+- Graph occurrence PATCHed to 11:00–12:00 PT at 20:05Z (HTTP 200, attempt 80 of a
+  scratchpad retry job, now deleted) — after the meeting had started. Not re-read
+  afterwards: a follow-up read-only check got 502 again.
 
 ## Fixes on this branch
 1. Occurrences are found by exact start instant, not calendar date. The old window was
@@ -56,6 +57,18 @@ blocked the attendee-facing change even though Google is the copy that emails at
 - **Unverified against live APIs:** Graph `originalStart` on occurrences (the code
   falls back to `start` for unmoved `type: occurrence`); whether Google `events.get`
   on a deleted series still returns `m365EventId`. Graph was down during this session.
+  Trigger: next time Graph is healthy, list Nov 12 instances with
+  `$select=id,start,type,originalStart` and confirm the field + the 11:00 time.
+- **Dialogs not clicked through in a browser** (Reschedule: instance + series-time-only;
+  Cancel from Agenda page). Trigger: next session with agent-browser permission —
+  open dialogs only, do not submit (submitting emails attendees).
+- **Memory update pending Andy's OK:** meeting-architecture memory should record
+  "Google first, Graph matched by series slot".
 - `dev/bmd-cleanup.mjs` (one-off, already run) still passes `originalDate`.
 - Full-suite run: 25 UI tests time out under load (pass in isolation) — see
   v0_4_21_Andrew_TEST_TIMEOUTS.
+
+## Close (2026-11-12)
+Complete. Commits 59ee7bd, 8710aa3, fbbed72 on `origin/dev`; 59 meetings tests pass.
+Nov 12 meeting: Google moved and attendees emailed; Outlook caught up late (see above).
+Worktree `reschedule-hardening` left in place pending Andy's OK to remove.
