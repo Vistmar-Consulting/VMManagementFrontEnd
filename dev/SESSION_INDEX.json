@@ -586,6 +586,16 @@
       "folder": "dev/sessions/v0_4_26_Andrew_OPEN_FLOOR_COLLAPSE/",
       "date_closed": "2026-11-03",
       "status": "complete"
+    },
+    {
+      "session_id": "SES-20261117-Andrew-v0.4.28-series-cadence",
+      "developer": "Andrew",
+      "date": "2026-11-17",
+      "commit_start": "fbbed72",
+      "summary": "Reschedule Change schedule changes a series repeat pattern in place (weekly/biweekly, weekday, time, title); split Google series routed to the original master. GV moved to GV - Weekly Mon 10am PT with Carolina replacing Leslie.",
+      "folder": "dev/sessions/v0_4_28_Andrew_SERIES_CADENCE/",
+      "date_closed": "2026-11-17",
+      "status": "complete"
     }
   ]
 }
