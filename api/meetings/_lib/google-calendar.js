@@ -392,6 +392,67 @@ export async function rescheduleEvent({
   });
 }
 
+// Changes a recurring series' pattern in place: first meeting on the new
+// schedule, weekly interval, weekday (from the new start date), time and
+// optionally the title. The series keeps its id, so its agenda and Teams link
+// stay attached. Google redraws the whole series from the new start: earlier
+// occurrences of this master no longer show on calendars.
+// One patch, so attendees get one update email. Retry-safe: returns
+// { alreadyApplied: true } when the master already matches.
+//
+// A split piece ("{originalId}_R{splitStartUTC}", minted by a Google "this and
+// following" edit) cannot be re-dated: Google rejects the patch with "Invalid
+// start time" (hit on GV – Biweekly, 2026-11-17). Patching the ORIGINAL master
+// works, and Google then cancels the split piece itself — verified on GV the
+// same day. So for a split piece the change goes to the original master,
+// carrying the split piece's guest list (guest edits made after the split live
+// only on the split piece). The agenda is keyed by the original id
+// (src/lib/agendaIds.js), so it stays attached.
+const SPLIT_SUFFIX = /_R\d{8}T\d{6}$/;
+
+export async function changeSeriesPattern({
+  eventId,
+  title,            // optional; unchanged when omitted
+  newStartDateTime, // local-ISO, first meeting on the new schedule
+  newEndDateTime,
+  timezone,
+  rrule,            // "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO" (no "RRULE:" prefix)
+}) {
+  const cal = await getCalendar();
+  let targetId = eventId;
+  let attendees;
+  if (SPLIT_SUFFIX.test(eventId)) {
+    const split = (await cal.events.get({ calendarId: CALENDAR_ID, eventId })).data;
+    targetId = eventId.replace(SPLIT_SUFFIX, "");
+    // A cancelled split piece means an earlier attempt already went through
+    // the original master; its guest list is no longer current.
+    if (split.status !== "cancelled") attendees = split.attendees || [];
+  }
+  const master = (await cal.events.get({ calendarId: CALENDAR_ID, eventId: targetId })).data;
+  if (!master.recurrence?.length) throw new Error("This meeting is not a recurring series");
+  const recurrence = [`RRULE:${rrule}`];
+  const unchanged =
+    sameInstant(instantOf(master.start?.dateTime, master.start?.timeZone), Date.parse(wallClockToInstant(newStartDateTime, timezone)))
+    && sameInstant(instantOf(master.end?.dateTime, master.end?.timeZone), Date.parse(wallClockToInstant(newEndDateTime, timezone)))
+    && master.recurrence.length === 1 && master.recurrence[0] === recurrence[0]
+    && (!title || master.summary === title)
+    && !attendees;
+  if (unchanged) return { alreadyApplied: true };
+  await cal.events.patch({
+    calendarId: CALENDAR_ID,
+    eventId: targetId,
+    sendUpdates: "all",
+    requestBody: {
+      start: { dateTime: newStartDateTime, timeZone: timezone },
+      end: { dateTime: newEndDateTime, timeZone: timezone },
+      recurrence,
+      ...(title ? { summary: title } : {}),
+      ...(attendees ? { attendees } : {}),
+    },
+  });
+  return {};
+}
+
 export async function updateAttendees({ eventId, add = [], remove = [] }) {
   const cal = await getCalendar();
   const cur = await cal.events.get({ calendarId: CALENDAR_ID, eventId });

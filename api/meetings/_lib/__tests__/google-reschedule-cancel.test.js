@@ -19,7 +19,7 @@ vi.mock("googleapis", () => ({
 }));
 vi.mock("../keyvault.js", () => ({ getGoogleCredentials: async () => ({ client_email: "x", private_key: "y" }) }));
 
-const { rescheduleEvent, cancelEvent } = await import("../google-calendar.js");
+const { rescheduleEvent, cancelEvent, changeSeriesPattern } = await import("../google-calendar.js");
 
 const PT = "America/Los_Angeles";
 let instances;
@@ -156,6 +156,79 @@ describe("google rescheduleEvent — series", () => {
     await rescheduleEvent({ eventId: "one", mode: "series",
       newStartDateTime: "2026-11-14T09:00:00", newEndDateTime: "2026-11-14T10:00:00", timezone: PT });
     expect(cal.events.patch.mock.calls[0][0].requestBody.start.dateTime).toBe("2026-11-14T09:00:00");
+  });
+});
+
+describe("google changeSeriesPattern", () => {
+  const biweeklyWed = {
+    summary: "GV – Biweekly",
+    recurrence: ["RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=WE"],
+    start: { dateTime: "2026-08-26T12:30:00-07:00", timeZone: PT },
+    end: { dateTime: "2026-08-26T13:30:00-07:00", timeZone: PT },
+  };
+  const toWeeklyMon = {
+    eventId: "s", rrule: "FREQ=WEEKLY;BYDAY=MO", title: "GV - Weekly",
+    newStartDateTime: "2026-11-23T10:00:00", newEndDateTime: "2026-11-23T11:00:00", timezone: PT,
+  };
+
+  it("patches start, end, recurrence and title on the master in one emailed update", async () => {
+    cal.events.get.mockResolvedValue({ data: biweeklyWed });
+    await changeSeriesPattern(toWeeklyMon);
+    expect(cal.events.patch).toHaveBeenCalledTimes(1);
+    expect(cal.events.patch.mock.calls[0][0]).toEqual({
+      calendarId: "primary", eventId: "s", sendUpdates: "all",
+      requestBody: {
+        start: { dateTime: "2026-11-23T10:00:00", timeZone: PT },
+        end: { dateTime: "2026-11-23T11:00:00", timeZone: PT },
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
+        summary: "GV - Weekly",
+      },
+    });
+  });
+
+  it("leaves the title alone when none is given", async () => {
+    cal.events.get.mockResolvedValue({ data: biweeklyWed });
+    await changeSeriesPattern({ ...toWeeklyMon, title: undefined });
+    expect(cal.events.patch.mock.calls[0][0].requestBody).not.toHaveProperty("summary");
+  });
+
+  it("a retry when the master already matches sends nothing", async () => {
+    cal.events.get.mockResolvedValue({ data: {
+      summary: "GV - Weekly",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
+      start: { dateTime: "2026-11-23T10:00:00-08:00", timeZone: PT },
+      end: { dateTime: "2026-11-23T11:00:00-08:00", timeZone: PT },
+    } });
+    expect(await changeSeriesPattern(toWeeklyMon)).toEqual({ alreadyApplied: true });
+    expect(cal.events.patch).not.toHaveBeenCalled();
+  });
+
+  it("a split piece is changed through its original master, carrying the split's guests", async () => {
+    const guests = [{ email: "a@x.com" }, { email: "carolina@x.com" }];
+    cal.events.get.mockImplementation(async ({ eventId }) => ({ data: eventId === "orig_R20260826T193000"
+      ? { ...biweeklyWed, status: "confirmed", attendees: guests }
+      : { ...biweeklyWed, recurrence: ["RRULE:FREQ=WEEKLY;UNTIL=20260826T065959Z;INTERVAL=2;BYDAY=WE"], attendees: [{ email: "old@x.com" }] } }));
+    await changeSeriesPattern({ ...toWeeklyMon, eventId: "orig_R20260826T193000" });
+    expect(cal.events.patch).toHaveBeenCalledTimes(1);
+    expect(cal.events.patch.mock.calls[0][0]).toMatchObject({
+      eventId: "orig", sendUpdates: "all",
+      requestBody: { recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"], summary: "GV - Weekly", attendees: guests },
+    });
+  });
+
+  it("a retry after Google cancelled the split piece sends nothing when the original already matches", async () => {
+    cal.events.get.mockImplementation(async ({ eventId }) => ({ data: eventId === "orig_R20260826T193000"
+      ? { ...biweeklyWed, status: "cancelled" }
+      : { summary: "GV - Weekly", recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
+          start: { dateTime: "2026-11-23T10:00:00-08:00", timeZone: PT }, end: { dateTime: "2026-11-23T11:00:00-08:00", timeZone: PT } } }));
+    expect(await changeSeriesPattern({ ...toWeeklyMon, eventId: "orig_R20260826T193000" })).toEqual({ alreadyApplied: true });
+    expect(cal.events.patch).not.toHaveBeenCalled();
+  });
+
+  it("refuses a one-time event", async () => {
+    cal.events.get.mockResolvedValue({ data: { start: biweeklyWed.start, end: biweeklyWed.end } });
+    await expect(changeSeriesPattern(toWeeklyMon)).rejects.toThrow(/not a recurring series/);
+    expect(cal.events.patch).not.toHaveBeenCalled();
   });
 });
 

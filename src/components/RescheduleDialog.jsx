@@ -24,6 +24,7 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
@@ -64,6 +65,12 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
   // "Entire series" keeps the series' weekday and changes only the time; the
   // server ignores the date for a recurring series.
   const seriesTimeOnly = isRecurring && mode === "series";
+  // "Change schedule" rewrites the series' repeat pattern in place (same
+  // series, agenda and Teams link): new first date (its weekday becomes the
+  // series' weekday), time, weekly/biweekly, and the invite title.
+  const patternMode = isRecurring && mode === "pattern";
+  const [frequency, setFrequency] = useState("weekly");
+  const [title, setTitle] = useState(meeting?.title || "");
 
   // Dual-write: call API, then mirror the new meetingDatetime to the
   // matching Firestore agenda doc. Failure to update Firestore doesn't roll
@@ -78,6 +85,7 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
             meetingDatetime: new Date(`${vars.new_date_iso}`),
             durationMinutes: vars.durationMinutes,
             rescheduledFrom: agenda.meetingDatetime || null,
+            ...(vars.mode === "pattern" && vars.title ? { title: vars.title } : {}),
             updatedAt: serverTimestamp(),
             updatedByUid: user?.uid || null,
           });
@@ -106,6 +114,13 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
       setError("Pick a new date and time.");
       return;
     }
+    if (patternMode && !title.trim()) {
+      setError("Give the meeting a title.");
+      return;
+    }
+    // Rename the invite only when the title was edited here: the prefill can
+    // be the agenda's own title, which may differ from the invite's.
+    const newTitle = patternMode && title.trim() !== (meeting?.title || "").trim() ? title.trim() : undefined;
     const dateStr = format(newDate, "yyyy-MM-dd");
     const timeStr = `${pad2(newTime.getHours())}:${pad2(newTime.getMinutes())}`;
     // Construct a wall-clock ISO for the Firestore Timestamp write — uses the
@@ -139,6 +154,7 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
       timezone: "America/Los_Angeles",
       durationMinutes: originalDurationMinutes,
       orgId: meeting.org_id || null,
+      ...(patternMode ? { frequency, title: newTitle } : {}),
       new_date_iso: newDateIso,  // passed through for Firestore write only
     });
   };
@@ -167,16 +183,41 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
                   control={<Radio size="small" />}
                   label="Entire series"
                 />
+                <FormControlLabel
+                  value="pattern"
+                  control={<Radio size="small" />}
+                  label="Change schedule"
+                />
               </RadioGroup>
             </FormControl>
+          )}
+
+          {patternMode && (
+            <>
+              <TextField
+                label="Meeting title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                size="small"
+                fullWidth
+              />
+              <FormControl>
+                <FormLabel>Repeats</FormLabel>
+                <RadioGroup row value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+                  <FormControlLabel value="weekly" control={<Radio size="small" />} label="Weekly" />
+                  <FormControlLabel value="biweekly" control={<Radio size="small" />} label="Every 2 weeks" />
+                </RadioGroup>
+              </FormControl>
+            </>
           )}
 
           <Stack direction="row" spacing={2}>
             {!seriesTimeOnly && (
               <DatePicker
-                label="New date"
+                label={patternMode ? "First meeting on new schedule" : "New date"}
                 value={newDate}
                 onChange={setNewDate}
+                disablePast={patternMode}
                 slotProps={{ textField: { size: "small", fullWidth: true } }}
               />
             )}
@@ -191,6 +232,11 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
 
           <Typography variant="caption" color="text.secondary">
             {seriesTimeOnly && "Changes the time of every meeting in the series; the day of the week stays the same. "}
+            {patternMode && newDate && !isNaN(newDate) && (
+              `Meets ${frequency === "weekly" ? "every" : "every other"} ${format(newDate, "EEEE")} from ${format(newDate, "MMM d")}. ` +
+              "Same series, agenda and Teams link. Earlier meetings in this series, past and upcoming, " +
+              "come off everyone's calendars. "
+            )}
             Times shown in Pacific (Vistamar HQ). Duration preserved at {originalDurationMinutes} min.
             Attendees get the updated invite by email from Google Calendar; the Outlook
             calendar on meetings@ is updated to match.
@@ -206,7 +252,9 @@ export default function RescheduleDialog({ meeting, agenda, onClose, onSuccess }
           onClick={handleSubmit}
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? "Rescheduling…" : "Reschedule"}
+          {patternMode
+            ? (mutation.isPending ? "Saving…" : "Save schedule")
+            : (mutation.isPending ? "Rescheduling…" : "Reschedule")}
         </Button>
       </DialogActions>
     </Dialog>

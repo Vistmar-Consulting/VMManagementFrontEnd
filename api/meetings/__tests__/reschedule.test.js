@@ -3,10 +3,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const calls = [];
 const graphReschedule = vi.fn(async () => { calls.push("graph"); });
 const googleReschedule = vi.fn(async () => { calls.push("google"); });
+const graphPattern = vi.fn(async () => { calls.push("graph-pattern"); });
+const googlePattern = vi.fn(async () => { calls.push("google-pattern"); });
 
-vi.mock("../_lib/graph-events.js", () => ({ rescheduleEvent: (a) => graphReschedule(a) }));
+vi.mock("../_lib/graph-events.js", () => ({
+  rescheduleEvent: (a) => graphReschedule(a),
+  changeSeriesPattern: (a) => graphPattern(a),
+}));
 vi.mock("../_lib/google-calendar.js", () => ({
   rescheduleEvent: (a) => googleReschedule(a),
+  changeSeriesPattern: (a) => googlePattern(a),
   getM365EventId: async () => "graph-master",
 }));
 vi.mock("../_lib/auth.js", () => ({ requireAuth: async () => true }));
@@ -37,6 +43,8 @@ const base = {
 beforeEach(() => {
   calls.length = 0;
   graphReschedule.mockReset().mockImplementation(async () => { calls.push("graph"); });
+  graphPattern.mockReset().mockImplementation(async () => { calls.push("graph-pattern"); });
+  googlePattern.mockReset().mockImplementation(async () => { calls.push("google-pattern"); });
   googleReschedule.mockReset().mockImplementation(async () => { calls.push("google"); return { seriesSlot: "2026-11-12T22:00:00.000Z" }; });
 });
 
@@ -86,5 +94,72 @@ describe("PUT /api/meetings/reschedule", () => {
     const { original_start, ...series } = base;
     const res = await run({ ...series, mode: "series" });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe("PUT /api/meetings/reschedule — pattern", () => {
+  const { original_start, ...rest } = base;
+  const pattern = {
+    ...rest,
+    mode: "pattern",
+    new_date: "2026-11-23",
+    new_time: "10:00",
+    frequency: "weekly",
+    title: "  GV - Weekly ",
+  };
+
+  it("changes Google (emails attendees) then Outlook, weekday from the new date", async () => {
+    const res = await run(pattern);
+    expect(res.statusCode).toBe(200);
+    expect(calls).toEqual(["google-pattern", "graph-pattern"]);
+    expect(googlePattern.mock.calls[0][0]).toEqual({
+      eventId: "google-master",
+      rrule: "FREQ=WEEKLY;BYDAY=MO",
+      title: "GV - Weekly",
+      newStartDateTime: "2026-11-23T10:00:00",
+      newEndDateTime: "2026-11-23T11:00:00",
+      timezone: "America/Los_Angeles",
+    });
+    expect(graphPattern.mock.calls[0][0]).toMatchObject({
+      eventId: "graph-master",
+      startDate: "2026-11-23",
+      weekday: "monday",
+      interval: 1,
+      title: "GV - Weekly",
+    });
+    expect(graphReschedule).not.toHaveBeenCalled();
+    expect(googleReschedule).not.toHaveBeenCalled();
+  });
+
+  it("biweekly sets INTERVAL=2; a blank title leaves the title alone", async () => {
+    await run({ ...pattern, frequency: "biweekly", title: "  " });
+    expect(googlePattern.mock.calls[0][0]).toMatchObject({ rrule: "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO", title: undefined });
+    expect(graphPattern.mock.calls[0][0]).toMatchObject({ interval: 2, title: undefined });
+  });
+
+  it("rejects an unknown frequency before touching either calendar", async () => {
+    const res = await run({ ...pattern, frequency: "monthly" });
+    expect(res.statusCode).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
+  it("reports an Outlook failure after Google changed as a retryable partial failure", async () => {
+    graphPattern.mockImplementation(async () => { throw new Error("Outlook event lookup failed: 503"); });
+    const res = await run(pattern);
+    expect(res.statusCode).toBe(502);
+    expect(res.payload.partial).toBe(true);
+    expect(res.payload.error).toMatch(/safe to retry/);
+  });
+
+  it("rejects a malformed date with a 400 before touching either calendar", async () => {
+    const res = await run({ ...pattern, new_date: "11/23/2026" });
+    expect(res.statusCode).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
+  it("rejects an unknown mode", async () => {
+    const res = await run({ ...pattern, mode: "whatever" });
+    expect(res.statusCode).toBe(400);
+    expect(calls).toEqual([]);
   });
 });

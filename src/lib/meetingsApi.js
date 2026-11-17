@@ -56,7 +56,10 @@ export function listMeetings({ start, end, orgId }) {
 // API rejects instance ids when looking up the target instance.
 // durationMinutes preserves the meeting's original length (defaults to 60 if
 // the caller omits it).
-export function rescheduleMeeting({ orgId, eventId, mode, originalStart, newDate, newTime, timezone, durationMinutes }) {
+// mode "pattern" changes a recurring series' repeat pattern in place:
+// `frequency` ("weekly" | "biweekly"), first meeting on `newDate` (its weekday
+// becomes the series' weekday), optional new `title`.
+export function rescheduleMeeting({ orgId, eventId, mode, originalStart, newDate, newTime, timezone, durationMinutes, frequency, title }) {
   return call("reschedule", {
     method: "PUT",
     body: {
@@ -68,6 +71,7 @@ export function rescheduleMeeting({ orgId, eventId, mode, originalStart, newDate
       new_time: newTime,
       timezone: timezone || "America/Los_Angeles",
       duration_minutes: durationMinutes,
+      ...(mode === "pattern" ? { frequency, title } : {}),
     },
   });
 }

@@ -332,6 +332,57 @@ export async function rescheduleEvent({
   }
 }
 
+// Changes the Outlook series' pattern in place to match Google's
+// changeSeriesPattern: weekly every `interval` weeks on the weekday of
+// `startDate`, starting `startDate`, no end. Same event id, same Teams
+// meeting. Outlook drops the series' exceptions (moved or cancelled
+// occurrences) when its pattern changes. Retry-safe.
+export async function changeSeriesPattern({
+  eventId,
+  title,            // optional; unchanged when omitted
+  newStartDateTime, // local-ISO
+  newEndDateTime,
+  timezone,
+  startDate,        // "YYYY-MM-DD" of the first meeting on the new schedule
+  weekday,          // "monday"
+  interval,         // 1 = weekly, 2 = every other week
+}) {
+  const res = await graphFetch(`/calendar/events/${eventId}?$select=type,subject,recurrence,start,end`, {
+    method: "GET",
+    headers: { Prefer: 'outlook.timezone="UTC"' },
+  });
+  if (!res.ok) throw new Error(`Outlook event lookup failed: ${res.status} ${await res.text()}`);
+  const ev = await res.json();
+  if (ev.type !== "seriesMaster") throw new Error("Outlook event is not a recurring series");
+  const p = ev.recurrence?.pattern || {};
+  const r = ev.recurrence?.range || {};
+  const unchanged =
+    sameInstant(instantOf(ev.start?.dateTime, ev.start?.timeZone), Date.parse(wallClockToInstant(newStartDateTime, timezone)))
+    && sameInstant(instantOf(ev.end?.dateTime, ev.end?.timeZone), Date.parse(wallClockToInstant(newEndDateTime, timezone)))
+    && p.type === "weekly" && p.interval === interval
+    && (p.daysOfWeek || []).length === 1 && p.daysOfWeek[0] === weekday
+    && r.type === "noEnd" && r.startDate === startDate
+    && (!title || ev.subject === title);
+  if (unchanged) return { alreadyApplied: true };
+  const patch = await graphFetch(`/calendar/events/${eventId}`, {
+    method: "PATCH",
+    headers: { Prefer: 'outlook.send-notifications="true"' },
+    body: JSON.stringify({
+      start: { dateTime: newStartDateTime, timeZone: timezone },
+      end: { dateTime: newEndDateTime, timeZone: timezone },
+      recurrence: {
+        pattern: { type: "weekly", interval, daysOfWeek: [weekday], firstDayOfWeek: "sunday" },
+        range: { type: "noEnd", startDate },
+      },
+      ...(title ? { subject: title } : {}),
+    }),
+  });
+  if (!patch.ok) {
+    throw new Error(`graph-events.changeSeriesPattern failed: ${patch.status} ${await patch.text()}`);
+  }
+  return {};
+}
+
 // ── RENAME ──
 
 export async function renameEvent({ eventId, title }) {

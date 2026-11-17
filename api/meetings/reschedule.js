@@ -11,10 +11,22 @@
 //
 // Spec: docs/specs/2026-04-28-m365-primary-meeting-scheduler-design.md
 
-import { rescheduleEvent as graphReschedule } from "./_lib/graph-events.js";
-import { rescheduleEvent as googleReschedule, getM365EventId } from "./_lib/google-calendar.js";
+import { rescheduleEvent as graphReschedule, changeSeriesPattern as graphChangePattern } from "./_lib/graph-events.js";
+import {
+  rescheduleEvent as googleReschedule,
+  changeSeriesPattern as googleChangePattern,
+  getM365EventId,
+} from "./_lib/google-calendar.js";
+import { weekdayOf } from "./_lib/instance-time.js";
 import { requireAuth } from "./_lib/auth.js";
 import { applyCors } from "./_lib/cors.js";
+
+// Repeat patterns the "pattern" mode accepts → weeks between meetings.
+const PATTERN_INTERVAL = { weekly: 1, biweekly: 2 };
+const RRULE_DAY = {
+  sunday: "SU", monday: "MO", tuesday: "TU", wednesday: "WE",
+  thursday: "TH", friday: "FR", saturday: "SA",
+};
 
 function toLocalIso(date, time) {
   if (!date || !time) return null;
@@ -38,10 +50,16 @@ export default async function handler(req, res) {
   if (!(await requireAuth(req, res))) return;
 
   try {
-    const { org_id, event_id, mode, original_start, new_date, new_time, timezone, duration_minutes } = req.body;
+    const { org_id, event_id, mode, original_start, new_date, new_time, timezone, duration_minutes, frequency, title } = req.body;
 
     if (!org_id || !event_id || !mode || !new_date || !new_time) {
       return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (!["instance", "series", "pattern"].includes(mode)) {
+      return res.status(400).json({ error: `Unknown mode: ${mode}` });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(new_date) || !/^\d{2}:\d{2}(:\d{2})?$/.test(new_time)) {
+      return res.status(400).json({ error: "new_date must be YYYY-MM-DD and new_time HH:mm" });
     }
     if (mode === "instance" && (!original_start || Number.isNaN(Date.parse(original_start)))) {
       return res.status(400).json({ error: "original_start (the occurrence's start instant) is required for instance mode. Reload the page and try again." });
@@ -65,6 +83,38 @@ export default async function handler(req, res) {
       return res.status(409).json({
         error: "Event has no M365 binding (pre-pivot). Cancel and recreate via the new architecture.",
       });
+    }
+
+    // "pattern": change a recurring series' repeat pattern (weekly/biweekly,
+    // weekday from new_date, time, optional title) in place — same series id,
+    // so its agenda and Teams link stay attached.
+    if (mode === "pattern") {
+      const interval = PATTERN_INTERVAL[frequency];
+      if (!interval) {
+        return res.status(400).json({ error: `frequency must be one of: ${Object.keys(PATTERN_INTERVAL).join(", ")}` });
+      }
+      const weekday = weekdayOf(new_date);
+      const cleanTitle = typeof title === "string" && title.trim() ? title.trim() : undefined;
+      const patternArgs = {
+        title: cleanTitle,
+        newStartDateTime,
+        newEndDateTime,
+        timezone: tz,
+      };
+      const rrule = `FREQ=WEEKLY${interval > 1 ? `;INTERVAL=${interval}` : ""};BYDAY=${RRULE_DAY[weekday]}`;
+      await googleChangePattern({ eventId: event_id, rrule, ...patternArgs });
+      try {
+        await graphChangePattern({ eventId: m365EventId, startDate: new_date, weekday, interval, ...patternArgs });
+      } catch (graphErr) {
+        console.error("PUT /api/meetings/reschedule: Graph pattern step failed after Google succeeded:", graphErr);
+        return res.status(502).json({
+          error:
+            "Attendees were sent the new schedule, but the Outlook calendar on meetings@ was not updated " +
+            `(${graphErr.message}). Click Save again to finish — it is safe to retry.`,
+          partial: true,
+        });
+      }
+      return res.status(200).json({ success: true });
     }
 
     const args = {

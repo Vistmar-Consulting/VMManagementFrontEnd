@@ -4,7 +4,7 @@ vi.mock("../keyvault.js", () => ({
   getTeamsCredentials: async () => ({ clientId: "c", clientSecret: "s", tenantId: "t", hostUserId: "u" }),
 }));
 
-const { rescheduleEvent, cancelEvent } = await import("../graph-events.js");
+const { rescheduleEvent, cancelEvent, changeSeriesPattern } = await import("../graph-events.js");
 
 const PT = "America/Los_Angeles";
 // Outlook occurrences of one series, start/end/originalStart in UTC as Graph
@@ -103,6 +103,74 @@ describe("graph cancelEvent — instance", () => {
     instances = [];
     expect(await cancelEvent({ eventId: "master", mode: "instance", originalStart: base.originalStart, seriesSlot: base.seriesSlot }))
       .toEqual({ alreadyApplied: true });
+    expect(writes).toHaveLength(0);
+  });
+});
+
+describe("graph changeSeriesPattern", () => {
+  let master;
+  beforeEach(() => {
+    master = {
+      type: "seriesMaster", subject: "GV – Biweekly",
+      start: { dateTime: "2026-05-20T19:30:00.0000000", timeZone: "UTC" },
+      end: { dateTime: "2026-05-20T20:30:00.0000000", timeZone: "UTC" },
+      recurrence: {
+        pattern: { type: "weekly", interval: 2, daysOfWeek: ["wednesday"], firstDayOfWeek: "sunday" },
+        range: { type: "noEnd", startDate: "2026-05-20" },
+      },
+    };
+    const inner = fetch.getMockImplementation();
+    fetch.mockImplementation(async (url, opts = {}) => {
+      if (String(url).includes("/calendar/events/master?$select")) return json(master);
+      return inner(url, opts);
+    });
+  });
+  const args = {
+    eventId: "master", title: "GV - Weekly",
+    newStartDateTime: "2026-11-23T10:00:00", newEndDateTime: "2026-11-23T11:00:00", timezone: PT,
+    startDate: "2026-11-23", weekday: "monday", interval: 1,
+  };
+
+  it("patches the series master's start, end, pattern and subject", async () => {
+    await changeSeriesPattern(args);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].method).toBe("PATCH");
+    expect(writes[0].url).toMatch(/\/calendar\/events\/master$/);
+    expect(writes[0].body).toEqual({
+      start: { dateTime: "2026-11-23T10:00:00", timeZone: PT },
+      end: { dateTime: "2026-11-23T11:00:00", timeZone: PT },
+      recurrence: {
+        pattern: { type: "weekly", interval: 1, daysOfWeek: ["monday"], firstDayOfWeek: "sunday" },
+        range: { type: "noEnd", startDate: "2026-11-23" },
+      },
+      subject: "GV - Weekly",
+    });
+  });
+
+  it("a retry when Outlook already matches writes nothing", async () => {
+    master = {
+      type: "seriesMaster", subject: "GV - Weekly",
+      start: { dateTime: "2026-11-23T18:00:00.0000000", timeZone: "UTC" },
+      end: { dateTime: "2026-11-23T19:00:00.0000000", timeZone: "UTC" },
+      recurrence: {
+        pattern: { type: "weekly", interval: 1, daysOfWeek: ["monday"], firstDayOfWeek: "sunday" },
+        range: { type: "noEnd", startDate: "2026-11-23" },
+      },
+    };
+    expect(await changeSeriesPattern(args)).toEqual({ alreadyApplied: true });
+    expect(writes).toHaveLength(0);
+  });
+
+  it("surfaces a rejected PATCH as an error", async () => {
+    const inner = fetch.getMockImplementation();
+    fetch.mockImplementation(async (url, opts = {}) =>
+      opts.method === "PATCH" ? json({ error: { message: "bad pattern" } }, 400) : inner(url, opts));
+    await expect(changeSeriesPattern(args)).rejects.toThrow(/changeSeriesPattern failed: 400/);
+  });
+
+  it("refuses an event that is not a series master", async () => {
+    master = { ...master, type: "singleInstance" };
+    await expect(changeSeriesPattern(args)).rejects.toThrow(/not a recurring series/);
     expect(writes).toHaveLength(0);
   });
 });

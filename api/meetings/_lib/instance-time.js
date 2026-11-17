@@ -72,3 +72,12 @@ export function onDate(date, startLocal, endLocal) {
 export function sameInstant(a, b) {
   return Number.isFinite(a) && Number.isFinite(b) && a === b;
 }
+
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+// "2026-11-23" → "monday". A calendar date has one weekday everywhere.
+export function weekdayOf(date) {
+  const t = Date.parse(`${date}T00:00:00Z`);
+  if (Number.isNaN(t)) throw new Error(`Invalid date: ${date}`);
+  return WEEKDAYS[new Date(t).getUTCDay()];
+}

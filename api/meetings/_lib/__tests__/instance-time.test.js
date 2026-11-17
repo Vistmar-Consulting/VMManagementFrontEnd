@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { instantOf, localDateIn, onDate, sameInstant, wallClockToInstant, windowAround } from "../instance-time.js";
+import { instantOf, localDateIn, onDate, sameInstant, wallClockToInstant, weekdayOf, windowAround } from "../instance-time.js";
 
 const PT = "America/Los_Angeles";
 
@@ -66,5 +66,16 @@ describe("windowAround / sameInstant", () => {
   it("compares instants, not strings", () => {
     expect(sameInstant(instantOf("2026-11-12T14:00:00-08:00"), Date.parse("2026-11-12T22:00:00.000Z"))).toBe(true);
     expect(sameInstant(NaN, NaN)).toBe(false);
+  });
+});
+
+describe("weekdayOf", () => {
+  it("names the weekday of a calendar date", () => {
+    expect(weekdayOf("2026-11-23")).toBe("monday");
+    expect(weekdayOf("2026-11-18")).toBe("wednesday");
+    expect(weekdayOf("2026-11-22")).toBe("sunday");
+  });
+  it("rejects a bad date", () => {
+    expect(() => weekdayOf("nope")).toThrow(/Invalid date/);
   });
 });
